@@ -1,0 +1,93 @@
+
+
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <title>رفيق الروح AI</title>
+
+  <!-- ✅ ربط ملف manifest -->
+  <link rel="manifest" href="manifest.json">
+
+  <!-- ✅ لون شريط المتصفح في الموبايل -->
+  <meta name="theme-color" content="#6f42c1">
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f4f4;
+      direction: rtl;
+      text-align: right;
+      padding: 20px;
+    }
+    .chat-box {
+      background-color: white;
+      border-radius: 15px;
+      padding: 15px;
+      max-width: 500px;
+      margin: auto;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .message {
+      margin: 10px 0;
+      padding: 10px;
+      border-radius: 10px;
+    }
+    .user {
+      background-color: #d1e7dd;
+      text-align: left;
+    }
+    .noor {
+      background-color: #f8d7da;
+    }
+    input {
+      width: 80%;
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+    }
+    button {
+      padding: 10px 15px;
+      border: none;
+      border-radius: 8px;
+      background-color: #6f42c1;
+      color: white;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    .controls {
+      text-align: center;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="chat-box" id="chat-box">
+    <!-- رسالة ترحيب بتظهر تلقائيًا من clearChat() -->
+  </div>
+
+  <div class="controls">
+    <input type="text" id="user-input" placeholder="اكتب هنا...">
+    <button onclick="handleUserMessage()">إرسال</button>
+    <br>
+    <button onclick="clearChat()">🗑️ حذف الرسائل</button>
+  </div>
+
+  <!-- ✅ سكريبت الذكاء نور -->
+  <script src="noor.js"></script>
+
+  <!-- ✅ تسجيل Service Worker -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('service-worker.js')
+          .then(reg => console.log("✅ Service Worker مسجّل:", reg.scope))
+          .catch(err => console.error("❌ مشكلة في التسجيل:", err));
+      });
+    }
+  </script>
+</body>
+</html>
