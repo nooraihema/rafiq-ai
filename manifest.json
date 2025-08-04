@@ -9,14 +9,16 @@
   "description": "رفيقك العاطفي اللي يسمعك ويحتويك ♥",
   "icons": [
     {
-      "src": "https://icons.iconarchive.com/icons/elegantthemes/beautiful-flat/192/Heart-icon.png",
+      "src": "icon192.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "https://icons.iconarchive.com/icons/elegantthemes/beautiful-flat/512/Heart-icon.png",
+      "src": "icon512.png",
       "sizes": "512x512",
       "type": "image/png"
     }
   ]
 }
+
+
