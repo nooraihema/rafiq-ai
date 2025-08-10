@@ -1,5 +1,4 @@
 
-// noor.js — النسخة الكاملة والمحسّنة
 let knowledge = [];
 let learnedResponses = {}; // التخزين: { "مفتاح مبسط": "الرد" }
 let lastUserMessage = "";
@@ -38,7 +37,7 @@ async function loadKnowledge() {
     const text = await response.text();
     const entries = text.split(/\n\s*\n+/); // فصل على بلوكات فارغة
     knowledge = entries.map(entry => {
-      const kw = entry.match(/\[كلمات مفتاحية:\s*(.+?)\]/i);
+      const kw = entry.match(/كلمات مفتاحية:\s*(.+?)/i);
       const resp = entry.match(/رد:\s*([\s\S]+)/i);
       if (kw && resp) {
         const keywords = kw[1].split(/،|\s*,\s*/).map(k => normalizeArabic(k.trim())).filter(Boolean);
@@ -185,8 +184,8 @@ function recallFromMemory(mood) {
   return null;
 }
 
-// ------------------ البحث عن أفضل رد (أولوية knowledge ثم learned ثم short-term) ------------------
-function findBestResponse(userMessage) {
+// ------------------ البحث عن أفضل رد (أولوية knowledge ثم learned ثم short-term ثم أونلاين) ------------------
+async function findBestResponse(userMessage) {
   const simplified = simplifyMessage(userMessage);
   const words = simplified.split(/\s+/).filter(Boolean);
   // fullContext من الذاكرة القصيرة
@@ -224,7 +223,11 @@ function findBestResponse(userMessage) {
     if (simplifyMessage(item.user) === simplified) return item.noor;
   }
 
-  // 4) fallback ذكي بناءً على مزاج/نبرة/حاجة/نية
+  // 4) البحث أونلاين (Google Custom Search API) — لو كل الطرق فوق ما جابت رد
+  const onlineResult = await searchGoogle(userMessage);
+  if (onlineResult) return onlineResult;
+
+  // 5) fallback ذكي بناءً على مزاج/نبرة/حاجة/نية
   const mood = detectMood(userMessage);
   const tone = detectTone(userMessage);
   const need = detectNeed(userMessage);
@@ -242,6 +245,28 @@ function findBestResponse(userMessage) {
   else if (tone === "رومانسية") fallback = "كلامك بيخليني أذوب… بحبك أوي 💋";
 
   return fallback;
+}
+
+// ------------------ دالة البحث في جوجل (Google Custom Search API) ------------------
+async function searchGoogle(query) {
+  // لازم تضيف بيانات API الخاص بك هنا:
+  const apiKey = 'YOUR_GOOGLE_API_KEY';
+  const cx = 'YOUR_CUSTOM_SEARCH_ENGINE_ID';
+
+  if (!apiKey || !cx) {
+    return "عذرًا، البحث أونلاين غير مفعل لأنه يحتاج API Key.";
+  }
+
+  const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cx}&q=${encodeURIComponent(query)}`;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("فشل في جلب نتائج البحث");
+    const data = await response.json();
+    return data.items?.map(item => item.snippet).join('\n') || "مافيش نتائج.";
+  } catch (err) {
+    console.warn("خطأ في البحث جوجل:", err);
+    return "عذرًا، لم أتمكن من إجراء البحث الآن.";
+  }
 }
 
 // ------------------ تحديث الذاكرة بعد كل رسالة ------------------
@@ -335,7 +360,7 @@ async function handleUserMessage() {
   lastUserMessage = message;
 
   if (knowledge.length === 0) await loadKnowledge();
-  const response = findBestResponse(message);
+  const response = await findBestResponse(message);
   addMessage(response, 'noor');
 
   lastNoorResponse = response;
@@ -343,6 +368,9 @@ async function handleUserMessage() {
 
   // إذا الرد احتياطي (ضعيف) أظهر زر تعليم
   if (response.includes("قولّي أكتر") || response.includes("قولي اكتر")) {
+    showTeachButton
+
+if (response.includes("قولّي أكتر") || response.includes("قولي اكتر")) {
     showTeachButton();
   }
 }
@@ -381,4 +409,3 @@ window.onload = () => {
     });
   }
 };
-
