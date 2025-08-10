@@ -2,7 +2,7 @@
 {
   "name": "رفيق الروح AI",
   "short_name": "نور 💜",
-  "start_url": "/",
+  "start_url": "/rafiq-ai/",
   "display": "standalone",
   "background_color": "#f4f4f4",
   "theme_color": "#6f42c1",
@@ -20,5 +20,3 @@
     }
   ]
 }
-
-
