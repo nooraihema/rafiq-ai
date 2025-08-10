@@ -1,5 +1,4 @@
 
-
 <!DOCTYPE html>
 <html lang="ar">
 <head>
@@ -12,6 +11,9 @@
   <!-- ✅ لون شريط المتصفح في الموبايل -->
   <meta name="theme-color" content="#6f42c1">
 
+  <!-- ✅ تحسين عرض التطبيق على الموبايل -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -19,6 +21,7 @@
       direction: rtl;
       text-align: right;
       padding: 20px;
+      margin: 0;
     }
     .chat-box {
       background-color: white;
@@ -27,13 +30,14 @@
       max-width: 500px;
       margin: auto;
       box-shadow: 0 0 10px rgba(0,0,0,0.1);
-      max-height: 400px;
+      height: 70vh;
       overflow-y: auto;
     }
     .message {
       margin: 10px 0;
       padding: 10px;
       border-radius: 10px;
+      word-wrap: break-word;
     }
     .user {
       background-color: #d1e7dd;
@@ -43,7 +47,7 @@
       background-color: #f8d7da;
     }
     input {
-      width: 80%;
+      width: 70%;
       padding: 10px;
       margin-top: 10px;
       border-radius: 8px;
@@ -58,6 +62,9 @@
       cursor: pointer;
       margin-top: 10px;
     }
+    button:hover {
+      background-color: #5a359c;
+    }
     .controls {
       text-align: center;
       margin-top: 10px;
@@ -66,7 +73,7 @@
 </head>
 <body>
   <div class="chat-box" id="chat-box">
-    <!-- رسالة ترحيب بتظهر تلقائيًا من clearChat() -->
+    <!-- الرسالة الترحيبية هتيجي من clearChat() -->
   </div>
 
   <div class="controls">
@@ -76,7 +83,7 @@
     <button onclick="clearChat()">🗑️ حذف الرسائل</button>
   </div>
 
-  <!-- ✅ سكريبت الذكاء نور -->
+  <!-- ✅ سكريبت نور -->
   <script src="noor.js"></script>
 
   <!-- ✅ تسجيل Service Worker -->
