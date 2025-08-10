@@ -54,7 +54,7 @@ function detectMood(message) {
   return "غير محدد";
 }
 
-// ✅ إيجاد أفضل رد من المعرفة أو من التعلم
+// ✅ إيجاد أفضل رد
 function findBestResponse(userMessage) {
   userMessage = userMessage.toLowerCase().trim();
 
@@ -177,6 +177,12 @@ function speak(text) {
 window.onload = () => {
   loadLearnedResponses();
   clearChat();
+
+  // 📌 تسجيل Service Worker للتشغيل أوفلاين
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker
+      .register("./service-worker.js")
+      .then(() => console.log("✅ Service Worker مسجّل بنجاح"))
+      .catch(err => console.log("❌ فشل تسجيل Service Worker:", err));
+  }
 };
-
-
