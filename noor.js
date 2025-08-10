@@ -1,7 +1,4 @@
 
-
-// noor.js — نسخة محسنة من الكود القديم بدون بحث إنترنت، مع تصحيح الأخطاء
-
 let knowledge = [];
 let learnedResponses = {}; // الردود المتعلمة من المستخدم
 let lastUserMessage = "";
