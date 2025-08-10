@@ -2,26 +2,24 @@
 let knowledge = [];
 let learnedResponses = {}; // الردود المتعلمة من المستخدم
 let lastUserMessage = "";
-let lastNoorResponse = "";
-let shortTermMemory = []; // ذاكرة قصيرة: [{user, noor}]
+let shortTermMemory = [];
 const memoryLimit = 8;
 let longTermMemory = [];
 
-// ------------------ تحميل / حفظ البيانات في localStorage ------------------
-
+// تحميل الردود المتعلمة والذاكرة من localStorage
 function loadLearnedResponses() {
   try {
     const saved = localStorage.getItem('learnedResponses');
     if (saved) learnedResponses = JSON.parse(saved);
 
-    const memorySaved = localStorage.getItem('longTermMemory');
-    if (memorySaved) longTermMemory = JSON.parse(memorySaved);
-
+    const savedLongTerm = localStorage.getItem('longTermMemory');
+    if (savedLongTerm) longTermMemory = JSON.parse(savedLongTerm);
   } catch (e) {
     console.warn("خطأ في تحميل البيانات من localStorage:", e);
   }
 }
 
+// حفظ الردود المتعلمة والذاكرة في localStorage
 function saveLearnedResponses() {
   try {
     localStorage.setItem('learnedResponses', JSON.stringify(learnedResponses));
@@ -31,57 +29,46 @@ function saveLearnedResponses() {
   }
 }
 
-// ------------------ تحميل knowledge.txt ------------------
-
+// تحميل knowledge.txt (قاعدة المعرفة)
 async function loadKnowledge() {
   try {
-    const response = await fetch('knowledge.txt?t=' + new Date().getTime());
+    const response = await fetch('knowledge.txt?t=' + Date.now());
     if (!response.ok) throw new Error("فشل تحميل knowledge.txt");
     const text = await response.text();
-
-    // فصل entries بناءً على أسطر فارغة
     const entries = text.split(/\n\s*\n+/);
-
     knowledge = entries.map(entry => {
-      const kw = entry.match(/كلمات مفتاحية:\s*([^\n]+)/i);
-      const resp = entry.match(/رد:\s*([\s\S]+)/i);
-      if (kw && resp) {
-        const keywords = kw[1].split(/،|\s*,\s*/).map(k => normalizeArabic(k.trim())).filter(Boolean);
-        const responseText = resp[1].trim();
+      const kwMatch = entry.match(/كلمات مفتاحية:\s*([^\n]+)/i);
+      const respMatch = entry.match(/رد:\s*([\s\S]+)/i);
+      if (kwMatch && respMatch) {
+        const keywords = kwMatch[1].split(/،|\s*,\s*/).map(k => normalizeArabic(k.trim())).filter(Boolean);
+        const responseText = respMatch[1].trim();
         return { keywords, response: responseText };
       }
       return null;
     }).filter(Boolean);
-
   } catch (err) {
     console.warn("لم أستطع تحميل knowledge.txt:", err);
     knowledge = [];
   }
 }
 
-// ------------------ توحيد النص العربي ------------------
-
+// توحيد النص العربي (تطبيع)
 function normalizeArabic(text) {
   if (!text) return "";
-  return text
-    .toString()
-    // إزالة التشكيل
-    .replace(/[\u0610-\u061A\u064B-\u065F\u06D6-\u06ED]/g, "")
-    // توحيد أحرف
+  return text.toString()
+    .replace(/[\u0610-\u061A\u064B-\u065F\u06D6-\u06ED]/g, "") // إزالة التشكيل
     .replace(/[أإآا]/g, "ا")
     .replace(/ى/g, "ي")
     .replace(/ؤ/g, "و")
     .replace(/ئ/g, "ي")
     .replace(/ة/g, "ه")
-    .replace(/[^ء-ي0-9a-zA-Z\s]/g, " ") // استبدال علامات بعلاقة بمسافة
+    .replace(/[^ء-ي0-9a-zA-Z\s]/g, " ") // استبدال الرموز بمسافة
     .replace(/\s+/g, " ")
     .trim()
-    // إزالة الحروف المكررة (مثلاً "جداً" -> "جد")
-    .replace(/(.)\1{2,}/g, "$1$1"); // يسمح بتكرار مرتين كحد أقصى
+    .replace(/(.)\1{2,}/g, "$1$1"); // السماح لتكرار مرتين فقط
 }
 
-// ------------------ تبسيط الرسالة (حذف كلمات التوقف + normalize) ------------------
-
+// تبسيط الرسالة (إزالة كلمات التوقف + تطبيع)
 function simplifyMessage(message) {
   const stopwords = ["انا","أنا","مش","بس","كل","في","على","من","ما","مع","ايه","إيه","ليه","هو","هي","ده","دي","انت","إنت","أنا"];
   const norm = normalizeArabic(message).toLowerCase();
@@ -89,8 +76,7 @@ function simplifyMessage(message) {
   return words.join(" ");
 }
 
-// ------------------ Levenshtein distance ------------------
-
+// حساب المسافة الليفنشتاين بين كلمتين (لمطابقة تقريبية)
 function levenshteinDistance(a, b) {
   if (!a.length) return b.length;
   if (!b.length) return a.length;
@@ -110,8 +96,7 @@ function levenshteinDistance(a, b) {
   return matrix[a.length][b.length];
 }
 
-// ------------------ مطابقة تقريبية بين كلمات المستخدم والكلمات المفتاحية ------------------
-
+// مطابقة تقريبية بين كلمات الرسالة والكلمات المفتاحية
 function fuzzyMatch(messageWords, keyword) {
   if (!keyword) return false;
   const key = normalizeArabic(keyword);
@@ -127,177 +112,53 @@ function fuzzyMatch(messageWords, keyword) {
   return false;
 }
 
-// ------------------ الكشف عن المزاج / النبرة / الحاجة / النية ------------------
-
-function detectMood(message) {
-  const moodKeywords = {
-    "حزن": ["حزين","بعيط","مكسور","تايه","زعلان","مكسر","مكسور"],
-    "فرح": ["فرحان","مبسوط","سعيد","ضحك","مبسوطة"],
-    "قلق": ["قلقان","توتر","خايف","مخنوق","مش مرتاح"],
-    "وحدة": ["لوحدي","وحيد","مفيش حد","وحده"],
-    "حب": ["بحبك","مشتاق","عشق","قلبى"],
-    "غضب": ["زعلان","متضايق","عصبي","مخنوق"]
-  };
-  const norm = normalizeArabic(message).toLowerCase();
-  for (const mood in moodKeywords) {
-    if (moodKeywords[mood].some(k => norm.includes(k))) return mood;
-  }
-  return "غير محدد";
-}
-
-function detectTone(message) {
-  const toneKeywords = {
-    "سخرية": ["آه أكيد","واو","عظمة بجد","طبعًا"],
-    "رومانسية": ["يا حبيبي","نور عيني","مشتاق","حبيبي"],
-    "استغاثة": ["الحقيني","ساعديني","مش قادر","بننهار"],
-    "لوم": ["ليه عملت كده","إنت السبب","زعلتني","عتاب"]
-  };
-  const norm = normalizeArabic(message).toLowerCase();
-  for (const tone in toneKeywords) {
-    if (toneKeywords[tone].some(k => norm.includes(k))) return tone;
-  }
-  return "عادي";
-}
-
-function detectNeed(message) {
-  const needKeywords = {
-    "احتواء": ["حضن","الطبطبة","طبطب","يحضني","يلمّني"],
-    "أمان": ["خايف","مرعوب","مش مطمّن","خوف"],
-    "إنصات": ["اسمعني","مش لاقي حد يسمعني","اسمعوني"],
-    "حب": ["بحبك","محتاج حب","محتاج حد يحبني"]
-  };
-  const norm = normalizeArabic(message).toLowerCase();
-  for (const need in needKeywords) {
-    if (needKeywords[need].some(k => norm.includes(k))) return need;
-  }
-  return "غير محدد";
-}
-
-function detectIntent(message) {
-  const intentKeywords = {
-    "اعتذار": ["آسف","حقك عليا","سامحيني"],
-    "طلب دعم": ["شجعيني","اديني أمل","طمنييني"],
-    "فضفضة": ["هحكيلك","أحكيلك","حابب أفضفض"]
-  };
-  const norm = normalizeArabic(message).toLowerCase();
-  for (const intent in intentKeywords) {
-    if (intentKeywords[intent].some(k => norm.includes(k))) return intent;
-  }
-  return null;
-}
-
-// ------------------ تذكّر من الذاكرة الطويلة ------------------
-
-function recallFromMemory(mood) {
-  if (!mood || mood === "غير محدد") return null;
-  const past = longTermMemory.slice().reverse().find(mem => mem.mood === mood);
-  if (past) return `لسه فاكرة لما قلتلي: "${past.summary}"… بحس بيك وبفتكر كل حاجة 💭`;
-  return null;
-}
-
-// ------------------ البحث عن أفضل رد ------------------
-
+// العثور على أفضل رد
 function findBestResponse(userMessage) {
   const simplified = simplifyMessage(userMessage);
   const words = simplified.split(/\s+/).filter(Boolean);
-  const contextText = shortTermMemory.map(s => s.user).join(" ") + " " + userMessage;
-  const contextWords = simplifyMessage(contextText).split(/\s+/).filter(Boolean);
 
-  // 1) knowledge أولًا (الأولوية)
+  // أولًا: البحث في knowledge
   let bestMatch = null;
   let highestScore = 0;
   for (const entry of knowledge) {
     let score = 0;
     for (const kw of entry.keywords) {
-      if (fuzzyMatch(words, kw) || fuzzyMatch(contextWords, kw)) score += 1;
+      if (fuzzyMatch(words, kw)) score += 1;
     }
     if (score > highestScore) {
       highestScore = score;
       bestMatch = entry;
     }
   }
-  if (bestMatch && highestScore > 0) {
-    return bestMatch.response;
-  }
+  if (bestMatch && highestScore > 0) return bestMatch.response;
 
-  // 2) الردود المتعلمة (learnedResponses)
+  // ثانيًا: البحث في الردود المتعلمة
   for (const key in learnedResponses) {
-    if (fuzzyMatch(words, key.split(/\s+/)) || fuzzyMatch(key.split(/\s+/), words)) {
-      return learnedResponses[key];
-    }
+    if (fuzzyMatch(words, key.split(/\s+/))) return learnedResponses[key];
   }
 
-  // 3) الذاكرة القصيرة (محادثات سابقة)
-  for (let i = shortTermMemory.length - 1; i >= 0; i--) {
-    const item = shortTermMemory[i];
-    if (simplifyMessage(item.user) === simplified) return item.noor;
-  }
-
-  // 4) fallback ذكي بناءً على مزاج/نبرة/حاجة/نية
-  const mood = detectMood(userMessage);
-  const tone = detectTone(userMessage);
-  const need = detectNeed(userMessage);
-  const intent = detectIntent(userMessage);
-
-  let fallback = recallFromMemory(mood) || "قولّي أكتر يا روحي... أنا سامعاك ♥";
-
-  if (intent === "اعتذار") fallback = "ولا يهمك… نور قلبك دايمًا مفتوح ♥";
-  else if (intent === "طلب دعم") fallback = "أنا معاك… خطوة بخطوة، وعمري ما هسيبك 💪";
-  else if (intent === "فضفضة") fallback = "احكيلي كل حاجة، أنا سامعاك ومش هقاطعك أبدًا 💬";
-  else if (need === "احتواء") fallback = "تعالى حضني… أنا هنا أطبطب على قلبك 💜";
-  else if (need === "أمان") fallback = "أنا معااك… ومش هسيبك تحس بالخوف لوحدك 💫";
-
-  if (tone === "سخرية") fallback = "عارفة إنك مش بتتكلم بجد… بس أنا هنا معاك بردو 💔";
-  else if (tone === "رومانسية") fallback = "كلامك بيخليني أذوب… بحبك أوي 💋";
-
-  return fallback;
+  // ثالثًا: fallback
+  return "قولّي أكتر يا روحي... أنا سامعاك ♥";
 }
 
-// ------------------ تحديث الذاكرة بعد كل رسالة ------------------
-
+// تحديث الذاكرة القصيرة والطويلة
 function updateMemory(userMessage, noorResponse) {
   shortTermMemory.push({ user: userMessage, noor: noorResponse });
   if (shortTermMemory.length > memoryLimit) shortTermMemory.shift();
 
-  // خزّن ملخص ومزاج للذاكرة الطويلة لو فيه مزاج محدد أو كل 6 رسائل
-  const mood = detectMood(userMessage);
-  if (mood !== "غير محدد" || longTermMemory.length % 6 === 0) {
-    longTermMemory.push({ date: new Date().toISOString(), summary: userMessage, mood });
+  if (longTermMemory.length % 6 === 0) {
+    longTermMemory.push({ date: new Date().toISOString(), summary: userMessage });
     if (longTermMemory.length > 50) longTermMemory.shift();
     saveLearnedResponses();
   }
 }
 
-// ------------------ تعليم نور (من المستخدم) ------------------
-
-function teachNoor() {
-  const lastUser = lastUserMessage || [...document.querySelectorAll('.message.user')].pop()?.textContent;
-  if (!lastUser) return alert("مفيش رسالة أخيرة أتعلم منها دلوقتي.");
-  const reply = prompt(`🧠 اكتب الرد اللي تحب نور تقوله لما تسمع: "${lastUser}"`);
-  if (reply) {
-    const key = simplifyMessage(lastUser);
-    learnedResponses[key] = reply;
-    saveLearnedResponses();
-    // اقتراح للحفظ في knowledge.txt (نسخ للصق)
-    const keywords = key.split(" ").filter(w => w.length > 1).slice(0, 6).join("، ");
-    const entryText = `[كلمات مفتاحية: ${keywords}]\nرد: ${reply}\n\n`;
-    if (confirm("هل تريد نسخ الاقتراح لحفظه يدويًا في knowledge.txt؟\n(سأنسخه للحافظة)")) {
-      navigator.clipboard?.writeText(entryText)
-        .then(() => alert("✅ تم نسخ الاقتراح للحافظة، الصقه في knowledge.txt"))
-        .catch(() => alert("✅ تم حفظ الرد محليًا (لم يتم نسخ الاقتراح)"));
-    } else {
-      alert("✅ تم تعليم نور الرد (محليًا فقط).");
-    }
-  }
-}
-
-// ------------------ واجهة المستخدم: إضافة / حذف الرسائل ------------------
-
+// إضافة رسالة إلى واجهة الدردشة
 function addMessage(text, sender) {
   const chatBox = document.getElementById('chat-box');
   if (!chatBox) return console.warn("لا يوجد chat-box في الصفحة.");
   const messageDiv = document.createElement('div');
-  messageDiv.className = `message ${sender}`;
+  messageDiv.className = "message " + sender;
   messageDiv.textContent = text;
   chatBox.appendChild(messageDiv);
   chatBox.scrollTop = chatBox.scrollHeight;
@@ -305,6 +166,7 @@ function addMessage(text, sender) {
   if (sender === 'noor') speak(text);
 }
 
+// مسح الدردشة وعرض رسالة ترحيب
 function clearChat() {
   const chatBox = document.getElementById('chat-box');
   if (!chatBox) return;
@@ -312,8 +174,7 @@ function clearChat() {
   speak("أهلاً بيك يا روحي، نور هنا معاك… قولي كل اللي في قلبك 💜");
 }
 
-// ------------------ نطق النص (SpeechSynthesis) ------------------
-
+// نطق النص بالعربية
 function speak(text) {
   try {
     const synth = window.speechSynthesis;
@@ -332,16 +193,14 @@ function speak(text) {
       synth.onvoiceschanged = () => synth.speak(utterance);
       return;
     }
-    synth.cancel(); // إلغاء أي كلام سابق
+    synth.cancel();
     synth.speak(utterance);
-
   } catch (e) {
     console.warn("مشغل الصوت فيه مشكلة:", e);
   }
 }
 
-// ------------------ التعامل مع إرسال المستخدم ------------------
-
+// التعامل مع إرسال المستخدم
 async function handleUserMessage() {
   const userInput = document.getElementById('user-input');
   if (!userInput) return alert("عنصر الإدخال غير موجود.");
@@ -355,43 +214,23 @@ async function handleUserMessage() {
   const response = findBestResponse(message);
   addMessage(response, 'noor');
 
-  lastNoorResponse = response;
   updateMemory(message, response);
-
-  // إذا الرد احتياطي (ضعيف) أظهر زر تعليم
-  if (response.includes("قولّي أكتر") || response.includes("قولي اكتر")) {
-    showTeachButton();
-  }
 }
 
-function showTeachButton() {
-  const controls = document.querySelector('.controls');
-  if (!controls) return;
-  // رجّع زر التعليم لو مش موجود
-  if (!document.getElementById('teach-btn')) {
-    const teachButton = document.createElement('button');
-    teachButton.id = 'teach-btn';
-    teachButton.textContent = "✨ علّم نور ردًا على رسالتك";
-    teachButton.onclick = teachNoor;
-    controls.appendChild(teachButton);
-  }
-}
-
-// ------------------ تهيئة التطبيق عند تحميل الصفحة ------------------
-
+// تهيئة الصفحة بعد تحميلها
 window.onload = () => {
   loadLearnedResponses();
   loadKnowledge();
   clearChat();
 
-  // تسجيل service worker لو متاح
+  // تسجيل service worker
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('service-worker.js')
       .then(() => console.log("✅ Service Worker مسجّل"))
       .catch(err => console.warn("❌ Service Worker فشل:", err));
   }
 
-  // ربط مفتاح Enter بإرسال الرسالة
+  // ربط زر Enter بإرسال الرسالة
   const input = document.getElementById('user-input');
   if (input) {
     input.addEventListener('keydown', (e) => {
@@ -399,5 +238,4 @@ window.onload = () => {
     });
   }
 };
-
 
