@@ -37,7 +37,7 @@ async function loadKnowledge() {
     const text = await response.text();
     const entries = text.split(/\n\s*\n+/); // فصل على بلوكات فارغة
     knowledge = entries.map(entry => {
-      const kw = entry.match(/كلمات مفتاحية:\s*(.+?)/i);
+      const kw = entry.match(/\[كلمات مفتاحية:\s*(.+?)\]/i);
       const resp = entry.match(/رد:\s*([\s\S]+)/i);
       if (kw && resp) {
         const keywords = kw[1].split(/،|\s*,\s*/).map(k => normalizeArabic(k.trim())).filter(Boolean);
@@ -46,7 +46,6 @@ async function loadKnowledge() {
       }
       return null;
     }).filter(Boolean);
-    // console.log("Knowledge loaded:", knowledge.length);
   } catch (err) {
     console.warn("لم أستطع تحميل knowledge.txt:", err);
     knowledge = [];
@@ -58,9 +57,7 @@ function normalizeArabic(text) {
   if (!text) return "";
   return text
     .toString()
-    // إزالة التشكيل
-    .replace(/[\u0610-\u061A\u064B-\u065F\u06D6-\u06ED]/g, "")
-    // توحيد أحرف
+    .replace(/[\u0610-\u061A\u064B-\u065F\u06D6-\u06ED]/g, "") // إزالة التشكيل
     .replace(/[أإآا]/g, "ا")
     .replace(/ى/g, "ي")
     .replace(/ؤ/g, "و")
@@ -69,11 +66,10 @@ function normalizeArabic(text) {
     .replace(/[^ء-ي0-9a-zA-Z\s]/g, " ") // استبدال علامات بعلاقة بمسافة
     .replace(/\s+/g, " ")
     .trim()
-    // إزالة الحروف المكررة (مثلاً "جداً" -> "جد")
-    .replace(/(.)\1{2,}/g, "$1$1"); // يسمح بتكرار مرتين كحد أقصى
+    .replace(/(.)\1{2,}/g, "$1$1"); // السماح بتكرار مرتين كحد أقصى
 }
 
-// ------------------ تبسيط الرسالة (stopwords و normalize) ------------------
+// ------------------ تبسيط الرسالة ------------------
 function simplifyMessage(message) {
   const stopwords = ["انا","أنا","مش","بس","كل","في","على","من","ما","مع","ايه","إيه","ليه","هو","هي","ده","دي","انت","إنت","أنا"];
   const norm = normalizeArabic(message).toLowerCase();
@@ -101,11 +97,10 @@ function levenshteinDistance(a, b) {
   return matrix[a.length][b.length];
 }
 
-// ------------------ مطابقة تقريبية بين كلمة المستخدم والكلمة المفتاحية ------------------
+// ------------------ مطابقة تقريبية ------------------
 function fuzzyMatch(messageWords, keyword) {
   if (!keyword) return false;
   const key = normalizeArabic(keyword);
-  // استخدم threshold يعتمد على طول الكلمة
   const threshold = Math.max(1, Math.round(key.length * 0.25));
   for (const w of messageWords) {
     if (!w) continue;
@@ -184,11 +179,10 @@ function recallFromMemory(mood) {
   return null;
 }
 
-// ------------------ البحث عن أفضل رد (أولوية knowledge ثم learned ثم short-term ثم أونلاين) ------------------
-async function findBestResponse(userMessage) {
+// ------------------ البحث عن أفضل رد ------------------
+function findBestResponse(userMessage) {
   const simplified = simplifyMessage(userMessage);
   const words = simplified.split(/\s+/).filter(Boolean);
-  // fullContext من الذاكرة القصيرة
   const contextText = shortTermMemory.map(s => s.user).join(" ") + " " + userMessage;
   const contextWords = simplifyMessage(contextText).split(/\s+/).filter(Boolean);
 
@@ -223,11 +217,7 @@ async function findBestResponse(userMessage) {
     if (simplifyMessage(item.user) === simplified) return item.noor;
   }
 
-  // 4) البحث أونلاين (Google Custom Search API) — لو كل الطرق فوق ما جابت رد
-  const onlineResult = await searchGoogle(userMessage);
-  if (onlineResult) return onlineResult;
-
-  // 5) fallback ذكي بناءً على مزاج/نبرة/حاجة/نية
+  // 4) fallback ذكي بناءً على مزاج/نبرة/حاجة/نية
   const mood = detectMood(userMessage);
   const tone = detectTone(userMessage);
   const need = detectNeed(userMessage);
@@ -247,34 +237,11 @@ async function findBestResponse(userMessage) {
   return fallback;
 }
 
-// ------------------ دالة البحث في جوجل (Google Custom Search API) ------------------
-async function searchGoogle(query) {
-  // لازم تضيف بيانات API الخاص بك هنا:
-  const apiKey = 'YOUR_GOOGLE_API_KEY';
-  const cx = 'YOUR_CUSTOM_SEARCH_ENGINE_ID';
-
-  if (!apiKey || !cx) {
-    return "عذرًا، البحث أونلاين غير مفعل لأنه يحتاج API Key.";
-  }
-
-  const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cx}&q=${encodeURIComponent(query)}`;
-  try {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error("فشل في جلب نتائج البحث");
-    const data = await response.json();
-    return data.items?.map(item => item.snippet).join('\n') || "مافيش نتائج.";
-  } catch (err) {
-    console.warn("خطأ في البحث جوجل:", err);
-    return "عذرًا، لم أتمكن من إجراء البحث الآن.";
-  }
-}
-
 // ------------------ تحديث الذاكرة بعد كل رسالة ------------------
 function updateMemory(userMessage, noorResponse) {
   shortTermMemory.push({ user: userMessage, noor: noorResponse });
   if (shortTermMemory.length > memoryLimit) shortTermMemory.shift();
 
-  // خزّن ملخص ومزاج للذاكرة الطويلة لو فيه مزاج محدد أو كل 6 رسائل
   const mood = detectMood(userMessage);
   if (mood !== "غير محدد" || longTermMemory.length % 6 === 0) {
     longTermMemory.push({ date: new Date().toISOString(), summary: userMessage, mood });
@@ -292,7 +259,6 @@ function teachNoor() {
     const key = simplifyMessage(lastUser);
     learnedResponses[key] = reply;
     saveLearnedResponses();
-    // اقتراح للحفظ في knowledge.txt (نسخ للصق)
     const keywords = key.split(" ").filter(w => w.length > 1).slice(0, 6).join("، ");
     const entryText = `[كلمات مفتاحية: ${keywords}]\nرد: ${reply}\n\n`;
     if (confirm("هل تريد نسخ الاقتراح لحفظه يدويًا في knowledge.txt؟\n(سأنسخه للحافظة)")) {
@@ -342,7 +308,7 @@ function speak(text) {
       synth.onvoiceschanged = () => synth.speak(utterance);
       return;
     }
-    synth.cancel(); // إلغاء أي كلام سابق مختلط
+    synth.cancel();
     synth.speak(utterance);
   } catch (e) {
     console.warn("مشغل الصوت فيه مشكلة:", e);
@@ -360,17 +326,13 @@ async function handleUserMessage() {
   lastUserMessage = message;
 
   if (knowledge.length === 0) await loadKnowledge();
-  const response = await findBestResponse(message);
+  const response = findBestResponse(message);
   addMessage(response, 'noor');
 
   lastNoorResponse = response;
   updateMemory(message, response);
 
-  // إذا الرد احتياطي (ضعيف) أظهر زر تعليم
   if (response.includes("قولّي أكتر") || response.includes("قولي اكتر")) {
-    showTeachButton
-
-if (response.includes("قولّي أكتر") || response.includes("قولي اكتر")) {
     showTeachButton();
   }
 }
@@ -378,7 +340,6 @@ if (response.includes("قولّي أكتر") || response.includes("قولي اك
 function showTeachButton() {
   const controls = document.querySelector('.controls');
   if (!controls) return;
-  // رجّع زر التعليم لو مش موجود
   if (!document.getElementById('teach-btn')) {
     const teachButton = document.createElement('button');
     teachButton.id = 'teach-btn';
@@ -391,17 +352,15 @@ function showTeachButton() {
 // ------------------ تسجيل Service Worker وتهيئة ------------------
 window.onload = () => {
   loadLearnedResponses();
-  loadKnowledge(); // نحاول تحميل المعرفة مبكرًا
+  loadKnowledge();
   clearChat();
 
-  // تسجيل service worker لو متاح
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('service-worker.js')
       .then(() => console.log("✅ Service Worker مسجّل"))
       .catch(err => console.warn("❌ Service Worker فشل:", err));
   }
 
-  // ربط Enter بإرسال الرسالة
   const input = document.getElementById('user-input');
   if (input) {
     input.addEventListener('keydown', (e) => {
@@ -409,3 +368,4 @@ window.onload = () => {
     });
   }
 };
+    
