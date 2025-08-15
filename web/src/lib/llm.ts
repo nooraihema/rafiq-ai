@@ -1,29 +1,28 @@
 
-// Hybrid LLM fetcher using Gemini directly, now uses the last 3 exchanges as context
-
 export type Turn = { role: "user" | "model"; content: string };
 
 export async function fetchLLM(message: string, history: Turn[] = []) {
-  // Use only the last 3 exchanges (user+model pairs) as context
   const lastExchanges: Turn[] = getLastExchanges(history, 3);
 
-  try {
-    // Direct call to Gemini API
-    const res = await fetch("/api/ai/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, history: lastExchanges }),
-    });
+  // نروح مباشرة على Gemini
+  const res = await fetch("/api/ai/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, history: lastExchanges }),
+  });
 
-    const data = await res.json();
-    if (data?.reply) return { reply: data.reply, model: "gemini" };
-    throw new Error("No reply from Gemini");
-  } catch (err) {
-    return { reply: "عذرًا، حدث خطأ في الاتصال بـ Gemini.", model: "error" };
+  const data = await res.json();
+
+  // لو Gemini مش بيرد، التطبيق ميبعتش أي رد
+  if (!data?.reply) {
+    console.error("Gemini لم يرد، التطبيق توقف");
+    return null; // هنا مفيش أي reply
   }
+
+  return { reply: data.reply, model: "gemini" };
 }
 
-// Helper: get last N exchanges (user+model pairs)
+// Helper: get last N exchanges
 function getLastExchanges(history: Turn[], numPairs: number): Turn[] {
   const pairs: Turn[][] = [];
   for (let i = 0; i < history.length - 1; i += 2) {
@@ -31,6 +30,5 @@ function getLastExchanges(history: Turn[], numPairs: number): Turn[] {
       pairs.push([history[i], history[i + 1]]);
     }
   }
-  // Take last N pairs and flatten
   return pairs.slice(-numPairs).flat();
 }
