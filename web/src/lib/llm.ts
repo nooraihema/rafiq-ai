@@ -1,33 +1,25 @@
-// Hybrid LLM fetcher with Gemini fallback, now uses the last 3 exchanges as context
+
+// Hybrid LLM fetcher using Gemini directly, now uses the last 3 exchanges as context
 
 export type Turn = { role: "user" | "model"; content: string };
 
 export async function fetchLLM(message: string, history: Turn[] = []) {
-  // Only use the last 3 exchanges (user+model pairs)
+  // Use only the last 3 exchanges (user+model pairs) as context
   const lastExchanges: Turn[] = getLastExchanges(history, 3);
 
   try {
-    const res = await fetch("/api/llm/chat", {
+    // Direct call to Gemini API
+    const res = await fetch("/api/ai/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message, history: lastExchanges }),
     });
+
     const data = await res.json();
-    if (data?.reply) return { reply: data.reply, model: "llm" };
-    throw new Error("No reply from LLM");
+    if (data?.reply) return { reply: data.reply, model: "gemini" };
+    throw new Error("No reply from Gemini");
   } catch (err) {
-    try {
-      const res = await fetch("/api/ai/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message, history: lastExchanges }),
-      });
-      const data = await res.json();
-      if (data?.reply) return { reply: data.reply, model: "gemini" };
-      throw new Error("No reply from Gemini");
-    } catch (err2) {
-      return { reply: "عذرًا، حدث خطأ في الاتصال بالنموذج.", model: "error" };
-    }
+    return { reply: "عذرًا، حدث خطأ في الاتصال بـ Gemini.", model: "error" };
   }
 }
 
