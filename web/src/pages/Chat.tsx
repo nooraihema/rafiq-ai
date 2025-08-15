@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from "react";
 import { fetchLLM, Turn } from "../lib/llm";
 import { ChatBubble } from "../components/ChatBubble";
@@ -27,7 +28,7 @@ export const ChatPage: React.FC = () => {
   };
 
   return (
-    <div style={{ maxWidth: 600, margin: "0 auto", padding: "2rem 1rem" }}>
+    <main style={{ maxWidth: 600, margin: "0 auto", padding: "2rem 1rem" }}>
       <h2 style={{ textAlign: "center" }}>الدردشة مع نور</h2>
       <div style={{ minHeight: 300, marginBottom: "1rem" }}>
         {history.map((turn, i) => (
@@ -83,6 +84,6 @@ export const ChatPage: React.FC = () => {
           إرسال
         </button>
       </form>
-    </div>
+    </main>
   );
 };
