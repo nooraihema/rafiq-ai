@@ -1,29 +1,34 @@
 
-// ChatPageGemini.tsx
-import React, { useState, useRef } from "react";
+// ChatPageLocal.tsx
+import React, { useState, useRef, useEffect } from "react";
 
 type Turn = { role: "user" | "model"; content: string };
+type KnowledgeItem = { keywords: string[]; replies: string[] };
 
-export const ChatPageGemini: React.FC = () => {
+export const ChatPageLocal: React.FC = () => {
   const [history, setHistory] = useState<Turn[]>([]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [knowledge, setKnowledge] = useState<KnowledgeItem[]>([]);
 
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // دالة التواصل مع سيرفر Gemini
-  const sendToGemini = async (msg: string, history: Turn[]) => {
-    try {
-      const res = await fetch("/api/ai/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg, history }),
-      });
-      const data = await res.json();
-      return data?.reply || "لم أفهم، حاول مرة أخرى";
-    } catch (err) {
-      return "خطأ في الاتصال بـ Gemini";
+  // تحميل قاعدة المعرفة من ملف JSON
+  useEffect(() => {
+    fetch("/knowledge.json")
+      .then((res) => res.json())
+      .then((data) => setKnowledge(data))
+      .catch((err) => console.error("خطأ في تحميل knowledge:", err));
+  }, []);
+
+  const getLocalReply = (msg: string): string => {
+    msg = msg.toLowerCase();
+    for (let item of knowledge) {
+      if (item.keywords.some((k) => msg.includes(k))) {
+        return item.replies[Math.floor(Math.random() * item.replies.length)];
+      }
     }
+    return "مش فاهم قصدك، ممكن توضح أكتر؟ 🤔";
   };
 
   const send = async () => {
@@ -32,17 +37,19 @@ export const ChatPageGemini: React.FC = () => {
     setHistory((h) => [...h, userTurn]);
     setLoading(true);
 
-    const resReply = await sendToGemini(message, [...history, userTurn]);
-    setHistory((h) => [...h, { role: "model", content: resReply }]);
+    const resReply = getLocalReply(message);
 
-    setMessage("");
-    setLoading(false);
-    inputRef.current?.focus();
+    setTimeout(() => {
+      setHistory((h) => [...h, { role: "model", content: resReply }]);
+      setMessage("");
+      setLoading(false);
+      inputRef.current?.focus();
+    }, 500);
   };
 
   return (
     <div style={{ maxWidth: 600, margin: "0 auto", padding: "2rem 1rem" }}>
-      <h2 style={{ textAlign: "center" }}>الدردشة مع نور (Gemini)</h2>
+      <h2 style={{ textAlign: "center" }}>الدردشة مع نور (قاعدة معرفة)</h2>
       <div
         id="chat-box"
         style={{
@@ -75,7 +82,7 @@ export const ChatPageGemini: React.FC = () => {
             </span>
           </div>
         ))}
-        {loading && <div>…نور يكتب</div>}
+        {loading && <div>…نور تكتب</div>}
       </div>
       <form
         style={{ display: "flex", gap: "0.5rem" }}
@@ -116,3 +123,4 @@ export const ChatPageGemini: React.FC = () => {
     </div>
   );
 };
+
