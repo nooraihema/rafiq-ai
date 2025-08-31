@@ -1,145 +1,105 @@
+تمام 👌 ده اندكس مرتب وحديث ومتوافق مع الكود بتاع noor.js اللي عندك:
 
 <!DOCTYPE html>
-<html lang="ar">
+<html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <title>رفيق الروح AI</title>
-
-  <!-- ✅ PWA -->
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#6f42c1">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <!-- ✅ خطوط -->
-  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
-
+  <title>نور - رفيقك الذكي</title>
   <style>
     body {
-      font-family: 'Cairo', sans-serif;
-      background: linear-gradient(135deg, #f3e7ff, #e3f2fd);
+      font-family: "Tahoma", sans-serif;
+      background: #f7f7f7;
       margin: 0;
       padding: 0;
-      direction: rtl;
-      text-align: right;
-    }
-    header {
-      background: #6f42c1;
-      color: white;
-      padding: 1rem;
-      text-align: center;
-      font-size: 1.2rem;
-      font-weight: bold;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-    }
-    .chat-box {
-      background: white;
-      border-radius: 15px;
-      margin: 1rem auto;
-      padding: 15px;
-      max-width: 600px;
-      height: 70vh;
-      overflow-y: auto;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
       display: flex;
       flex-direction: column;
+      height: 100vh;
     }
-    .message {
-      margin: 6px 0;
+
+    header {
+      background: #6a1b9a;
+      color: white;
+      padding: 15px;
+      text-align: center;
+      font-size: 20px;
+      font-weight: bold;
+    }
+
+    #chat-box {
+      flex: 1;
+      padding: 15px;
+      overflow-y: auto;
+      background: #fff;
+      border-top: 2px solid #eee;
+      border-bottom: 2px solid #eee;
+    }
+
+    .msg {
+      max-width: 70%;
       padding: 10px 14px;
-      border-radius: 12px;
-      max-width: 75%;
-      line-height: 1.5;
+      margin: 8px 0;
+      border-radius: 14px;
       word-wrap: break-word;
-      animation: fadeIn 0.3s ease-in;
+      line-height: 1.5;
     }
-    .user {
-      background: #d1e7dd;
-      color: #0f5132;
+
+    .msg.user {
+      background: #d1e7ff;
       margin-left: auto;
       text-align: left;
     }
-    .noor {
-      background: #f8d7da;
-      color: #842029;
+
+    .msg.noor {
+      background: #f3e5f5;
       margin-right: auto;
       text-align: right;
     }
-    .controls {
+
+    .input-area {
       display: flex;
-      gap: 0.5rem;
-      max-width: 600px;
-      margin: 0 auto 1rem;
-      padding: 0 1rem;
+      padding: 10px;
+      background: #fafafa;
+      border-top: 1px solid #ddd;
     }
-    input {
+
+    #msg-input {
       flex: 1;
-      padding: 12px;
-      border-radius: 8px;
+      padding: 10px;
       border: 1px solid #ccc;
-      font-size: 1rem;
-      outline: none;
+      border-radius: 10px;
+      font-size: 14px;
     }
+
     button {
-      padding: 0 20px;
-      border: none;
-      border-radius: 8px;
-      background: #6f42c1;
+      background: #6a1b9a;
       color: white;
+      border: none;
+      padding: 10px 18px;
+      margin-left: 8px;
+      border-radius: 10px;
       cursor: pointer;
-      font-size: 1rem;
-      transition: 0.3s;
+      font-size: 14px;
     }
+
     button:hover {
-      background: #5a359c;
-    }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(5px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    @media (max-width: 600px) {
-      .controls {
-        flex-direction: column;
-      }
-      button {
-        width: 100%;
-      }
+      background: #4a148c;
     }
   </style>
 </head>
 <body>
-  <header>💜 رفيق الروح AI (نور)</header>
+  <header>نور - رفيقك الذكي 💜</header>
 
-  <div class="chat-box" id="chat-box">
-    <!-- ✅ رسالة ترحيب -->
-    <div class="message noor">أهلاً بيك، أنا نور 💜.. ازايك؟</div>
+  <div id="chat-box"></div>
+
+  <div class="input-area">
+    <input type="text" id="msg-input" placeholder="اكتب رسالتك هنا..." onkeypress="if(event.key === 'Enter') sendMessage()">
+    <button onclick="sendMessage()">إرسال</button>
   </div>
 
-  <div class="controls">
-    <input type="text" id="user-input" placeholder="اكتب رسالتك هنا...">
-    <button onclick="handleUserMessage()">إرسال</button>
-    <button onclick="clearChat()">🗑️ مسح</button>
-  </div>
-
-  <!-- ✅ سكربت نور -->
-  <script src="noor.js" defer></script>
-
-  <!-- ✅ Service Worker -->
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('service-worker.js')
-        .then(reg => console.log("✅ SW Registered:", reg.scope))
-        .catch(err => console.error("❌ SW Error:", err));
-    }
-
-    // ✅ إرسال الرسالة بالضغط على Enter
-    document.addEventListener("DOMContentLoaded", () => {
-      const input = document.getElementById("user-input");
-      input.addEventListener("keypress", (e) => {
-        if (e.key === "Enter") {
-          handleUserMessage();
-        }
-      });
-    });
-  </script>
+  <script src="noor.js"></script>
 </body>
 </html>
+
+📌 كده الـ id="msg-input" متوافق مع الكود اللي عندك، والدالة هي sendMessage() زي ما اتفقنا.
+عايزني أبعتهولك كمان مع noor.js محدث كامل في ملف واحد علشان تضمن إنه يشتغل فورًا؟
+
