@@ -3,81 +3,101 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <title>نور - رفيقك الذكي</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>نور - رفيقك الذكي 💜</title>
   <style>
+    /* ===== الأساسيات ===== */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: "Tahoma", sans-serif;
-      background: #f7f7f7;
-      margin: 0;
-      padding: 0;
+      font-family: "Cairo", Tahoma, sans-serif;
+      background: linear-gradient(135deg, #f8f0ff, #e0d7ff);
+      height: 100vh;
       display: flex;
       flex-direction: column;
-      height: 100vh;
     }
 
     header {
       background: #6a1b9a;
       color: white;
-      padding: 15px;
       text-align: center;
-      font-size: 20px;
+      padding: 15px;
+      font-size: 22px;
       font-weight: bold;
+      letter-spacing: 1px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
     }
 
+    /* ===== صندوق المحادثة ===== */
     #chat-box {
       flex: 1;
-      padding: 15px;
+      padding: 20px;
       overflow-y: auto;
       background: #fff;
-      border-top: 2px solid #eee;
-      border-bottom: 2px solid #eee;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
     }
 
     .msg {
       max-width: 70%;
-      padding: 10px 14px;
-      margin: 8px 0;
-      border-radius: 14px;
+      padding: 12px 16px;
+      border-radius: 16px;
+      font-size: 15px;
+      line-height: 1.6;
       word-wrap: break-word;
-      line-height: 1.5;
+      animation: fadeIn 0.3s ease-in-out;
     }
 
     .msg.user {
       background: #d1e7ff;
-      margin-left: auto;
-      text-align: left;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
     }
 
     .msg.noor {
       background: #f3e5f5;
-      margin-right: auto;
-      text-align: right;
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
     }
 
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ===== منطقة الإدخال ===== */
     .input-area {
       display: flex;
-      padding: 10px;
+      padding: 12px;
       background: #fafafa;
       border-top: 1px solid #ddd;
+      gap: 10px;
     }
 
     #msg-input {
       flex: 1;
-      padding: 10px;
+      padding: 12px;
       border: 1px solid #ccc;
-      border-radius: 10px;
-      font-size: 14px;
+      border-radius: 12px;
+      font-size: 15px;
+      outline: none;
+      transition: 0.2s;
+    }
+
+    #msg-input:focus {
+      border-color: #6a1b9a;
+      box-shadow: 0 0 5px rgba(106,27,154,0.4);
     }
 
     button {
       background: #6a1b9a;
       color: white;
       border: none;
-      padding: 10px 18px;
-      margin-left: 8px;
-      border-radius: 10px;
+      padding: 12px 20px;
+      border-radius: 12px;
       cursor: pointer;
-      font-size: 14px;
+      font-size: 15px;
+      transition: 0.2s;
     }
 
     button:hover {
@@ -86,6 +106,7 @@
   </style>
 </head>
 <body>
+
   <header>نور - رفيقك الذكي 💜</header>
 
   <div id="chat-box"></div>
