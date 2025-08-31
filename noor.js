@@ -4,7 +4,7 @@ let shortTermMemory = [];
 let learnedResponses = {};
 let knowledgeBase = {};
 
-// 🟢 تحميل قاعدة المعرفة (knowledge.txt)
+// 🟢 تحميل قاعدة المعرفة
 async function loadKnowledge() {
   try {
     const res = await fetch("knowledge.txt");
@@ -28,7 +28,7 @@ function updateMemory(userMessage, noorResponse) {
   localStorage.setItem("shortTermMemory", JSON.stringify(shortTermMemory));
 }
 
-// 🟢 تطبيع النص العربي (إزالة تشكيل وأشكال الألف)
+// 🟢 تطبيع النص العربي
 function normalizeArabic(text) {
   return text
     .replace(/[ًٌٍَُِّْ]/g, "")
@@ -38,17 +38,16 @@ function normalizeArabic(text) {
     .replace(/ة/g, "ه");
 }
 
-// 🟢 تبسيط النص (lowercase + إزالة رموز)
+// 🟢 تبسيط النص
 function simplify(text) {
   return normalizeArabic(
     text.toLowerCase().replace(/[^\u0600-\u06FF\w\s]/g, "").trim()
   );
 }
 
-// 🟢 Levenshtein Distance (للمطابقة الغامضة)
+// 🟢 Levenshtein Distance
 function levenshteinDistance(a, b) {
-  const m = a.length,
-    n = b.length;
+  const m = a.length, n = b.length;
   if (!m) return n;
   if (!n) return m;
 
@@ -61,8 +60,7 @@ function levenshteinDistance(a, b) {
       dp[i][j] =
         a[i - 1] === b[j - 1]
           ? dp[i - 1][j - 1]
-          : 1 +
-            Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+          : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
     }
   }
   return dp[m][n];
@@ -84,7 +82,7 @@ function detectMood(text) {
   return "محايد";
 }
 
-// 🟢 كشف النغمة (Tone)
+// 🟢 كشف النغمة
 function detectTone(text) {
   if (/[!؟?!]/.test(text)) return "متحمس";
   if (/شكرا|تسلم|ربنا يخليك/.test(text)) return "ممتن";
@@ -92,7 +90,7 @@ function detectTone(text) {
   return "عادي";
 }
 
-// 🟢 كشف النية (Intent)
+// 🟢 كشف النية
 function detectIntent(text) {
   if (/ازايك|عامل ايه|اخبارك/.test(text)) return "تحية";
   if (/بحبك|وحشتني|مشتاق/.test(text)) return "حب";
@@ -105,13 +103,9 @@ function detectIntent(text) {
 function findBestResponse(message) {
   const simplified = simplify(message);
 
-  // 1. بحث مباشر
   if (knowledgeBase[simplified]) return knowledgeBase[simplified];
-
-  // 2. تعلم ذاتي
   if (learnedResponses[simplified]) return learnedResponses[simplified];
 
-  // 3. بحث غامض (fuzzy)
   let bestMatch = null;
   let minDist = Infinity;
   for (const key in knowledgeBase) {
@@ -123,7 +117,6 @@ function findBestResponse(message) {
   }
   if (bestMatch && minDist <= 3) return knowledgeBase[bestMatch];
 
-  // 4. تحليل عاطفي fallback
   const mood = detectMood(simplified);
   const tone = detectTone(simplified);
   const intent = detectIntent(simplified);
@@ -135,7 +128,7 @@ function findBestResponse(message) {
 function addMessage(content, sender) {
   const chatBox = document.getElementById("chat-box");
   const div = document.createElement("div");
-  div.className = sender === "user" ? "msg user" : "msg noor";
+  div.className = sender === "user" ? "message user" : "message noor";
   div.innerText = content;
   chatBox.appendChild(div);
   chatBox.scrollTop = chatBox.scrollHeight;
@@ -150,9 +143,9 @@ function speak(text) {
   speechSynthesis.speak(utter);
 }
 
-// 🟢 إرسال رسالة
-function sendMessage() {
-  const input = document.getElementById("msg-input");
+// 🟢 إرسال رسالة (مرتبطة بزر الإرسال)
+function handleUserMessage() {
+  const input = document.getElementById("user-input");
   const message = input.value.trim();
   if (!message) return;
 
@@ -165,7 +158,13 @@ function sendMessage() {
   input.value = "";
 }
 
-// 🟢 تعليم نور بردود جديدة
+// 🟢 مسح المحادثة
+function clearChat() {
+  document.getElementById("chat-box").innerHTML = "";
+  localStorage.removeItem("shortTermMemory");
+}
+
+// 🟢 تعليم نور
 function teachNoor(q, a) {
   learnedResponses[simplify(q)] = a;
   localStorage.setItem("learnedResponses", JSON.stringify(learnedResponses));
@@ -178,4 +177,3 @@ window.onload = () => {
   shortTermMemory = JSON.parse(localStorage.getItem("shortTermMemory") || "[]");
   learnedResponses = JSON.parse(localStorage.getItem("learnedResponses") || "{}");
 };
-
