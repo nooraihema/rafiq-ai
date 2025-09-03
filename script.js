@@ -3,17 +3,52 @@ document.addEventListener('DOMContentLoaded', () => {
     const userInput = document.getElementById('user-input');
     const sendButton = document.getElementById('send-button');
 
+    // --- التطوير 1: الذاكرة باستخدام localStorage ---
+    let userName = localStorage.getItem('userName');
     let conversationState = 'initial_greeting';
-    let currentProblem = '';
-    let automaticThought = '';
 
-    // قائمة بالردود العامة إذا خرج المستخدم عن السياق المتوقع
-    const generalResponses = [
-        "أفهم ما تقوله. دعنا نركز على الخطوة التي كنا فيها. هل يمكنك أن تخبرني المزيد عن...",
-        "هذه نقطة مثيرة للاهتمام، لكن دعنا نعد إلى موضوعنا. ما هي الأفكار التي كانت تدور في ذهنك؟",
-        "يبدو أنك ترغب في التحدث عن شيء آخر، لكني أركز حاليًا على مساعدتك في فهم مشاعرك. هل يمكننا العودة إلى ذلك؟",
-        "أتفهم أن أفكارك قد تتشعب. دعنا نعد إلى سؤالنا الأصلي: كيف شعرت عندما...؟"
-    ];
+    // --- التطوير 2: شخصية ونبرة ودودة (مكتبة ردود) ---
+    const responses = {
+        greetings: [
+            `أهلاً بعودتك يا ${userName}! كيف كان يومك؟`,
+            `مرحباً ${userName}! سعيد برؤيتك مرة أخرى. ما الذي يشغل بالك اليوم؟`,
+            `أهلاً ${userName}! أنا هنا للاستماع. كيف تشعر؟`
+        ],
+        ask_feelings: [
+            "أتفهم. هل يمكنك أن تخبرني المزيد عما تشعر به، أو ما الذي يدور في ذهنك؟",
+            "أنا أستمع. صف لي شعورك بالتفصيل إذا أردت.",
+            "خذ وقتك. ما هي طبيعة هذا الشعور؟"
+        ],
+        empathy: [
+            "شكرًا لمشاركتي هذا الأمر. يبدو أن هذا الموقف صعب.",
+            "أتفهم تمامًا لماذا قد تشعر بهذا. من الطبيعي أن تتأثر.",
+            "أنا أقدر ثقتك بي. دعنا نستكشف هذا معًا."
+        ],
+        encouragement: [
+            "هذه خطوة رائعة! مجرد التفكير في الأدلة هو مهارة قوية.",
+            "أنت تقوم بعمل رائع في تحليل أفكارك.",
+            "ممتاز! هذه الفكرة البديلة تبدو أكثر توازنًا وإيجابية."
+        ]
+    };
+
+    // وظيفة لاختيار رد عشوائي من قائمة
+    function getRandomResponse(responseArray) {
+        const randomIndex = Math.floor(Math.random() * responseArray.length);
+        return responseArray[randomIndex];
+    }
+
+    // --- بداية التطبيق ---
+    function startApp() {
+        if (!userName) {
+            // إذا كان المستخدم جديدًا
+            addMessage('bot', 'مرحباً بك في رفيق! أنا صديقك ومعالجك الذكي. قبل أن نبدأ، كيف تحب أن أناديك؟');
+            conversationState = 'asking_name';
+        } else {
+            // إذا كان المستخدم عائدًا
+            addMessage('bot', getRandomResponse(responses.greetings));
+            conversationState = 'asking_feelings';
+        }
+    }
 
     function addMessage(sender, text) {
         const messageDiv = document.createElement('div');
@@ -30,144 +65,82 @@ document.addEventListener('DOMContentLoaded', () => {
         addMessage('user', message);
         userInput.value = '';
 
-        // إضافة مؤشر "جاري الكتابة..."
         const typingIndicator = document.createElement('div');
         typingIndicator.classList.add('message', 'bot-message', 'typing-indicator');
-        typingIndicator.textContent = '...جاري الكتابة';
+        typingIndicator.textContent = '...يفكر'; // تغيير النص ليعكس شخصية
         chatHistory.appendChild(typingIndicator);
         chatHistory.scrollTop = chatHistory.scrollHeight;
 
-
         setTimeout(() => {
-            chatHistory.removeChild(typingIndicator); // إزالة مؤشر الكتابة
+            chatHistory.removeChild(typingIndicator);
             const botResponse = getBotResponse(message);
             addMessage('bot', botResponse);
-        }, 1500 + Math.random() * 1000); // تأخير عشوائي بين 1.5 و 2.5 ثانية
+        }, 1200 + Math.random() * 800);
     }
 
     function getBotResponse(userMessage) {
-        let response = '';
         const lowerCaseMessage = userMessage.toLowerCase();
 
-        // **معالجة الردود العامة والتحكم في التدفق خارج الـ CBT الرئيسي**
-        if (lowerCaseMessage.includes('كيف حالك')) {
-            return 'أنا نظام ذكاء اصطناعي، ليس لدي مشاعر، لكني جاهز لمساعدتك! لنواصل ما كنا نتحدث عنه.';
-        }
-        if (lowerCaseMessage.includes('شكرا') || lowerCaseMessage.includes('شكرا لك')) {
-            return 'العفو، أنا هنا لدعمك ومساعدتك.';
-        }
-        if (lowerCaseMessage.includes('مرحبا') || lowerCaseMessage.includes('السلام عليكم')) {
-             if (conversationState !== 'initial_greeting') {
-                return 'أهلاً بك مرة أخرى! لنكمل محادثتنا.';
-            }
-        }
-        if (lowerCaseMessage.includes('بدء جديد') || lowerCaseMessage.includes('أريد أن أبدأ من جديد') || lowerCaseMessage.includes('تغيير الموضوع')) {
-            conversationState = 'initial_greeting';
-            currentProblem = '';
-            automaticThought = '';
-            return 'حسناً، يمكننا أن نبدأ جلسة جديدة. كيف تشعر اليوم؟';
-        }
-
-
+        // --- التعامل مع الحالات المختلفة للمحادثة ---
         switch (conversationState) {
-            case 'initial_greeting':
-                response = 'أتفهم. هل يمكنك أن تخبرني المزيد عما تشعر به، أو ما الذي يدور في ذهنك؟';
+            case 'asking_name':
+                userName = userMessage;
+                localStorage.setItem('userName', userName); // حفظ الاسم في الذاكرة
                 conversationState = 'asking_feelings';
-                break;
+                return `جميل جدًا، ${userName}! الآن، أخبرني، ما الذي يجول في خاطرك اليوم؟`;
+
+            case 'initial_greeting': // هذه الحالة الآن للبدء من جديد
+                conversationState = 'asking_feelings';
+                return `بالتأكيد يا ${userName}. لنبدأ من جديد. كيف هو شعورك الآن؟`;
 
             case 'asking_feelings':
-                currentProblem = userMessage;
-                response = `شكرًا لمشاركتك. متى/أين شعرت بهذا الإحساس أو الفكرة لأول مرة؟ هل كان هناك موقف معين حدث؟`;
                 conversationState = 'asking_situation';
-                break;
+                return `${getRandomResponse(responses.empathy)} متى بدأ هذا الشعور؟ هل ارتبط بموقف معين؟`;
 
             case 'asking_situation':
-                response = `حسنًا. في ذلك الموقف، ما هي الأفكار المحددة التي خطرت ببالك؟ ما الذي كنت تقوله لنفسك؟`;
                 conversationState = 'asking_automatic_thought';
-                break;
+                return `شكرًا للتوضيح. وفي قلب هذا الموقف، ما هي الفكرة المحددة التي كانت تلح عليك؟`;
 
             case 'asking_automatic_thought':
-                automaticThought = userMessage;
-                response = `أفهم أن هذه الفكرة ( "${automaticThought}" ) قد تكون صعبة. دعنا ننظر إليها عن كثب. ما هو الدليل الذي يدعم هذه الفكرة؟ وما هو الدليل الذي يتعارض معها؟`;
                 conversationState = 'challenging_thought_evidence';
-                break;
+                return `هذه فكرة قوية. دعنا نتفحصها بهدوء. هل هناك أي دليل حقيقي يدعم صحة هذه الفكرة؟`;
 
             case 'challenging_thought_evidence':
-                response = `شكرًا لتفكيرك في الأدلة. بالنظر إلى كل هذا، هل هناك طريقة أخرى أو منظور مختلف يمكن أن تنظر به إلى الموقف؟ ما هي الفكرة البديلة التي قد تكون أكثر توازنًا؟`;
                 conversationState = 'alternative_thought';
-                break;
+                return `${getRandomResponse(responses.encouragement)} الآن، هل يمكنك التفكير في طريقة أخرى، ربما أكثر لطفًا أو واقعية، للنظر إلى هذا الموقف؟`;
 
             case 'alternative_thought':
-                response = `هذه فكرة رائعة وأكثر توازنًا! عندما تفكر بهذه الطريقة الجديدة ( "${userMessage}" )، كيف تشعر الآن حيال الموقف الذي تحدثنا عنه؟`;
                 conversationState = 're_evaluate_feelings';
-                break;
+                return `${getRandomResponse(responses.encouragement)} عندما تتبنى هذه الفكرة الجديدة، ما هو التغيير الذي تلاحظه في شعورك؟`;
 
             case 're_evaluate_feelings':
-                // بعد إعادة تقييم المشاعر، نقدم خيارات للخطوة التالية
-                response = `ممتاز أنك تشعر بتحسن! تذكر أن تحديد وتحدي الأفكار السلبية هو مهارة يمكنك تطويرها. هل ترغب في تجربة تمرين سريع للاسترخاء الآن، أم تفضل أن نلخص ما تعلمته في هذه الجلسة؟`;
                 conversationState = 'suggesting_coping_mechanism';
-                break;
+                return `هذا رائع! تذكر دائمًا أن لديك القدرة على إعادة صياغة أفكارك. هل تود أن نجرب تمرينًا بسيطًا للاسترخاء لتهدئة الذهن الآن؟`;
 
             case 'suggesting_coping_mechanism':
-                if (lowerCaseMessage.includes('تمرين استرخاء') || lowerCaseMessage.includes('نعم')) {
-                    response = `رائع! دعنا نجرب تمرين التنفس العميق. اجلس في مكان هادئ، أغلق عينيك إذا أردت. خذ شهيقاً عميقاً ببطء من أنفك وعد حتى 4، ثم احبس نفسك وعد حتى 7، ثم أخرج الزفير ببطء من فمك وعد حتى 8. كرر هذا لعدة دقائق. هل جربت هذا؟`;
+                if (lowerCaseMessage.includes('نعم') || lowerCaseMessage.includes('أوافق') || lowerCaseMessage.includes('تمرين')) {
                     conversationState = 'doing_relaxation_exercise';
-                } else if (lowerCaseMessage.includes('تلخيص') || lowerCaseMessage.includes('ملخص')) {
-                    response = `بالتأكيد. في هذه الجلسة، تحدثنا عن شعورك بـ "${currentProblem}"، وتعرفنا على فكرة تلقائية سلبية هي "${automaticThought}". قمنا بتحدي هذه الفكرة ووجدنا منظوراً بديلاً أكثر إيجابية. تذكر أنك قوي وقادر على تغيير طريقة تفكيرك. هل تود أن تبدأ جلسة جديدة؟`;
-                    conversationState = 'initial_greeting';
+                    return `ممتاز. دعنا نجرب تمرين "5-4-3-2-1". انظر حولك وسمِّ 5 أشياء يمكنك رؤيتها، 4 أشياء يمكنك لمسها، 3 أشياء يمكنك سماعها، شيئين يمكنك شمهما، وشيئًا واحدًا يمكنك تذوقه. هذا يساعد على العودة للحظة الحالية.`;
                 } else {
-                    response = 'لم أفهم اختيارك تمامًا. هل تود "تمرين استرخاء" أم "تلخيص" الجلسة؟';
-                    // نبقى في نفس الحالة لإعادة طلب الاختيار
+                    conversationState = 'initial_greeting';
+                    return `حسنًا، لا بأس أبدًا. أنا هنا متى احتجت إلي. هل هناك شيء آخر تود الحديث عنه؟`;
                 }
-                break;
 
             case 'doing_relaxation_exercise':
-                response = `ممتاز! استمر في التمرين إذا شعرت بالراحة. تذكر، يمكنك العودة إليه في أي وقت. هل تود أن تناقش شيئًا آخر الآن، أم أنك مستعد لإنهاء الجلسة؟`;
-                conversationState = 'initial_greeting'; // نعود للحالة الأولية للسماح بالبدء من جديد
-                break;
+                conversationState = 'initial_greeting';
+                return `أتمنى أن يكون هذا التمرين قد ساعدك. تذكر دائمًا أنك لست وحدك. أنا هنا دائمًا للاستماع.`;
 
             default:
-                // رد عام عندما لا يكون هناك تطابق في الحالات، لمحاولة إعادة توجيه المستخدم
-                const randomIndex = Math.floor(Math.random() * generalResponses.length);
-                response = generalResponses[randomIndex];
-                // لا نغير حالة المحادثة هنا لإعطاء فرصة للمستخدم لتصحيح المسار
-                break;
+                return `أنا أستمع يا ${userName}. هل يمكنك أن توضح أكثر؟`;
         }
-
-        return response;
     }
 
-    // ربط زر الإرسال بالوظيفة
     sendButton.addEventListener('click', sendMessage);
-
-    // السماح بإرسال الرسائل بالضغط على Enter
     userInput.addEventListener('keypress', (event) => {
         if (event.key === 'Enter') {
             sendMessage();
         }
     });
 
-    // إضافة بعض التنسيقات لمؤشر الكتابة في CSS
-    const styleSheet = document.createElement('style');
-    styleSheet.type = 'text/css';
-    styleSheet.innerText = `
-        .typing-indicator {
-            background-color: #f0f0f0;
-            color: #555;
-            font-style: italic;
-            border-radius: 18px;
-            padding: 8px 15px;
-            align-self: flex-end; /* نفس مكان رسائل الروبوت */
-            max-width: fit-content;
-            animation: pulse 1.5s infinite ease-in-out;
-        }
-
-        @keyframes pulse {
-            0% { opacity: 0.7; }
-            50% { opacity: 1; }
-            100% { opacity: 0.7; }
-        }
-    `;
-    document.head.appendChild(styleSheet);
-
+    startApp(); // بدء تشغيل التطبيق
 });
