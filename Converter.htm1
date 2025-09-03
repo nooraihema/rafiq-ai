@@ -1,0 +1,62 @@
+
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <title>تحويل knowledge.txt إلى JSON</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; margin: 50px; }
+    textarea { width: 90%; height: 200px; margin-top: 20px; }
+    button { padding: 10px 20px; margin-top: 10px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h2>🔄 تحويل knowledge.txt إلى knowledge.json</h2>
+  <input type="file" id="fileInput">
+  <br>
+  <button onclick="convertFile()">تحويل</button>
+  <br>
+  <textarea id="output" placeholder="هنا هيتولد JSON"></textarea>
+  <br>
+  <button onclick="downloadJSON()">💾 تحميل JSON</button>
+
+  <script>
+    let convertedData = [];
+
+    function convertFile() {
+      const file = document.getElementById('fileInput').files[0];
+      if (!file) return alert("اختار ملف knowledge.txt الأول");
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const text = e.target.result;
+        const lines = text.split("\n");
+
+        convertedData = lines.map(line => {
+          if (!line.includes("|")) return null;
+          const [keyword, response] = line.split("|").map(s => s.trim());
+          return {
+            keywords: [keyword],
+            response: response
+          };
+        }).filter(Boolean);
+
+        document.getElementById("output").value = JSON.stringify(convertedData, null, 2);
+        alert("✅ تم التحويل بنجاح!");
+      };
+      reader.readAsText(file, "UTF-8");
+    }
+
+    function downloadJSON() {
+      if (!convertedData.length) return alert("مفيش بيانات محولة لسه");
+      const blob = new Blob([JSON.stringify(convertedData, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "knowledge.json";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>
