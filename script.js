@@ -1,7 +1,3 @@
-// script.js
-
-import { GoogleGenerativeAI } from "https://unpkg.com/@google/generative-ai?module";
-
 document.addEventListener('DOMContentLoaded', () => {
     // --- 1. DOM Elements ---
     const chatHistory = document.getElementById('chat-history');
@@ -10,7 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const typingIndicator = document.getElementById('typing-indicator');
 
     // --- 2. Configuration & State ---
-    const API_KEY =AIzaSyBJnFXcmnZl3ynDQyKRMRKhib58M2j15g0 "الصق_مفتاح_API_السري_الخاص_بك_هنا"; // !! هام: ضع مفتاحك =AIzaSyBJnFXcmnZl3ynDQyKRMRKhib58M2j15g0
+    const API_KEY = "الصق_مفتاح_API_السري_الخاص_بك_هنا"; // !! هام: ضع مفتاحك هنا
     let userProfile = JSON.parse(localStorage.getItem('userProfile')) || { name: null };
     let conversationState = userProfile.name ? 'general' : 'asking_name';
     let intentsData = []; // سيحتوي على قاعدة المعرفة الخاصة بنا
@@ -32,6 +28,9 @@ document.addEventListener('DOMContentLoaded', () => {
          */
         getGenerativeResponse: async (message, userName) => {
             try {
+                // الوصول إلى المكتبة من الكائن العام "window"
+                const { GoogleGenerativeAI } = window.ai;
+                
                 const genAI = new GoogleGenerativeAI(API_KEY);
                 const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
@@ -48,6 +47,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             } catch (error) {
                 console.error("Error calling Gemini API:", error);
+                if (error.message && error.message.includes("API key not valid")) {
+                    return "عذرًا، يبدو أن مفتاح الوصول الخاص بي غير صالح. سأصلح هذه المشكلة قريبًا.";
+                }
                 return "أنا آسف، يبدو أن عقلي الرقمي يواجه صعوبة في الاتصال الآن. هل يمكننا المحاولة مرة أخرى بعد لحظات؟";
             }
         },
@@ -66,7 +68,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const predefinedIntent = RafiqBrain.findPredefinedIntent(message);
 
             if (predefinedIntent) {
-                // --- 1. تم العثور على تطابق في ملف JSON (موثوق) ---
                 const randomResponse = predefinedIntent.responses[Math.floor(Math.random() * predefinedIntent.responses.length)];
                 let finalResponse = randomResponse.replace(/\[اسم المستخدم\]/g, userProfile.name);
 
@@ -75,7 +76,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 return finalResponse;
             } else {
-                // --- 2. لا يوجد تطابق، لذلك نستخدم الرد الاحتياطي الذكي (ذكي) ---
                 return await RafiqBrain.getGenerativeResponse(message, userProfile.name);
             }
         }
@@ -117,9 +117,6 @@ document.addEventListener('DOMContentLoaded', () => {
         addMessage('bot', botResponse);
     }
 
-    /**
-     * يبدأ التطبيق.
-     */
     async function startApp() {
         try {
             const response = await fetch('intents.json');
