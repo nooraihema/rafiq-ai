@@ -1,12 +1,23 @@
 // /api/chat.js
 
+// 1. استيراد المكتبات اللازمة لقراءة الملفات في بيئة الخادم
+const path = require('path');
+const fs = require('fs').promises; // نستخدم النسخة التي تدعم async/await
+
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-const intents = require('../intents.json'); // Vercel can handle this import
 
 // الوصول إلى المفتاح السري من متغيرات البيئة على Vercel
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-function findPredefinedIntent(message) {
+// 2. دالة جديدة لقراءة قاعدة المعرفة بشكل آمن
+async function getIntents() {
+    // تحديد المسار الصحيح لملف intents.json
+    const jsonFilePath = path.join(process.cwd(), 'intents.json');
+    const fileContent = await fs.readFile(jsonFilePath, 'utf8');
+    return JSON.parse(fileContent);
+}
+
+function findPredefinedIntent(message, intents) {
     const lowerCaseMessage = message.toLowerCase();
     return intents.find(intent =>
         intent.keywords.some(kw => lowerCaseMessage.includes(kw.toLowerCase()))
@@ -32,21 +43,21 @@ async function getGenerativeResponse(message, userName) {
     }
 }
 
-// هذه هي الدالة الرئيسية التي ستتعامل مع الطلبات
 module.exports = async (req, res) => {
-    // التأكد من أن الطلب هو POST
     if (req.method !== 'POST') {
         return res.status(405).json({ message: 'Method Not Allowed' });
     }
 
     try {
+        // 3. قراءة قاعدة المعرفة مع كل طلب
+        const intents = await getIntents();
         const { message, userName } = req.body;
 
         if (!message || !userName) {
             return res.status(400).json({ message: 'Message and userName are required.' });
         }
 
-        const predefinedIntent = findPredefinedIntent(message);
+        const predefinedIntent = findPredefinedIntent(message, intents);
 
         let botResponse;
         if (predefinedIntent) {
@@ -59,7 +70,6 @@ module.exports = async (req, res) => {
             botResponse = await getGenerativeResponse(message, userName);
         }
         
-        // إرسال الرد بنجاح
         res.status(200).json({ response: botResponse });
 
     } catch (error) {
