@@ -1,26 +1,23 @@
-
 <!DOCTYPE html>
-<html lang="ar">
+<html lang="ar" dir="rtl"> <!-- تحديد اللغة العربية والاتجاه من اليمين لليسار -->
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>💜 رفيق الروح AI</title>
-  <link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>رفيق AI - دعم نفسي</title>
+    <link rel="stylesheet" href="style.css"> <!-- تأكد من ربط ملف CSS -->
 </head>
 <body>
-  <div class="chat-container">
-    <div class="chat-history" id="chat-history">
-      <div class="message bot-message">مرحباً بك 🌸، أنا نور. إزايك؟</div>
+    <div class="chat-container">
+        <div class="chat-history" id="chat-history">
+            <!-- الرسائل ستظهر هنا -->
+            <div class="message bot-message">مرحباً بك في رفيق! أنا هنا لأدعمك. كيف تشعر اليوم؟</div>
+        </div>
+        <div class="chat-input-area">
+            <input type="text" id="user-input" placeholder="اكتب رسالتك هنا...">
+            <button id="send-button">إرسال</button>
+        </div>
     </div>
-    <div class="chat-input-area">
-      <input type="text" id="user-input" placeholder="اكتب رسالتك هنا...">
-      <button id="send-button">إرسال</button>
-    </div>
-  </div>
 
-  <!-- ملف نور -->
-  <script src="noor.js"></script>
-  <!-- سكربت المحادثة -->
-  <script src="script.js"></script>
+    <script src="script.js"></script> <!-- تأكد من ربط ملف JavaScript -->
 </body>
 </html>
