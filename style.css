@@ -1,85 +1,96 @@
-
 body {
-  font-family: "Cairo", sans-serif;
-  background: linear-gradient(135deg, #f3e7ff, #e3f2fd);
-  margin: 0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; /* خط حديث وواضح */
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background-color: #f0f2f5;
+    direction: rtl; /* لجعل التخطيط العام من اليمين لليسار */
 }
 
 .chat-container {
-  width: 100%;
-  max-width: 480px;
-  height: 85vh;
-  background: #fff;
-  border-radius: 15px;
-  box-shadow: 0 6px 20px rgba(0,0,0,0.1);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+    width: 100%;
+    max-width: 450px;
+    height: 85vh; /* زيادة الارتفاع قليلاً */
+    background-color: #fff;
+    border-radius: 15px; /* حواف أكثر دائرية */
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1); /* ظل أعمق قليلاً */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .chat-history {
-  flex: 1;
-  padding: 15px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+    flex-grow: 1;
+    padding: 15px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px; /* مسافة أكبر بين الرسائل */
+    scroll-behavior: smooth; /* تمرير سلس */
 }
 
 .message {
-  max-width: 80%;
-  padding: 10px 15px;
-  border-radius: 18px;
-  line-height: 1.5;
+    max-width: 85%; /* زيادة عرض فقاعة الرسالة قليلاً */
+    padding: 12px 18px; /* حجم داخلي أكبر */
+    border-radius: 20px; /* حواف أكثر دائرية للرسائل */
+    line-height: 1.5;
+    font-size: 0.98rem; /* حجم خط أكبر قليلاً */
 }
 
 .user-message {
-  background: #007bff;
-  color: white;
-  align-self: flex-end;
-  border-bottom-right-radius: 3px;
+    background-color: #007bff;
+    color: white;
+    align-self: flex-start; /* محاذاة لليمين في RTL */
+    border-bottom-left-radius: 5px; /* تصميم جمالي */
 }
 
 .bot-message {
-  background: #f8d7da;
-  color: #842029;
-  align-self: flex-start;
-  border-bottom-left-radius: 3px;
+    background-color: #e2e6ea;
+    color: #333;
+    align-self: flex-end; /* محاذاة لليسار في RTL */
+    border-bottom-right-radius: 5px; /* تصميم جمالي */
 }
 
 .chat-input-area {
-  display: flex;
-  padding: 15px;
-  border-top: 1px solid #eee;
-  background: #fafafa;
+    display: flex;
+    padding: 15px;
+    border-top: 1px solid #eee;
+    background-color: #f9f9f9;
+    align-items: center; /* محاذاة عمودية */
 }
 
 #user-input {
-  flex: 1;
-  padding: 10px 15px;
-  border: 1px solid #ccc;
-  border-radius: 20px;
-  outline: none;
-  font-size: 1rem;
-  margin-left: 10px;
+    flex-grow: 1;
+    padding: 12px 18px;
+    border: 1px solid #ccc;
+    border-radius: 25px; /* حواف أكثر دائرية */
+    outline: none;
+    font-size: 1rem;
+    margin-left: 10px; /* المسافة من زر الإرسال */
+    transition: border-color 0.2s;
+}
+
+#user-input:focus {
+    border-color: #007bff;
 }
 
 #send-button {
-  background: #6f42c1;
-  color: white;
-  border: none;
-  border-radius: 20px;
-  padding: 10px 20px;
-  cursor: pointer;
-  font-size: 1rem;
-  transition: 0.3s;
+    background-color: #28a745;
+    color: white;
+    border: none;
+    border-radius: 25px; /* حواف أكثر دائرية */
+    padding: 12px 22px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background-color 0.2s, transform 0.1s;
 }
 
 #send-button:hover {
-  background: #5a359c;
+    background-color: #218838;
 }
 
+#send-button:active {
+    transform: translateY(1px);
+}
