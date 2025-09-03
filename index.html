@@ -14,7 +14,7 @@
     <link rel="stylesheet" href="style.css">
 
     <!-- 3. استيراد مكتبة Gemini API (ضروري ليعمل الذكاء الاصطناعي) -->
-    <script type="module" src="https://unpkg.com/@google/generative-ai?module"></script>
+    <script src="https://unpkg.com/@google/generative-ai"></script>
 </head>
 <body>
 
@@ -25,7 +25,7 @@
         <div id="chat-history">
             <!-- سيتم إضافة الرسائل هنا بواسطة JavaScript -->
 
-            <!-- 4. هيكل مؤشر الكتابة (مخفي بشكل افتراضي) -->
+            <!-- هيكل مؤشر الكتابة (مخفي بشكل افتراضي) -->
             <div id="typing-indicator" class="message bot-message" style="display: none;">
                 <div class="typing-dot"></div>
                 <div class="typing-dot"></div>
@@ -38,8 +38,8 @@
         </div>
     </div>
 
-    <!-- 5. ربط ملف JavaScript الرئيسي (كـ module) -->
-    <script type="module" src="script.js"></script>
+    <!-- 4. ربط ملف JavaScript الرئيسي (بدون type="module") -->
+    <script src="script.js"></script>
 
 </body>
 </html>
