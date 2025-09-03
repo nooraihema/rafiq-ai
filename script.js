@@ -9,7 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const typingIndicator = document.getElementById('typing-indicator');
 
     // --- 2. Configuration & State ---
-    const API_KEY = "الصق_مفتاح_API_السري_الخاص_بك_هنا"; // !! هام: ضع مفتاحك هنا
+    const API_KEY =AIzaSyBJnFXcmnZl3ynDQyKRMRKhib58M2j15g0 "الصق_مفتاح_API_السري_الخاص_بك_هنا"; // !! هام: ضع مفتاحك هنا
     let userProfile = JSON.parse(localStorage.getItem('userProfile')) || { name: null };
     let conversationState = userProfile.name ? 'general' : 'asking_name';
     let intentsData = []; 
