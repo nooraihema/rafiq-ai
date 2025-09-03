@@ -4,26 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>رفيق - مساحتك الآمنة</title>
-
-    <!-- 1. استيراد الخطوط لتحسين المظهر -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
-
-    <!-- 2. ربط ملف الأنماط (CSS) -->
     <link rel="stylesheet" href="style.css">
-
-    <!-- 
-      3. التعديل الحاسم: استيراد مكتبة Gemini API مع السمة defer
-         هذا يضمن تحميلها قبل تشغيل script.js
-    -->
-    <script src="https://unpkg.com/@google/generative-ai" defer></script>
-    
-    <!-- 
-      4. ربط ملف JavaScript الرئيسي مع السمة defer
-    -->
-    <script src="script.js" defer></script>
-
 </head>
 <body>
 
@@ -32,9 +16,6 @@
             <h2>رفيق 💜</h2>
         </div>
         <div id="chat-history">
-            <!-- سيتم إضافة الرسائل هنا بواسطة JavaScript -->
-
-            <!-- هيكل مؤشر الكتابة (مخفي بشكل افتراضي) -->
             <div id="typing-indicator" class="message bot-message" style="display: none;">
                 <div class="typing-dot"></div>
                 <div class="typing-dot"></div>
@@ -46,6 +27,13 @@
             <button id="send-button">إرسال</button>
         </div>
     </div>
+
+    <!-- 
+      التعديل الحاسم: 
+      سنقوم بربط ملف script.js كـ "module" في نهاية الصفحة. 
+      سيقوم script.js نفسه باستيراد مكتبة Gemini.
+    -->
+    <script type="module" src="script.js"></script>
 
 </body>
 </html>
