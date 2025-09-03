@@ -29,11 +29,12 @@
     </div>
 
     <!-- 
-      التعديل الحاسم: 
-      سنقوم بربط ملف script.js كـ "module" في نهاية الصفحة. 
-      سيقوم script.js نفسه باستيراد مكتبة Gemini.
+      التعديل النهائي والمضمون:
+      1. تحميل مكتبة Gemini كسكربت عادي في نهاية الصفحة.
+      2. تحميل ملف script.js الخاص بنا بعده مباشرة.
     -->
-    <script type="module" src="script.js"></script>
+    <script src="https://unpkg.com/@google/generative-ai"></script>
+    <script src="script.js"></script>
 
 </body>
 </html>
