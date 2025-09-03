@@ -13,8 +13,17 @@
     <!-- 2. ربط ملف الأنماط (CSS) -->
     <link rel="stylesheet" href="style.css">
 
-    <!-- 3. استيراد مكتبة Gemini API (ضروري ليعمل الذكاء الاصطناعي) -->
-    <script src="https://unpkg.com/@google/generative-ai"></script>
+    <!-- 
+      3. التعديل الحاسم: استيراد مكتبة Gemini API مع السمة defer
+         هذا يضمن تحميلها قبل تشغيل script.js
+    -->
+    <script src="https://unpkg.com/@google/generative-ai" defer></script>
+    
+    <!-- 
+      4. ربط ملف JavaScript الرئيسي مع السمة defer
+    -->
+    <script src="script.js" defer></script>
+
 </head>
 <body>
 
@@ -37,9 +46,6 @@
             <button id="send-button">إرسال</button>
         </div>
     </div>
-
-    <!-- 4. ربط ملف JavaScript الرئيسي (بدون type="module") -->
-    <script src="script.js"></script>
 
 </body>
 </html>
