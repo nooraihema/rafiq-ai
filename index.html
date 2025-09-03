@@ -1,119 +1,88 @@
 
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="ar">
 <head>
   <meta charset="UTF-8">
+  <title>رفيق الروح AI</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>نور - رفيقك الذكي 💜</title>
   <style>
-    /* ===== الأساسيات ===== */
-    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: "Cairo", Tahoma, sans-serif;
-      background: linear-gradient(135deg, #f8f0ff, #e0d7ff);
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+      margin: 0;
+      padding: 0;
+      direction: rtl;
+      text-align: right;
     }
-
     header {
-      background: #6a1b9a;
+      background: #6f42c1;
       color: white;
+      padding: 1rem;
       text-align: center;
+    }
+    .chat-box {
+      background: white;
+      border-radius: 12px;
+      margin: 1rem auto;
       padding: 15px;
-      font-size: 22px;
-      font-weight: bold;
-      letter-spacing: 1px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-    }
-
-    /* ===== صندوق المحادثة ===== */
-    #chat-box {
-      flex: 1;
-      padding: 20px;
+      max-width: 600px;
+      height: 70vh;
       overflow-y: auto;
-      background: #fff;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
     }
-
     .msg {
+      margin: 8px 0;
+      padding: 10px;
+      border-radius: 8px;
       max-width: 70%;
-      padding: 12px 16px;
-      border-radius: 16px;
-      font-size: 15px;
-      line-height: 1.6;
-      word-wrap: break-word;
-      animation: fadeIn 0.3s ease-in-out;
+      line-height: 1.4;
     }
-
-    .msg.user {
-      background: #d1e7ff;
-      align-self: flex-end;
-      border-bottom-right-radius: 4px;
+    .user {
+      background: #d1e7dd;
+      margin-left: auto;
+      text-align: left;
     }
-
-    .msg.noor {
-      background: #f3e5f5;
-      align-self: flex-start;
-      border-bottom-left-radius: 4px;
+    .noor {
+      background: #f8d7da;
+      margin-right: auto;
+      text-align: right;
     }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(5px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    /* ===== منطقة الإدخال ===== */
-    .input-area {
+    .controls {
       display: flex;
-      padding: 12px;
-      background: #fafafa;
-      border-top: 1px solid #ddd;
-      gap: 10px;
+      gap: 0.5rem;
+      max-width: 600px;
+      margin: 0 auto 1rem;
+      padding: 0 1rem;
     }
-
-    #msg-input {
+    input {
       flex: 1;
-      padding: 12px;
+      padding: 10px;
+      border-radius: 8px;
       border: 1px solid #ccc;
-      border-radius: 12px;
-      font-size: 15px;
-      outline: none;
-      transition: 0.2s;
+      font-size: 1rem;
     }
-
-    #msg-input:focus {
-      border-color: #6a1b9a;
-      box-shadow: 0 0 5px rgba(106,27,154,0.4);
-    }
-
     button {
-      background: #6a1b9a;
-      color: white;
+      padding: 0 15px;
       border: none;
-      padding: 12px 20px;
-      border-radius: 12px;
+      border-radius: 8px;
+      background: #6f42c1;
+      color: white;
       cursor: pointer;
-      font-size: 15px;
-      transition: 0.2s;
     }
-
     button:hover {
-      background: #4a148c;
+      background: #5a359c;
     }
   </style>
 </head>
 <body>
+  <header>💜 رفيق الروح AI (نور)</header>
 
-  <header>نور - رفيقك الذكي 💜</header>
+  <div class="chat-box" id="chat-box"></div>
 
-  <div id="chat-box"></div>
-
-  <div class="input-area">
-    <input type="text" id="msg-input" placeholder="اكتب رسالتك هنا..." onkeypress="if(event.key === 'Enter') sendMessage()">
+  <div class="controls">
+    <input type="text" id="msg-input" placeholder="اكتب رسالتك هنا...">
     <button onclick="sendMessage()">إرسال</button>
+    <button onclick="clearChat()">🗑️ مسح</button>
   </div>
 
   <script src="noor.js"></script>
