@@ -1,23 +1,29 @@
 // /api/chat.js
 
-// 1. استيراد المكتبات اللازمة لقراءة الملفات في بيئة الخادم
 const path = require('path');
-const fs = require('fs').promises; // نستخدم النسخة التي تدعم async/await
-
+const fs = require('fs'); // سنستخدم النسخة العادية (المتزامنة) لتبسيط الأمر
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-// الوصول إلى المفتاح السري من متغيرات البيئة على Vercel
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// 2. دالة جديدة لقراءة قاعدة المعرفة بشكل آمن
-async function getIntents() {
-    // تحديد المسار الصحيح لملف intents.json
+// ======== التعديل الحاسم هنا ========
+// نقوم بقراءة وتحليل الملف مرة واحدة عند بدء تشغيل الخادم
+let intents = [];
+try {
     const jsonFilePath = path.join(process.cwd(), 'intents.json');
-    const fileContent = await fs.readFile(jsonFilePath, 'utf8');
-    return JSON.parse(fileContent);
+    const fileContent = fs.readFileSync(jsonFilePath, 'utf8');
+    intents = JSON.parse(fileContent);
+} catch (error) {
+    console.error("Could not read intents.json:", error);
 }
+// ===================================
 
-function findPredefinedIntent(message, intents) {
+
+function findPredefinedIntent(message) {
+    // نتأكد من أن intents هي مصفوفة قبل استخدامها
+    if (!Array.isArray(intents)) {
+        return null;
+    }
     const lowerCaseMessage = message.toLowerCase();
     return intents.find(intent =>
         intent.keywords.some(kw => lowerCaseMessage.includes(kw.toLowerCase()))
@@ -49,15 +55,14 @@ module.exports = async (req, res) => {
     }
 
     try {
-        // 3. قراءة قاعدة المعرفة مع كل طلب
-        const intents = await getIntents();
         const { message, userName } = req.body;
 
         if (!message || !userName) {
             return res.status(400).json({ message: 'Message and userName are required.' });
         }
 
-        const predefinedIntent = findPredefinedIntent(message, intents);
+        // الآن نستخدم المتغير intents الذي تم تحميله مسبقًا
+        const predefinedIntent = findPredefinedIntent(message);
 
         let botResponse;
         if (predefinedIntent) {
