@@ -1,3 +1,7 @@
+// script.js
+
+import { GoogleGenerativeAI } from "https://unpkg.com/@google/generative-ai?module";
+
 document.addEventListener('DOMContentLoaded', () => {
     // --- 1. DOM Elements ---
     const chatHistory = document.getElementById('chat-history');
@@ -5,39 +9,53 @@ document.addEventListener('DOMContentLoaded', () => {
     const sendButton = document.getElementById('send-button');
     const typingIndicator = document.getElementById('typing-indicator');
 
-    // --- 2. Application State ---
+    // --- 2. Configuration & State ---
+    const API_KEY = "الصق_مفتاح_API_السري_الخاص_بك_هنا"; // !! هام: ضع مفتاحك هنا
     let userProfile = JSON.parse(localStorage.getItem('userProfile')) || { name: null };
     let conversationState = userProfile.name ? 'general' : 'asking_name';
-    let intentsData = []; // Will hold our knowledge base
+    let intentsData = []; // سيحتوي على قاعدة المعرفة الخاصة بنا
 
     // --- 3. The "Brain" of Rafiq ---
     const RafiqBrain = {
         /**
-         * Finds the best matching intent from the knowledge base.
-         * @param {string} message The user's input.
-         * @returns {object|null} The matched intent object or null.
+         * يجد نية محددة مسبقًا من قاعدة المعرفة.
          */
-        findIntent: (message) => {
+        findPredefinedIntent: (message) => {
             const lowerCaseMessage = message.toLowerCase();
-            // Search with priority: Critical intents first
-            const criticalIntent = intentsData.find(intent =>
-                intent.safety_protocol && intent.keywords.some(kw => lowerCaseMessage.includes(kw.toLowerCase()))
-            );
-            if (criticalIntent) return criticalIntent;
-
-            const generalIntent = intentsData.find(intent =>
-                !intent.safety_protocol && intent.keywords.some(kw => lowerCaseMessage.includes(kw.toLowerCase()))
-            );
-            return generalIntent || null;
+            return intentsData.find(intent =>
+                intent.keywords.some(kw => lowerCaseMessage.includes(kw.toLowerCase()))
+            ) || null;
         },
 
         /**
-         * Generates a response based on the user's message and conversation state.
-         * @param {string} message The user's input.
-         * @returns {string} The bot's response text.
+         * يستدعي Gemini API للحصول على استجابة ديناميكية وذكية.
          */
-        getResponse: (message) => {
-            // State-based logic for initial interaction
+        getGenerativeResponse: async (message, userName) => {
+            try {
+                const genAI = new GoogleGenerativeAI(API_KEY);
+                const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+
+                const prompt = `أنت "رفيق"، رفيق ذكاء اصطناعي وشخصيتك دافئة وداعمة ومتعاطفة. 
+                مهمتك هي تقديم رد قصير وداعم لشخص يشعر بالضيق. 
+                لا تقدم نصائح طبية أو نفسية أبداً. 
+                اسم المستخدم هو "${userName}". 
+                قال المستخدم للتو: "${message}".
+                يرجى تقديم رد لطيف ومتفهم باللغة العربية.`;
+                
+                const result = await model.generateContent(prompt);
+                const response = await result.response;
+                return response.text();
+
+            } catch (error) {
+                console.error("Error calling Gemini API:", error);
+                return "أنا آسف، يبدو أن عقلي الرقمي يواجه صعوبة في الاتصال الآن. هل يمكننا المحاولة مرة أخرى بعد لحظات؟";
+            }
+        },
+
+        /**
+         * يولد استجابة بناءً على رسالة المستخدم.
+         */
+        getResponse: async (message) => {
             if (conversationState === 'asking_name') {
                 userProfile.name = message.trim();
                 localStorage.setItem('userProfile', JSON.stringify(userProfile));
@@ -45,48 +63,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 return `تشرفت بمعرفتك، ${userProfile.name}! اسمك جميل جدًا. أنا هنا لأسمعك، ما الذي يجول في خاطرك؟ 💜`;
             }
 
-            // Intent-based logic for general conversation
-            const intent = RafiqBrain.findIntent(message);
+            const predefinedIntent = RafiqBrain.findPredefinedIntent(message);
 
-            // PRIORITY 1: SAFETY PROTOCOL
-            if (intent && intent.safety_protocol === 'CRITICAL - IMMEDIATE_REDIRECT_TO_HELPLINE') {
-                // IMPORTANT: Add your local helpline numbers here
-                const helplineInfo = `\n\nأرقام الطوارئ:\n- الخط الساخن للدعم النفسي: [الرقم هنا]\n- الطوارئ: [الرقم هنا]`;
-                return intent.response_before_redirect + helplineInfo;
-            }
-
-            if (intent && intent.responses) {
-                // Select a random response to avoid repetition
-                const randomResponse = intent.responses[Math.floor(Math.random() * intent.responses.length)];
+            if (predefinedIntent) {
+                // --- 1. تم العثور على تطابق في ملف JSON (موثوق) ---
+                const randomResponse = predefinedIntent.responses[Math.floor(Math.random() * predefinedIntent.responses.length)];
                 let finalResponse = randomResponse.replace(/\[اسم المستخدم\]/g, userProfile.name);
 
-                // Add actionable advice if it exists
-                if (intent.actionable_advice) {
-                    finalResponse += `\n\n**نصيحة بسيطة:** ${intent.actionable_advice}`;
+                if (predefinedIntent.actionable_advice) {
+                    finalResponse += `\n\n**نصيحة بسيطة:** ${predefinedIntent.actionable_advice}`;
                 }
                 return finalResponse;
+            } else {
+                // --- 2. لا يوجد تطابق، لذلك نستخدم الرد الاحتياطي الذكي (ذكي) ---
+                return await RafiqBrain.getGenerativeResponse(message, userProfile.name);
             }
-            
-            // Fallback response if no intent is matched
-            return `أنا أستمع يا ${userProfile.name}. لم أفهم تمامًا، هل يمكنك التوضيح أكثر؟ أنا هنا من أجلك.`;
         }
     };
 
     // --- 4. UI Helper Functions ---
-    /**
-     * Adds a message to the chat history and scrolls down.
-     * @param {string} sender 'user' or 'bot'.
-     * @param {string} text The message content.
-     */
     function addMessage(sender, text) {
         const messageDiv = document.createElement('div');
         messageDiv.classList.add('message', `${sender}-message`);
-        // Use innerHTML to correctly render line breaks and bold text
         messageDiv.innerHTML = text.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-        
-        // Insert before the typing indicator
         chatHistory.insertBefore(messageDiv, typingIndicator);
-        
         scrollToBottom();
     }
 
@@ -104,9 +104,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- 5. Main Application Logic ---
-    /**
-     * Handles the process of sending a message.
-     */
     async function handleSendMessage() {
         const message = userInput.value.trim();
         if (message === '') return;
@@ -115,25 +112,20 @@ document.addEventListener('DOMContentLoaded', () => {
         userInput.value = '';
         showTyping();
 
-        // Simulate bot thinking and get response
-        setTimeout(() => {
-            const botResponse = RafiqBrain.getResponse(message);
-            hideTyping();
-            addMessage('bot', botResponse);
-        }, 1200 + Math.random() * 800); // Realistic delay
+        const botResponse = await RafiqBrain.getResponse(message);
+        hideTyping();
+        addMessage('bot', botResponse);
     }
 
     /**
-     * Initializes the application.
+     * يبدأ التطبيق.
      */
     async function startApp() {
         try {
-            // Load the knowledge base from the JSON file
             const response = await fetch('intents.json');
             if (!response.ok) throw new Error('Network response was not ok');
             intentsData = await response.json();
             
-            // Start the conversation
             if (conversationState === 'asking_name') {
                 addMessage('bot', 'مرحباً بك في رفيق! أنا هنا لأكون صديقك الداعم. كيف يمكنني مناداتك؟');
             } else {
