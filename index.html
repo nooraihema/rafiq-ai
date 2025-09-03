@@ -1,23 +1,28 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl"> <!-- تحديد اللغة العربية والاتجاه من اليمين لليسار -->
+<html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>رفيق AI - دعم نفسي</title>
-    <link rel="stylesheet" href="style.css"> <!-- تأكد من ربط ملف CSS -->
-</head>
-<body>
-    <div class="chat-container">
-        <div class="chat-history" id="chat-history">
-            <!-- الرسائل ستظهر هنا -->
-            <div class="message bot-message">مرحباً بك في رفيق! أنا هنا لأدعمك. كيف تشعر اليوم؟</div>
+    <title>رفيق - مساحتك الآمنة</title>
+    <link rel="stylesheet" href="style.css">
+</head><body>
+    <div id="chat-container">
+        <div id="chat-header">
+            <h2>رفيق 💜</h2>
         </div>
-        <div class="chat-input-area">
-            <input type="text" id="user-input" placeholder="اكتب رسالتك هنا...">
+        <div id="chat-history">
+            <!-- Messages will be appended here -->
+            <div id="typing-indicator" class="message bot-message" style="display: none;">
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+            </div>
+        </div>
+        <div id="chat-input-area">
+            <input type="text" id="user-input" placeholder="اكتب ما تشعر به..." autocomplete="off">
             <button id="send-button">إرسال</button>
         </div>
     </div>
-
-    <script src="script.js"></script> <!-- تأكد من ربط ملف JavaScript -->
+    <script src="script.js"></script>
 </body>
 </html>
