@@ -3,106 +3,24 @@
 <html lang="ar">
 <head>
   <meta charset="UTF-8">
-  <title>رفيق الروح AI</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f4f4f9;
-      margin: 0;
-      padding: 0;
-      direction: rtl;
-      text-align: right;
-    }
-    header {
-      background: #6f42c1;
-      color: white;
-      padding: 1rem;
-      text-align: center;
-      font-size: 1.2rem;
-      font-weight: bold;
-    }
-    .chat-box {
-      background: white;
-      border-radius: 15px;
-      margin: 1rem auto;
-      padding: 15px;
-      max-width: 600px;
-      height: 70vh;
-      overflow-y: auto;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    }
-    .message {
-      margin: 8px 0;
-      padding: 10px 14px;
-      border-radius: 12px;
-      max-width: 75%;
-      line-height: 1.5;
-      word-wrap: break-word;
-    }
-    .user {
-      background: #d1e7dd;
-      color: #0f5132;
-      margin-left: auto;
-      text-align: left;
-    }
-    .noor {
-      background: #f8d7da;
-      color: #842029;
-      margin-right: auto;
-      text-align: right;
-    }
-    .controls {
-      display: flex;
-      gap: 0.5rem;
-      max-width: 600px;
-      margin: 0 auto 1rem;
-      padding: 0 1rem;
-    }
-    input {
-      flex: 1;
-      padding: 12px;
-      border-radius: 8px;
-      border: 1px solid #ccc;
-      font-size: 1rem;
-    }
-    button {
-      padding: 0 20px;
-      border: none;
-      border-radius: 8px;
-      background: #6f42c1;
-      color: white;
-      cursor: pointer;
-      font-size: 1rem;
-      transition: 0.3s;
-    }
-    button:hover {
-      background: #5a359c;
-    }
-    @media (max-width: 600px) {
-      .controls {
-        flex-direction: column;
-      }
-      button {
-        width: 100%;
-      }
-    }
-  </style>
+  <title>💜 رفيق الروح AI</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>💜 رفيق الروح AI (نور)</header>
-
-  <div class="chat-box" id="chat-box"></div>
-
-  <div class="controls">
-    <!-- 🟢 خدت نفس ID اللي في noor.js -->
-    <input type="text" id="user-input" placeholder="اكتب رسالتك هنا...">
-    <button onclick="handleUserMessage()">إرسال</button>
-    <button onclick="clearChat()">🗑️ مسح</button>
+  <div class="chat-container">
+    <div class="chat-history" id="chat-history">
+      <div class="message bot-message">مرحباً بك 🌸، أنا نور. إزايك؟</div>
+    </div>
+    <div class="chat-input-area">
+      <input type="text" id="user-input" placeholder="اكتب رسالتك هنا...">
+      <button id="send-button">إرسال</button>
+    </div>
   </div>
 
-  <!-- 🟢 ملف نور -->
+  <!-- ملف نور -->
   <script src="noor.js"></script>
+  <!-- سكربت المحادثة -->
+  <script src="script.js"></script>
 </body>
 </html>
-
