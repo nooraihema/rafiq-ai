@@ -1,4 +1,3 @@
-/ لا يوجد أي "import" في بداية الملف
 
 // نعود لاستخدام غلاف "DOMContentLoaded" لضمان أن كل شيء في الصفحة قد تم تحميله
 document.addEventListener('DOMContentLoaded', () => {
