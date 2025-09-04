@@ -1,4 +1,4 @@
-// /api/chat.js - النسخة النهائية والآمنة التي تعتمد على متغيرات البيئة
+// /api/chat.js - النسخة الكاملة والصحيحة والآمنة
 
 const path = require('path');
 const fs = require('fs');
@@ -25,7 +25,8 @@ try {
     const jsonFilePath = path.join(process.cwd(), 'intents.json');
     const fileContent = fs.readFileSync(jsonFilePath, 'utf8');
     intents = JSON.parse(fileContent);
-} catch (error) {
+} catch (error)
+ {
     console.error("Could not read intents.json on server startup:", error);
 }
 
@@ -86,4 +87,4 @@ module.exports = async (req, res) => {
         console.error("Error in API handler:", error);
         res.status(500).json({ response: "حدث خطأ غير متوقع في الخادم." });
     }
-};```
+}; // تأكد من أن هذا القوس والفاصلة المنقوطة موجودان في النهاية
