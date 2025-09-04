@@ -1,4 +1,4 @@
-// /api/chat.js - النسخة الكاملة والصحيحة والآمنة
+// /api/chat.js - النسخة الكاملة والصحيحة والآمنة بعد التعديل
 
 const path = require('path');
 const fs = require('fs');
@@ -25,8 +25,7 @@ try {
     const jsonFilePath = path.join(process.cwd(), 'intents.json');
     const fileContent = fs.readFileSync(jsonFilePath, 'utf8');
     intents = JSON.parse(fileContent);
-} catch (error)
- {
+} catch (error) {
     console.error("Could not read intents.json on server startup:", error);
 }
 
@@ -45,7 +44,11 @@ async function getGenerativeResponse(message, userName) {
     }
 
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+        // ====> التعديل هنا <====
+        // تم تغيير اسم النموذج إلى إصدار أحدث لتجنب خطأ 404
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" });
+        // ====> نهاية التعديل <====
+
         const prompt = `أنت "رفيق"، رفيق ذكاء اصطناعي وشخصيتك دافئة وداعمة ومتعاطفة. 
         مهمتك هي تقديم رد قصير وداعم لشخص يشعر بالضيق. 
         لا تقدم نصائح طبية أو نفسية أبداً. 
@@ -87,4 +90,4 @@ module.exports = async (req, res) => {
         console.error("Error in API handler:", error);
         res.status(500).json({ response: "حدث خطأ غير متوقع في الخادم." });
     }
-}; // تأكد من أن هذا القوس والفاصلة المنقوطة موجودان في النهاية
+};
