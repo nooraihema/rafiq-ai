@@ -1,24 +1,26 @@
-// /api/chat.js - النسخة النهائية والبسيطة جدًا للتأكد من صحة المفتاح
+// /api/chat.js - النسخة النهائية والآمنة التي تعتمد على متغيرات البيئة
 
 const path = require('path');
 const fs = require('fs');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 // =================================================================
-//                 ===> التعديل الوحيد المطلوب هنا <===
-// 
-// 1. احذف هذا السطر بأكمله.
-// 2. اكتب مكانه: const API_KEY = "ثم الصق مفتاحك السري الجديد هنا بين علامتي الاقتباس";
-//
-const API_KEY = "
-AIzaSyAUN8Bepd6DNNnQyVVy2-ZlWU86et7eJPQ"; 
-//
+//                 ===> الطريقة الصحيحة والآمنة <===
+// الكود يقرأ المفتاح من إعدادات Vercel، لا تضع أي مفتاح هنا.
+const API_KEY = process.env.GEMINI_API_KEY;
 // =================================================================
 
-const genAI = new GoogleGenerativeAI(API_KEY);
-
-// بقية الكود لا تحتاج إلى أي تعديل
 let intents = [];
+let genAI;
+
+// نقوم بالتحقق من المفتاح عند بدء التشغيل
+if (API_KEY) {
+    genAI = new GoogleGenerativeAI(API_KEY);
+} else {
+    // هذا السجل سيظهر في Vercel Logs إذا لم يتم العثور على المفتاح
+    console.error("CRITICAL: GEMINI_API_KEY environment variable is not set or not found!");
+}
+
 try {
     const jsonFilePath = path.join(process.cwd(), 'intents.json');
     const fileContent = fs.readFileSync(jsonFilePath, 'utf8');
@@ -31,11 +33,16 @@ function findPredefinedIntent(message) {
     if (!Array.isArray(intents)) return null;
     const lowerCaseMessage = message.toLowerCase();
     return intents.find(intent =>
-        intent.keywords.some(kw => lowerCaseMessage.includes(kw.toLowerCase()))
+        intent.keywords.some(kw => lowerCaseMessage.includes(kw))
     ) || null;
 }
 
 async function getGenerativeResponse(message, userName) {
+    // نتأكد من أن المكتبة تم تهيئتها بنجاح
+    if (!genAI) {
+        return "عذرًا، هناك مشكلة في إعدادات الخادم (لم يتم العثور على مفتاح API). يرجى التأكد من إضافته في إعدادات Vercel.";
+    }
+
     try {
         const model = genAI.getGenerativeModel({ model: "gemini-pro" });
         const prompt = `أنت "رفيق"، رفيق ذكاء اصطناعي وشخصيتك دافئة وداعمة ومتعاطفة. 
@@ -79,4 +86,4 @@ module.exports = async (req, res) => {
         console.error("Error in API handler:", error);
         res.status(500).json({ response: "حدث خطأ غير متوقع في الخادم." });
     }
-};
+};```
