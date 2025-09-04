@@ -1,16 +1,16 @@
-// /api/chat.js - نسخة الحل البديل (مؤقت)
+// /api/chat.js - النسخة النهائية والصحيحة
 
 const path = require('path');
 const fs = require('fs');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 // =================================================================
-//                 ===> التعديل الحاسم هنا <===
-// سنقوم بوضع المفتاح مباشرة في الكود بشكل مؤقت لنتجاوز مشكلة Vercel
-const API_KEY =AIzaSyBJnFXcmnZl3ynDQyKRMRKhib58M2j15g0 "الصق_مفتاح_API_السري_الخاص_بك_هنا"; 
+//                 ===> ضع مفتاحك الجديد والآمن هنا <===
+// تأكد من أن المفتاح موجود بين علامتي الاقتباس " "
+const API_KEY = "
+AIzaSyAUN8Bepd6DNNnQyVVy2-ZlWU86et7eJPQضع_مفتاحك_السري_الجديد_هنا"; 
 // =================================================================
 
-// نقوم بتهيئة المكتبة باستخدام المفتاح مباشرة
 const genAI = new GoogleGenerativeAI(API_KEY);
 
 let intents = [];
@@ -50,7 +50,6 @@ async function getGenerativeResponse(message, userName) {
 }
 
 module.exports = async (req, res) => {
-    // لم نعد بحاجة لكود التشخيص الآن
     if (req.method !== 'POST') {
         return res.status(405).json({ message: 'Method Not Allowed' });
     }
