@@ -45,10 +45,8 @@ function buildTfIdfIndex() {
 
     // DF
     const df = {};
-    const docTokens = [];
     for (const doc of docs) {
       const toks = new Set(tokenize(doc));
-      docTokens.push(toks);
       for (const t of toks) df[t] = (df[t] || 0) + 1;
     }
     const N = docs.length;
@@ -139,30 +137,6 @@ async function callTogetherAPI(message) {
   return data.output_text || data.output?.[0]?.content || data[0]?.generated_text || "معرفتش أرد من Together";
 }
 
-// ---------- Gemini API (مصححة) ----------
-async function callGeminiAPI(message) {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error("No GEMINI_API_KEY defined");
-
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent?key=${key}`;
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [
-        { role: "user", parts: [{ text: message }] }
-      ],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 250
-      }
-    })
-  });
-
-  const data = await res.json();
-  return data?.candidates?.[0]?.content?.parts?.[0]?.text || "معرفتش أرد من Gemini";
-}
-
 // ---------- API handler ----------
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -188,15 +162,13 @@ export default async function handler(req, res) {
       return res.status(200).json({ reply, source: "intent", score: best.score });
     }
 
-    // لا يوجد intent مناسب → جرب Together أو Gemini
+    // لا يوجد intent مناسب → جرب Together
     if (process.env.TOGETHER_API_KEY) {
       const r = await callTogetherAPI(message);
       return res.status(200).json({ reply: r, source: "together" });
-    } else if (process.env.GEMINI_API_KEY) {
-      const r = await callGeminiAPI(message);
-      return res.status(200).json({ reply: r, source: "gemini" });
     }
 
+    // fallback
     return res.status(200).json({ reply: "ممكن توضّح أكتر؟ أنا معاك.", source: "fallback" });
 
   } catch (err) {
