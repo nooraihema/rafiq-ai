@@ -1,7 +1,7 @@
 
 // /api/chat.js
 // ==========================
-// رفيق - محرك نوايا ذكي متكامل (TF-IDF + Memory + Emotion + Safety + Providers)
+// رفيق - محرك نوايا متقدّم: TF-IDF + Scoring + Negation + DialogTree + Memory + Safety
 // ==========================
 
 import fs from "fs";
@@ -11,23 +11,22 @@ import crypto from "crypto";
 // -------------- إعداد عام --------------
 const ROOT = process.cwd();
 const INTENTS_PATH = path.join(ROOT, "intents.json");
-const USERS_DIR = path.join(ROOT, "data");
-const USERS_FILE = path.join(USERS_DIR, "users.json");
+const DATA_DIR = path.join(ROOT, "data");
+const USERS_FILE = path.join(DATA_DIR, "users.json");
 
-const THRESHOLD = parseFloat(process.env.INTENT_THRESHOLD || "0.12"); // default
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+const THRESHOLD = parseFloat(process.env.INTENT_THRESHOLD || "0.12");
 const DEBUG = process.env.DEBUG === "1";
 const SHORT_MEMORY_LIMIT = parseInt(process.env.SHORT_MEMORY_LIMIT || "5", 10);
 const LONG_TERM_LIMIT = parseInt(process.env.LONG_TERM_LIMIT || "60", 10);
-
-// تأكد من وجود مجلد البيانات
-try { if (!fs.existsSync(USERS_DIR)) fs.mkdirSync(USERS_DIR, { recursive: true }); } catch(e){ console.warn("Could not create data dir", e); }
 
 // -------------- أدوات تطبيع / تقسيم عربي --------------
 function normalizeArabic(text = "") {
   return text
     .toString()
     .toLowerCase()
-    .replace(/[\u0610-\u061A\u064B-\u065F\u06D6-\u06ED]/g, "") // إزالة التشكيل
+    .replace(/[\u0610-\u061A\u064B-\u065F\u06D6-\u06ED]/g, "")
     .replace(/[إأٱآا]/g, "ا")
     .replace(/ى/g, "ي")
     .replace(/[ؤئ]/g, "ء")
@@ -70,9 +69,10 @@ function levenshtein(a, b) {
   return dp[m][n];
 }
 
-// -------------- تحميل intents + بناء TF-IDF index --------------
+// -------------- تحميل intents + إعداد (precompute) --------------
 let INTENTS_RAW = [];
-let intentVectors = []; // { tag, responses, safety, keywords[], patterns[], vector{}, norm }
+let intentVectors = []; // { tag, responses, safety, keywords[], patterns[], vector, norm }
+let tagToIndex = {};
 
 function loadIntentsRaw() {
   try {
@@ -85,7 +85,9 @@ function loadIntentsRaw() {
       const keywords = Array.isArray(it.keywords) ? it.keywords : [];
       const responses = Array.isArray(it.responses) ? it.responses : (it.response ? [it.response] : []);
       const safety = (it.safety_protocol || "").toUpperCase().trim();
-      return { tag, patterns, keywords, responses, safety };
+      const follow_up_question = it.follow_up_question || null;
+      const follow_up_intents = Array.isArray(it.follow_up_intents) ? it.follow_up_intents : [];
+      return { tag, patterns, keywords, responses, safety, follow_up_question, follow_up_intents };
     });
   } catch (e) {
     console.error("Failed reading intents.json:", e);
@@ -97,7 +99,7 @@ function buildTfIdfIndex() {
   INTENTS_RAW = loadIntentsRaw();
   const docsTokens = INTENTS_RAW.map(it => tokenize([...it.patterns, ...it.keywords].join(" ")));
 
-  // DF -> idf
+  // DF & IDF
   const df = {};
   docsTokens.forEach(tokens => {
     const uniq = new Set(tokens);
@@ -121,20 +123,26 @@ function buildTfIdfIndex() {
       sq += v * v;
     });
     const norm = Math.sqrt(sq) || 1;
+    const keywordsNorm = it.keywords.map(normalizeArabic);
+    const patternsNorm = it.patterns.map(normalizeArabic);
     return {
       tag: it.tag,
       responses: it.responses,
       safety: it.safety,
-      keywords: it.keywords.map(normalizeArabic),
-      patterns: it.patterns.map(normalizeArabic),
+      keywords: keywordsNorm,
+      patterns: patternsNorm,
+      follow_up_question: it.follow_up_question || null,
+      follow_up_intents: it.follow_up_intents || [],
       vector: vec,
       norm
     };
   });
 
+  tagToIndex = {};
+  intentVectors.forEach((iv, idx) => { tagToIndex[iv.tag] = idx; });
+
   if (DEBUG) console.log("✅ Built TF-IDF index:", intentVectors.length);
 }
-
 buildTfIdfIndex();
 
 // -------------- Users storage (file) --------------
@@ -151,7 +159,6 @@ function loadUsers() {
     return {};
   }
 }
-
 function saveUsers(users) {
   try {
     fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), "utf8");
@@ -160,22 +167,19 @@ function saveUsers(users) {
     console.error("Failed to save users file:", e);
   }
 }
-
 function makeUserId() {
   return crypto.randomBytes(8).toString("hex");
 }
 
-// -------------- Emotion / Mood detection --------------
+// -------------- Mood detection & critical detection --------------
 const MOOD_KEYWORDS = {
-  حزن: ["حزين","زعلان","مكسور","مكسور جدا","بكاء","بعيط","مكتئب","مش قادر","ضايق","متضايق","حزن"],
+  حزن: ["حزين","زعلان","مكسور","بكاء","بعيط","مكتئب","مش قادر","ضايق","متضايق","حزن","حسيت بالحزن","زهقان"],
   فرح: ["مبسوط","فرحان","سعيد","مستمتع","مبسوط جدا","مبسوطة"],
-  قلق: ["قلقان","خايف","متوتر","مضطرب","مخنوق","مخنوق اوي","توتر"],
+  قلق: ["قلقان","خايف","متوتر","مضطرب","مخنوق","توتر","خايفة"],
   غضب: ["غضبان","متعصب","زعلان جدا","مستفز","عصبي","عايز انفجر"],
   وحدة: ["لوحدي","وحيد","محدش معايا","مفيش حد"],
-  حب: ["بحبك","مشتاق","وحشتني","بحبك اوي"]
+  حب: ["بحبك","مشتاق","وحشتني","احبك"]
 };
-
-// يعيد mood أو "محايد"
 function detectMood(message) {
   const norm = normalizeArabic(message);
   for (const mood in MOOD_KEYWORDS) {
@@ -185,13 +189,51 @@ function detectMood(message) {
   }
   return "محايد";
 }
-
-// -------------- Safety detection --------------
-const CRITICAL_KEYWORDS = ["انتحار","عايز اموت","عايز أموت","مش عايز اعيش","هقتل نفسي","اقتل نفسي","مووت","عايز أموت"];
+const CRITICAL_KEYWORDS = ["انتحار","عايز اموت","عايز أموت","مش عايز اعيش","هقتل نفسي","اقتل نفسي","انا هموت","موتي"];
 function detectCritical(message) {
   const norm = normalizeArabic(message);
   for (const kw of CRITICAL_KEYWORDS) {
     if (norm.includes(normalizeArabic(kw))) return true;
+  }
+  return false;
+}
+
+// -------------- Negation & emphasis helpers --------------
+const NEGATORS = new Set(["لا","مش","ما","ليس","لست","بدون","ابدا","أبدا","وليس"]);
+const EMPHASIS = new Set(["جدا","للغاية","بشدة","كتير","قوي","قوية","تماما","بصراحة"]);
+
+function tokensArray(text) {
+  return normalizeArabic(text).split(/\s+/).filter(Boolean);
+}
+
+function hasNegationNearby(rawMessage, term) {
+  const tokens = tokensArray(rawMessage);
+  const termTokens = tokensArray(term);
+  if (!termTokens.length) return false;
+  // find occurrences of first token of term
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i] === termTokens[0]) {
+      // check previous up to 2 tokens for negator
+      for (let j = Math.max(0, i - 2); j < i; j++) {
+        if (NEGATORS.has(tokens[j])) return true;
+      }
+    }
+  }
+  // also check pattern "ما + verb + term" by simple substring check of "ما " + term
+  if (normalizeArabic(rawMessage).includes("ما " + normalizeArabic(term))) return true;
+  return false;
+}
+
+function hasEmphasisNearby(rawMessage, term) {
+  const tokens = tokensArray(rawMessage);
+  const termTokens = tokensArray(term);
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i] === termTokens[0]) {
+      // check next up to 3 tokens for emphasis
+      for (let j = i + 1; j <= Math.min(tokens.length - 1, i + 3); j++) {
+        if (EMPHASIS.has(tokens[j])) return true;
+      }
+    }
   }
   return false;
 }
@@ -222,30 +264,73 @@ function cosineScore(messageVec, intentVec, messageNorm, intentNorm) {
   return denom ? (dot / denom) : 0;
 }
 
-// -------------- direct / fuzzy matching helper --------------
-function directOrFuzzyHit(message, intent) {
-  const mNorm = normalizeArabic(message);
-  const mTokens = new Set(tokenize(message));
-  // direct substring on keywords/patterns
-  for (const kw of intent.keywords) {
+// -------------- Scoring system (counts + cosine + boosts) --------------
+function scoreIntent(rawMessage, msgVec, msgNorm, intent) {
+  // 1) count keyword/pattern matches (consider negation)
+  const normMsg = normalizeArabic(rawMessage);
+  let matchCount = 0;
+  let matchExactCount = 0;
+  const matchedTerms = [];
+  for (const kw of intent.keywords || []) {
     if (!kw) continue;
-    if (mNorm.includes(kw)) return { hit: true, boost: 0.25 };
-  }
-  for (const pat of intent.patterns) {
-    if (!pat) continue;
-    if (mNorm === pat || mNorm.includes(pat)) return { hit: true, boost: 0.25 };
-  }
-  // fuzzy token levenshtein
-  for (const kw of intent.keywords) {
-    if (!kw) continue;
-    for (const tok of mTokens) {
-      if (levenshtein(tok, kw) <= 1) return { hit: true, boost: 0.18 };
+    const nkw = normalizeArabic(kw);
+    if (nkw && normMsg.includes(nkw)) {
+      if (!hasNegationNearby(rawMessage, nkw)) {
+        matchCount++;
+        matchedTerms.push(nkw);
+        if (normMsg === nkw) matchExactCount++;
+      }
+    } else {
+      // fuzzy token-to-token
+      const toks = new Set(tokenize(rawMessage));
+      for (const tok of toks) {
+        if (levenshtein(tok, nkw) <= 1 && !hasNegationNearby(rawMessage, nkw)) {
+          matchCount++;
+          matchedTerms.push(nkw);
+          break;
+        }
+      }
     }
   }
-  return { hit: false, boost: 0 };
+  for (const pat of intent.patterns || []) {
+    if (!pat) continue;
+    const npat = normalizeArabic(pat);
+    if (npat && normMsg.includes(npat) && !hasNegationNearby(rawMessage, npat)) {
+      matchCount++;
+      matchedTerms.push(npat);
+    }
+  }
+
+  // normalize count score: more matches => higher but saturates
+  const countScore = matchCount > 0 ? (matchCount / (matchCount + 1)) : 0;
+
+  // cosine similarity
+  const cs = cosineScore(msgVec, intent.vector, msgNorm, intent.norm) || 0;
+  // emphasis boost if user emphasized matched terms
+  let emphasisBoost = 0;
+  for (const t of matchedTerms) {
+    if (hasEmphasisNearby(rawMessage, t)) emphasisBoost += 0.08;
+  }
+  // direct substring strong boost already partially included via matchCount but we add small bonus
+  const directBoost = matchCount > 0 ? 0.06 : 0;
+
+  // final weighted score
+  // weights chosen so that small messages with keyword still get decent score
+  const wCount = 0.60, wCos = 0.34, wDirect = 0.06;
+  const final = (countScore * wCount) + (Math.max(0, cs) * wCos) + directBoost + emphasisBoost;
+  return { final, countScore, cosine: cs, matchedTerms };
 }
 
-// -------------- External providers (Together only here; Gemini kept optional) --------------
+// -------------- Time-aware greeting --------------
+function cairoGreetingPrefix() {
+  const now = new Date();
+  const cairoHour = (now.getUTCHours() + 2) % 24; // Africa/Cairo UTC+2
+  if (cairoHour >= 5 && cairoHour < 12) return "صباح الخير";
+  if (cairoHour >= 12 && cairoHour < 17) return "مساء الخير"; // 下午用 مساء للبساطة
+  return "مساء النور";
+}
+
+// -------------- External providers (Together minimal) --------------
 async function callTogetherAPI(userText) {
   const key = process.env.TOGETHER_API_KEY;
   if (!key) throw new Error("No TOGETHER_API_KEY defined");
@@ -272,38 +357,7 @@ async function callTogetherAPI(userText) {
   } catch (e) {
     if (DEBUG) console.warn("Together API error:", e);
     return "حالياً مش قادر أستخدم الموديل الخارجي، بس أنا معاك وجاهز أسمعك. احكيلي أكتر 💙";
-  } finally {
-    clearTimeout(t);
-  }
-}
-
-// -------------- Personality / reply formatting --------------
-function adaptReplyBase(reply, userProfile, mood) {
-  // userProfile may have preferredTone: 'warm' | 'clinical' | 'playful'
-  const tone = (userProfile && userProfile.preferredTone) || "warm";
-  // Short personalization rules:
-  let prefix = "";
-  let suffix = "";
-  if (tone === "warm") {
-    prefix = "يا روحي، ";
-    suffix = " 💜";
-  } else if (tone === "clinical") {
-    prefix = "";
-    suffix = "";
-  } else if (tone === "playful") {
-    prefix = "يا حبيبي، ";
-    suffix = " 😉";
-  }
-  // adjust by mood
-  if (mood === "حزن") {
-    prefix = "أنا معااك دلوقتي، ";
-  } else if (mood === "قلق") {
-    prefix = "خد نفس عميق، ";
-  } else if (mood === "فرح") {
-    prefix = "يا سلام! ";
-  }
-  // avoid double emojis explosion; just return shaped response
-  return `${prefix}${reply}${suffix}`.trim();
+  } finally { clearTimeout(t); }
 }
 
 // -------------- Safety reply --------------
@@ -320,89 +374,109 @@ export default async function handler(req, res) {
     const rawMessage = (body.message || "").toString();
     if (!rawMessage || !rawMessage.trim()) return res.status(400).json({ error: "Empty message" });
 
-    // userId handling: frontend should send userId if known, otherwise we create one and return it
-    let userId = body.userId || null;
+    // users load/create
     const users = loadUsers();
+    let userId = body.userId || null;
     if (!userId || !users[userId]) {
-      // new user: create id and profile
       userId = makeUserId();
       users[userId] = {
         id: userId,
         createdAt: new Date().toISOString(),
         lastSeen: new Date().toISOString(),
         preferredTone: "warm",
-        shortMemory: [], // {message, reply, mood, ts}
-        longMemory: [],  // important facts {key, value, ts}
-        moodHistory: [], // {mood, ts}
-        flags: {},       // e.g., { critical: true }
+        shortMemory: [],
+        longMemory: [],
+        moodHistory: [],
+        flags: {},
+        expectingFollowUp: null // { parentTag, allowedTags: [], expiresTs }
       };
       saveUsers(users);
-      if (DEBUG) console.log("Created new user:", userId);
+      if (DEBUG) console.log("Created user", userId);
     }
-
     const profile = users[userId];
-
-    // update lastSeen
     profile.lastSeen = new Date().toISOString();
 
-    // 0) safety quick check (critical)
-    const isCritical = detectCritical(rawMessage);
-    if (isCritical) {
-      // mark user flag
+    // quick critical safety
+    if (detectCritical(rawMessage)) {
       profile.flags.critical = true;
-      // save and respond with safety reply immediately
       saveUsers(users);
-      const reply = criticalSafetyReply();
-      return res.status(200).json({ reply, source: "safety", userId });
+      return res.status(200).json({ reply: criticalSafetyReply(), source: "safety", userId });
     }
 
-    // 1) analyze mood
+    // analyze mood
     const mood = detectMood(rawMessage);
+    profile.moodHistory = profile.moodHistory || [];
     profile.moodHistory.push({ mood, ts: new Date().toISOString() });
     if (profile.moodHistory.length > LONG_TERM_LIMIT) profile.moodHistory.shift();
 
-    // 2) compute TF-IDF + direct/fuzzy matching
-    const msgVec = buildMessageVector(rawMessage);
-    const mNorm = msgVec.norm;
-    msgVec._norm = mNorm;
+    // handle follow-up flow: if expectingFollowUp -> restrict to allowed intents
+    let allowedIndices = null;
+    if (profile.expectingFollowUp && profile.expectingFollowUp.expiresTs > Date.now()) {
+      const allowed = profile.expectingFollowUp.allowedTags || [];
+      allowedIndices = allowed.map(tag => tagToIndex[tag]).filter(i => typeof i === "number");
+      if (DEBUG) console.log("Expecting follow-up, allowed indices:", allowedIndices);
+    } else {
+      profile.expectingFollowUp = null; // expired or absent
+    }
 
-    let best = { idx: -1, score: 0, source: "none", cosine: 0, boost: 0 };
-    for (let i = 0; i < intentVectors.length; i++) {
-      const it = intentVectors[i];
-      const df = directOrFuzzyHit(rawMessage, it);
-      const cs = cosineScore(msgVec.vec, it.vector, mNorm, it.norm);
-      const score = cs + df.boost;
-      if (score > best.score) best = { idx: i, score, source: df.hit ? "direct+tfidf" : "tfidf", cosine: cs, boost: df.boost };
+    // build message vector
+    const msg = buildMessageVector(rawMessage);
+    const mNorm = msg.norm;
+
+    // scoring across intents (or restricted set)
+    let best = { idx: -1, score: 0, details: null };
+    const candidateIndices = (Array.isArray(allowedIndices) && allowedIndices.length) ? allowedIndices : intentVectors.map((_,i)=>i);
+
+    for (const i of candidateIndices) {
+      const intent = intentVectors[i];
+      const sc = scoreIntent(rawMessage, msg.vec, mNorm, intent);
+      if (sc.final > best.score) best = { idx: i, score: sc.final, details: sc };
       if (DEBUG) {
-        console.log(`[INTENT] ${it.tag} | cosine=${cs.toFixed(3)} | boost=${df.boost.toFixed(3)} | total=${score.toFixed(3)}`);
+        console.log(`[SCORE] tag=${intent.tag} final=${sc.final.toFixed(3)} count=${sc.countScore.toFixed(3)} cos=${sc.cosine.toFixed(3)} matched=${JSON.stringify(sc.matchedTerms)}`);
       }
     }
 
-    // 3) if matched above threshold -> use intent response
+    // If matched above threshold -> produce intent response
     if (best.idx !== -1 && best.score >= THRESHOLD) {
       const intent = intentVectors[best.idx];
-      // safety check
+
+      // safety protocol
       if (intent.safety === "CRITICAL") {
         profile.flags.critical = true;
         saveUsers(users);
-        const reply = criticalSafetyReply();
-        return res.status(200).json({ reply, source: "intent_critical", tag: intent.tag, score: Number(best.score.toFixed(3)), userId });
+        return res.status(200).json({ reply: criticalSafetyReply(), source: "intent_critical", tag: intent.tag, score: Number(best.score.toFixed(3)), userId });
       }
 
-      // pick response from INTENTS_RAW corresponding (matching by tag) because intentVectors only stores normalized arrays
-      const rawIntent = INTENTS_RAW.find(x => (x.tag === intent.tag || x.tag === intent.tag));
-      const pool = (rawIntent && rawIntent.responses && rawIntent.responses.length) ? rawIntent.responses : intent.responses || [];
+      // fetch raw intent object to get follow_up_question, full responses
+      const rawIntent = INTENTS_RAW.find(x => x.tag === intent.tag) || {};
+      const pool = Array.isArray(rawIntent.responses) && rawIntent.responses.length ? rawIntent.responses : (intent.responses || []);
       const baseReply = pool.length ? pool[Math.floor(Math.random() * pool.length)] : "أنا سامعك وبكل هدوء معاك. احكيلي أكتر 💙";
 
-      // personalization: adapt reply using user profile and current mood & short memory
-      const personalized = adaptReplyBase(baseReply, profile, mood);
+      // if this intent has a follow-up question, set expectingFollowUp
+      if (rawIntent.follow_up_question && Array.isArray(rawIntent.follow_up_intents) && rawIntent.follow_up_intents.length) {
+        profile.expectingFollowUp = {
+          parentTag: intent.tag,
+          allowedTags: rawIntent.follow_up_intents,
+          expiresTs: Date.now() + (5 * 60 * 1000) // 5 minutes
+        };
+        // reply will be baseReply + question
+        const question = rawIntent.follow_up_question;
+        const reply = adaptReplyBase(`${baseReply}\n\n${question}`, profile, mood);
+        // store memory
+        profile.shortMemory = profile.shortMemory || [];
+        profile.shortMemory.push({ message: rawMessage, reply, mood, tag: intent.tag, ts: new Date().toISOString() });
+        if (profile.shortMemory.length > SHORT_MEMORY_LIMIT) profile.shortMemory.shift();
+        users[userId] = profile; saveUsers(users);
+        return res.status(200).json({ reply, source: "intent_followup", tag: intent.tag, score: Number(best.score.toFixed(3)), userId });
+      }
 
-      // update short memory
+      // normal personalized reply
+      const personalized = adaptReplyBase(baseReply, profile, mood);
       profile.shortMemory = profile.shortMemory || [];
-      profile.shortMemory.push({ message: rawMessage, reply: personalized, mood, ts: new Date().toISOString() });
+      profile.shortMemory.push({ message: rawMessage, reply: personalized, mood, tag: intent.tag, ts: new Date().toISOString() });
       if (profile.shortMemory.length > SHORT_MEMORY_LIMIT) profile.shortMemory.shift();
 
-      // if mood notable, add long memory point occasionally
+      // occasionally store important long-term fact
       if (mood !== "محايد" && Math.random() < 0.25) {
         profile.longMemory = profile.longMemory || [];
         profile.longMemory.push({ key: "mood_note", value: mood, ts: new Date().toISOString() });
@@ -410,20 +484,12 @@ export default async function handler(req, res) {
       }
 
       users[userId] = profile; saveUsers(users);
-
-      return res.status(200).json({
-        reply: personalized,
-        source: best.source,
-        tag: intent.tag,
-        score: Number(best.score.toFixed(3)),
-        userId
-      });
+      return res.status(200).json({ reply: personalized, source: "intent", tag: intent.tag, score: Number(best.score.toFixed(3)), userId });
     }
 
-    // 4) no strong intent -> try external provider if available
+    // no strong intent -> try external provider if available
     if (process.env.TOGETHER_API_KEY) {
       const ext = await callTogetherAPI(rawMessage);
-      // store to memory
       profile.shortMemory = profile.shortMemory || [];
       profile.shortMemory.push({ message: rawMessage, reply: ext, mood, ts: new Date().toISOString() });
       if (profile.shortMemory.length > SHORT_MEMORY_LIMIT) profile.shortMemory.shift();
@@ -431,24 +497,16 @@ export default async function handler(req, res) {
       return res.status(200).json({ reply: ext, source: "together", userId });
     }
 
-    // Optional: Gemini if configured
-    if (process.env.GEMINI_API_KEY) {
-      try {
-        // if you previously had callGeminiAPI, you can integrate it here; omitted for minimality
-      } catch (e) {
-        if (DEBUG) console.warn("Gemini attempt failed:", e);
-      }
-    }
-
-    // 5) polite fallback but with memory-aware style
-    // if user previously had mood flagged recently, mention it
+    // fallback: time-aware / memory-aware phrasing
     const lastMood = (profile.moodHistory && profile.moodHistory.length) ? profile.moodHistory[profile.moodHistory.length - 1].mood : null;
     let fallback = "محتاج منك توضيح بسيط كمان 💜 احكيلي بالراحة وأنا سامعك.";
-    if (lastMood && lastMood !== "محايد") {
-      fallback = `لسه فاكرة إنك كنت حاسس بـ"${lastMood}" قبل كده... ممكن تحكيلي لو الحالة اتغيرت؟ 💙`;
+    if (!profile.shortMemory || profile.shortMemory.length === 0) {
+      // first interaction -> friendly time-aware greeting + prompt
+      fallback = `${cairoGreetingPrefix()}، أنا رفيقك هنا. احكيلي إيه اللي بيحصل معاك النهاردة؟`;
+    } else if (lastMood && lastMood !== "محايد") {
+      fallback = `لسه فاكرة إنك قلت إنك حاسس بـ"${lastMood}" قبل كده. تحب تحكيلي لو الحالة اتغيرت؟`;
     }
 
-    // save last message into short memory
     profile.shortMemory = profile.shortMemory || [];
     profile.shortMemory.push({ message: rawMessage, reply: fallback, mood, ts: new Date().toISOString() });
     if (profile.shortMemory.length > SHORT_MEMORY_LIMIT) profile.shortMemory.shift();
@@ -462,4 +520,18 @@ export default async function handler(req, res) {
   }
 }
 
+// -------------- personalization helper (kept simple) --------------
+function adaptReplyBase(reply, userProfile, mood) {
+  const tone = (userProfile && userProfile.preferredTone) || "warm";
+  let prefix = "";
+  let suffix = "";
+  if (tone === "warm") { prefix = ""; suffix = " 💜"; }
+  else if (tone === "clinical") { prefix = ""; suffix = ""; }
+  else if (tone === "playful") { prefix = ""; suffix = " 😉"; }
 
+  if (mood === "حزن") prefix = "أنا معااك دلوقتي، ";
+  else if (mood === "قلق") prefix = "خد نفس، ";
+  else if (mood === "فرح") prefix = "يا سلام! ";
+
+  return `${prefix}${reply}${suffix}`.trim();
+}
