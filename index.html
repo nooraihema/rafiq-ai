@@ -1,40 +1,91 @@
+
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="ar">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>رفيق - مساحتك الآمنة</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>رفيق AI</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f2f2f2;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    .chat-container {
+      width: 100%;
+      max-width: 400px;
+      height: 90vh;
+      background: #fff;
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 0 15px rgba(0,0,0,0.2);
+    }
+    .chat-box {
+      flex: 1;
+      padding: 10px;
+      overflow-y: auto;
+      background: #fafafa;
+    }
+    .chat-box .user {
+      background: #007bff;
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 12px;
+      margin: 5px 0;
+      align-self: flex-end;
+      max-width: 75%;
+    }
+    .chat-box .bot {
+      background: #e4e6eb;
+      color: #000;
+      padding: 8px 12px;
+      border-radius: 12px;
+      margin: 5px 0;
+      align-self: flex-start;
+      max-width: 75%;
+    }
+    .input-container {
+      display: flex;
+      border-top: 1px solid #ddd;
+    }
+    .input-container input {
+      flex: 1;
+      border: none;
+      padding: 10px;
+      font-size: 16px;
+      outline: none;
+    }
+    .input-container button {
+      border: none;
+      background: #007bff;
+      color: #fff;
+      padding: 0 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    .input-container button:hover {
+      background: #0056b3;
+    }
+  </style>
 </head>
 <body>
-
-    <div id="chat-container">
-        <div id="chat-header">
-            <h2>رفيق 💜</h2>
-        </div>
-        <div id="chat-history">
-            <div id="typing-indicator" class="message bot-message" style="display: none;">
-                <div class="typing-dot"></div>
-                <div class="typing-dot"></div>
-                <div class="typing-dot"></div>
-            </div>
-        </div>
-        <div id="chat-input-area">
-            <input type="text" id="user-input" placeholder="اكتب ما تشعر به..." autocomplete="off">
-            <button id="send-button">إرسال</button>
-        </div>
+  <div class="chat-container">
+    <div id="chat-box" class="chat-box">
+      <div class="bot">👋 أهلاً! أنا رفيق، هنا علشان أسمعك.</div>
     </div>
-
-    <!-- 
-      التعديل النهائي والمضمون:
-      1. تحميل مكتبة Gemini كسكربت عادي في نهاية الصفحة.
-      2. تحميل ملف script.js الخاص بنا بعده مباشرة.
-    -->
-    <script src="https://unpkg.com/@google/generative-ai"></script>
-    <script src="script.js"></script>
-
+    <div class="input-container">
+      <input type="text" id="user-input" placeholder="اكتب رسالتك..." />
+      <button id="send-btn">إرسال</button>
+    </div>
+  </div>
+  <script src="script.js"></script>
 </body>
 </html>
+
