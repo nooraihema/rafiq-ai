@@ -1,8 +1,7 @@
 
 // /api/chat.js
-// ==========================
-// رفيق - محرك نوايا متقدّم (Embeddings + TF-IDF fallback + Memory + Profile + Learning Queue)
-// ==========================
+// رفيق - محرك نوايا متقدّم (TF-IDF + Embeddings fallback + Memory + Entities + RootCause + Proactive + LearningQueue)
+// Written to extend and replace your previous version; preserves structure and env flags.
 
 import fs from "fs";
 import path from "path";
@@ -153,10 +152,8 @@ function buildIndexSync() {
 
 // ------------ Embeddings helpers (OpenAI or HF) ------------
 async function embedTextOpenAI(texts) {
-  // texts: array of strings -> returns array of float arrays
   const key = OPENAI_API_KEY;
   if (!key) throw new Error("OpenAI key missing");
-  // using text-embedding-3-small or text-embedding-3-large depending on preference
   const model = process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-small";
   const res = await fetch("https://api.openai.com/v1/embeddings", {
     method: "POST",
@@ -169,7 +166,6 @@ async function embedTextOpenAI(texts) {
 }
 
 async function embedTextHF(texts) {
-  // HuggingFace inference: pipeline/feature-extraction/<model>
   const key = HF_API_KEY;
   if (!key) throw new Error("HF key missing");
   const url = `https://api-inference.huggingface.co/pipeline/feature-extraction/${HF_EMBEDDING_MODEL}`;
@@ -185,9 +181,7 @@ async function embedTextHF(texts) {
       throw new Error("HF embed error: " + tt);
     }
     const j = await res.json();
-    // HF returns array of token vectors or a single vector; if 2D, average
     if (Array.isArray(j) && Array.isArray(j[0])) {
-      // average token vectors
       const dim = j[0].length;
       const acc = new Array(dim).fill(0);
       j.forEach(tok => { for (let k=0;k<dim;k++) acc[k]+=tok[k]; });
@@ -214,7 +208,6 @@ function cosineVectors(a, b) {
 }
 
 async function ensureIntentEmbeddings() {
-  // if embeddings provider configured: for each intent compute centroid embedding for patterns
   if (!EMBEDDING_PROVIDER) return;
   try {
     const texts = intentIndex.map(it => (it.keywords.concat(it.patterns).join(" ")) || it.tag);
@@ -222,14 +215,12 @@ async function ensureIntentEmbeddings() {
     if (EMBEDDING_PROVIDER === "openai") embeddings = await embedTextOpenAI(texts);
     else if (EMBEDDING_PROVIDER === "hf") embeddings = await embedTextHF(texts);
     else throw new Error("Unknown EMBEDDING_PROVIDER");
-    // assign
     for (let i = 0; i < intentIndex.length; i++) {
       intentIndex[i].embedding = embeddings[i];
     }
     if (DEBUG) console.log("Intent embeddings ready");
   } catch (e) {
     console.warn("Failed to build intent embeddings:", e.message || e);
-    // keep embeddings null -> fallback to TF-IDF
   }
 }
 
@@ -343,6 +334,57 @@ function buildMessageTfVec(message) {
   return { vec, norm };
 }
 
+// ------------ Entity extraction & root cause ----------
+function extractEntities(rawMessage) {
+  // بسيط ومناسب للغة العربية: نجمع الأسماء/مواضيع عبر قواعد بسيطة
+  const norm = normalizeArabic(rawMessage);
+  const tokens = norm.split(/\s+/).filter(Boolean);
+  const entities = new Set();
+
+  // قواعد بسيطة: كلمات قبل/بعد "صحبتي / صديقي / أمي / ابني / مديري" أو كلمات موضوعية مشهورة
+  const peopleMarkers = ["صديقي","صديقتي","اخي","اختي","أمي","امي","أبوي","ابوي","زوجي","زوجتي","ابني","بنتي","مديري","معلمي"];
+  for (let i = 0; i < tokens.length; i++) {
+    if (peopleMarkers.includes(tokens[i])) {
+      // احصل على الكلمة التالية كاسم محتمل
+      if (tokens[i+1]) entities.add(tokens[i+1]);
+      entities.add(tokens[i]);
+    }
+  }
+
+  // مواضيع شائعة
+  const topics = ["العمل","الدراسة","الجامعة","البيت","العائلة","الزواج","المال","الفلوس","الصحة","الدوام","الموظفين","الامتحان","المدرسة"];
+  for (const t of topics) if (norm.includes(t)) entities.add(t);
+
+  // أضف الأسماء ذات الطول > 2 التي تبدو اسمًا (بسيط)
+  for (let i = 0; i < tokens.length; i++) {
+    const w = tokens[i];
+    if (w.length > 2 && /^[\u0621-\u064A0-9]+$/.test(w)) {
+      // تجاهل الكلمات العامة
+      if (!STOPWORDS.has(w) && !topics.includes(w)) {
+        // احتمال اسم شخص/كيان
+        // شرط: يبدأ بحرف كبير غير متحقق في العربية، لذا نأخذ ك = مجرد اقتراح
+        if (w.length <= 12) entities.add(w);
+      }
+    }
+  }
+
+  return Array.from(entities);
+}
+
+function extractRootCause(rawMessage) {
+  const markers = ["بسبب", "لأن", "علشان", "على خاطر", "بعد ما", "عشان"];
+  const norm = rawMessage;
+  for (const m of markers) {
+    const idx = norm.indexOf(m);
+    if (idx !== -1) {
+      // خذ ما يلي المقطع كـ سبب (حتى نهاية الجملة)
+      const cause = norm.slice(idx + m.length).trim();
+      if (cause) return cause.split(/[.,؟!]/)[0].trim();
+    }
+  }
+  return null;
+}
+
 // ------------ Scoring combining TF-IDF, Embedding, direct matches ------------
 function scoreIntent(rawMessage, msgTfVec, msgTfNorm, intent) {
   const normMsg = normalizeArabic(rawMessage);
@@ -372,7 +414,6 @@ function scoreIntent(rawMessage, msgTfVec, msgTfNorm, intent) {
   const countScore = matchCount > 0 ? (matchCount / (matchCount + 1)) : 0;
   const csTf = cosineScore(msgTfVec, intent.tfidfVector || {}, msgTfNorm, intent.tfidfNorm) || 0;
 
-  // embeddings similarity if available
   let embedSim = 0;
   if (intent.embedding && msgTfVec._embeddingVector) {
     embedSim = cosineVectors(msgTfVec._embeddingVector, intent.embedding);
@@ -382,7 +423,6 @@ function scoreIntent(rawMessage, msgTfVec, msgTfNorm, intent) {
   for (const t of matchedTerms) if (hasEmphasisNearby(rawMessage, t)) emphasisBoost += 0.08;
   const directBoost = matchCount > 0 ? 0.06 : 0;
 
-  // weights: give high weight to embeddings if available (semantic understanding)
   const wCount = 0.40, wTf = 0.20, wEmbed = (intent.embedding ? 0.36 : 0), wDirect = 0.04;
   const final = (countScore * wCount) + (Math.max(0, csTf) * wTf) + (embedSim * wEmbed) + directBoost + emphasisBoost;
   return { final, countScore, csTf, embedSim, matchedTerms };
@@ -471,9 +511,59 @@ function criticalSafetyReply() {
   return "كلامك مهم جدًا وأنا آخذه على محمل الجد. لو عندك أفكار لإيذاء نفسك أو فقدت الأمان، مهم جدًا تكلم حد موثوق فورًا أو تواصل مع جهة مختصة قريبة منك. لو تقدر، كلّمني أكتر دلوقتي عن اللي بيمرّ عليك وأنا معاك خطوة بخطوة 💙";
 }
 
+// ------------ Entity + profile updaters ------------
+function updateProfileWithEntities(profile, entities, mood, rootCause) {
+  profile.longTermProfile = profile.longTermProfile || { recurring_themes: {}, mentioned_entities: {}, communication_style: "neutral" };
+  for (const ent of entities) {
+    const key = ent;
+    if (!profile.longTermProfile.mentioned_entities[key]) {
+      profile.longTermProfile.mentioned_entities[key] = {
+        type: "topic",
+        sentiment_associations: {},
+        last_mentioned: new Date().toISOString(),
+        mention_count: 0,
+        last_root_causes: []
+      };
+    }
+    const obj = profile.longTermProfile.mentioned_entities[key];
+    obj.mention_count = (obj.mention_count || 0) + 1;
+    obj.sentiment_associations[mood] = (obj.sentiment_associations[mood] || 0) + 1;
+    obj.last_mentioned = new Date().toISOString();
+    if (rootCause) {
+      obj.last_root_causes = obj.last_root_causes || [];
+      obj.last_root_causes.unshift({ cause: rootCause, ts: new Date().toISOString() });
+      if (obj.last_root_causes.length > 5) obj.last_root_causes.pop();
+    }
+  }
+}
+
+function recordRecurringTheme(profile, mood) {
+  profile.longTermProfile = profile.longTermProfile || { recurring_themes: {}, mentioned_entities: {}, communication_style: "neutral" };
+  profile.longTermProfile.recurring_themes[mood] = (profile.longTermProfile.recurring_themes[mood] || 0) + 1;
+}
+
+// ------------ Pattern detection insights (simple) ------------
+function detectPatternInsights(profile) {
+  const insights = [];
+  const themes = profile.longTermProfile && profile.longTermProfile.recurring_themes ? profile.longTermProfile.recurring_themes : {};
+  // example: if sadness count > 5
+  if (themes["حزن"] && themes["حزن"] >= 5) {
+    insights.push("لاحظت إنك بتشاركني مشاعر حزن بشكل متكرر. لو حابب، ممكن نجرب نصائح يومية بسيطة مع بعض.");
+  }
+  // entity-based: repeated entity causing mood
+  const ents = profile.longTermProfile && profile.longTermProfile.mentioned_entities ? profile.longTermProfile.mentioned_entities : {};
+  for (const k in ents) {
+    const e = ents[k];
+    if (e.sentiment_associations && e.sentiment_associations["قلق"] && e.sentiment_associations["قلق"] >= 3) {
+      insights.push(`الموضوع "${k}" مذكور كتير مع شعور قلق — يمكن نركز عليه شوية في محادثاتنا الجاية.`);
+    }
+  }
+  return insights;
+}
+
 // ------------ Initialization: build TF-IDF index and embeddings (async part) ------------
 buildIndexSync();
-(async () => { 
+(async () => {
   await ensureIntentEmbeddings().catch(e => { if (DEBUG) console.warn("Embedding init failed:", e.message || e); });
 })();
 
@@ -516,18 +606,23 @@ export default async function handler(req, res) {
       return res.status(200).json({ reply: criticalSafetyReply(), source: "safety", userId });
     }
 
-    // mood detect & update longTermProfile recurring themes
+    // detect mood, entities, root cause
     const mood = detectMood(rawMessage);
-    profile.moodHistory.push({ mood, ts: new Date().toISOString() });
+    const entities = extractEntities(rawMessage);
+    const rootCause = extractRootCause(rawMessage);
+
+    // update mood history & recurring
+    profile.moodHistory.push({ mood, ts: new Date().toISOString(), message: rawMessage });
     if (profile.moodHistory.length > LONG_TERM_LIMIT) profile.moodHistory.shift();
     if (mood !== "محايد") {
-      profile.longTermProfile = profile.longTermProfile || { recurring_themes: {}, mentioned_entities: {}, communication_style: "neutral" };
-      profile.longTermProfile.recurring_themes[mood] = (profile.longTermProfile.recurring_themes[mood] || 0) + 1;
+      recordRecurringTheme(profile, mood);
     }
+
+    // update entities in profile
+    if (entities && entities.length) updateProfileWithEntities(profile, entities, mood, rootCause);
 
     // prepare message vector
     const msgTf = buildMessageTfVec(rawMessage);
-    // attach embeddings if possible
     await embedMessageIfPossible(msgTf, rawMessage);
 
     // follow-up restriction
@@ -545,7 +640,7 @@ export default async function handler(req, res) {
 
     for (const i of candidateIdxs) {
       const intent = intentIndex[i];
-      const sc = scoreIntent(rawMessage, msgTf, msgTf.norm, Object.assign({}, intent, { tfidfVector: intent.tfidfVector || {}, tfidfNorm: intent.tfidfNorm || 1, embedding: intent.embedding || null }));
+      const sc = scoreIntent(rawMessage, msgTf.vec, msgTf.norm, Object.assign({}, intent, { tfidfVector: intent.tfidfVector || {}, tfidfNorm: intent.tfidfNorm || 1, embedding: intent.embedding || null }));
       if (sc.final > best.score) best = { idx: i, score: sc.final, details: sc };
       if (DEBUG) console.log(`[SCORE] tag=${intent.tag} final=${sc.final.toFixed(3)} matched=${JSON.stringify(sc.matchedTerms)} embed=${sc.embedSim?.toFixed?.(3) || 0}`);
     }
@@ -553,17 +648,16 @@ export default async function handler(req, res) {
     // matched intent
     if (best.idx !== -1 && best.score >= THRESHOLD) {
       const intent = intentIndex[best.idx];
-      // safety protocol
       if (intent.safety === "CRITICAL") {
         profile.flags.critical = true; saveUsers(users);
         return res.status(200).json({ reply: criticalSafetyReply(), source: "intent_critical", tag: intent.tag, score: Number(best.score.toFixed(3)), userId });
       }
-      // get raw intent for followup/responses
+
       const rawIntent = INTENTS_RAW.find(x => x.tag === intent.tag) || {};
       const pool = Array.isArray(rawIntent.responses) && rawIntent.responses.length ? rawIntent.responses : (intent.responses || []);
       const baseReply = pool.length ? pool[Math.floor(Math.random() * pool.length)] : "أنا سامعك وبكل هدوء معاك. احكيلي أكتر 💙";
 
-      // follow-up handling
+      // handle follow-up
       if (rawIntent.follow_up_question && Array.isArray(rawIntent.follow_up_intents) && rawIntent.follow_up_intents.length) {
         profile.expectingFollowUp = { parentTag: intent.tag, allowedTags: rawIntent.follow_up_intents, expiresTs: Date.now() + (5*60*1000) };
         const question = rawIntent.follow_up_question;
@@ -574,39 +668,63 @@ export default async function handler(req, res) {
         return res.status(200).json({ reply, source: "intent_followup", tag: intent.tag, score: Number(best.score.toFixed(3)), userId });
       }
 
-      // normal reply
+      // normal intent reply (personalized)
       const personalized = adaptReplyBase(baseReply, profile, mood);
-      profile.shortMemory = profile.shortMemory || []; profile.shortMemory.push({ message: rawMessage, reply: personalized, mood, tag: intent.tag, ts: new Date().toISOString() });
+
+      // add subtle personal recall if entities overlap
+      const recallHit = entities.find(e => profile.longTermProfile && profile.longTermProfile.mentioned_entities && profile.longTermProfile.mentioned_entities[e]);
+      let finalReply = personalized;
+      if (recallHit) {
+        finalReply = `${personalized}\n\nأنا لسه فاكر إنك كلمتني عن "${recallHit}" قبل كده — تحب تحكيلي هل الموضوع اتغير؟`;
+      }
+
+      profile.shortMemory = profile.shortMemory || []; profile.shortMemory.push({ message: rawMessage, reply: finalReply, mood, tag: intent.tag, ts: new Date().toISOString() });
       if (profile.shortMemory.length > SHORT_MEMORY_LIMIT) profile.shortMemory.shift();
-      // update long memory occasionally
+
+      // occasional longMemory push
       if (mood !== "محايد" && Math.random() < 0.25) {
         profile.longMemory = profile.longMemory || [];
-        profile.longMemory.push({ key: "mood_note", value: mood, ts: new Date().toISOString() });
+        profile.longMemory.push({ key: "mood_note", value: mood, ts: new Date().toISOString(), entities });
         if (profile.longMemory.length > LONG_TERM_LIMIT) profile.longMemory.shift();
       }
+
       users[userId] = profile; saveUsers(users);
-      return res.status(200).json({ reply: personalized, source: "intent", tag: intent.tag, score: Number(best.score.toFixed(3)), userId });
+      return res.status(200).json({ reply: finalReply, source: "intent", tag: intent.tag, score: Number(best.score.toFixed(3)), userId });
     }
 
     // no strong internal understanding -> external provider
     if (process.env.TOGETHER_API_KEY) {
       const ext = await callTogetherAPI(rawMessage);
-      // push to learning queue for later manual labeling
-      appendLearningQueue({ message: rawMessage, userId, provider: "together", extResponse: ext, ts: new Date().toISOString() });
+      appendLearningQueue({ message: rawMessage, userId, provider: "together", extResponse: ext });
       profile.shortMemory = profile.shortMemory || []; profile.shortMemory.push({ message: rawMessage, reply: ext, mood, ts: new Date().toISOString() });
       if (profile.shortMemory.length > SHORT_MEMORY_LIMIT) profile.shortMemory.shift();
       users[userId] = profile; saveUsers(users);
       return res.status(200).json({ reply: ext, source: "together", userId });
     }
 
-    // fallback: memory/time-aware
+    // fallback (memory/time-aware + proactive)
     const lastMood = (profile.moodHistory && profile.moodHistory.length) ? profile.moodHistory[profile.moodHistory.length - 1].mood : null;
     let fallback = "محتاج منك توضيح بسيط كمان 💜 احكيلي بالراحة وأنا سامعك.";
+
+    // Proactive check-in if start of session
     if (!profile.shortMemory || profile.shortMemory.length === 0) {
-      fallback = `${cairoGreetingPrefix()}، أنا رفيقك هنا. احكيلي إيه اللي بيحصل معاك النهاردة؟`;
+      const recentEntities = Object.keys(profile.longTermProfile && profile.longTermProfile.mentioned_entities ? profile.longTermProfile.mentioned_entities : {});
+      if (recentEntities && recentEntities.length) {
+        const ent = recentEntities[recentEntities.length - 1];
+        fallback = `${cairoGreetingPrefix()}، أتذكّر إنك كنت بتتكلم عن "${ent}" آخر مرة. هل الوضع عنده اتحسّن ولا لسه؟`;
+      } else {
+        fallback = `${cairoGreetingPrefix()}، أنا رفيقك هنا. احكيلي إيه اللي بيحصل معاك النهاردة؟`;
+      }
     } else if (lastMood && lastMood !== "محايد") {
       fallback = `لسه فاكرة إنك قلت إنك حاسس بـ"${lastMood}" قبل كده. تحب تحكيلي لو الحالة اتغيرت؟`;
     }
+
+    // add pattern insight occasionally
+    const insights = detectPatternInsights(profile);
+    if (insights.length && Math.random() < 0.15) {
+      fallback += `\n\nملاحظة: ${insights[0]}`;
+    }
+
     profile.shortMemory = profile.shortMemory || []; profile.shortMemory.push({ message: rawMessage, reply: fallback, mood, ts: new Date().toISOString() });
     if (profile.shortMemory.length > SHORT_MEMORY_LIMIT) profile.shortMemory.shift();
     users[userId] = profile; saveUsers(users);
@@ -618,3 +736,27 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "Internal Server Error" });
   }
 }
+
+// ------------ Helper functions (re-declared at bottom for clarity) ------------
+function loadUsers() {
+  try {
+    if (!fs.existsSync(USERS_FILE)) {
+      fs.writeFileSync(USERS_FILE, JSON.stringify({}), "utf8");
+      return {};
+    }
+    const raw = fs.readFileSync(USERS_FILE, "utf8");
+    return JSON.parse(raw || "{}");
+  } catch (e) {
+    console.error("Failed to load users file:", e);
+    return {};
+  }
+}
+function saveUsers(users) {
+  try {
+    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), "utf8");
+    if (DEBUG) console.log("Saved users");
+  } catch (e) {
+    console.error("Failed to save users file:", e);
+  }
+}
+
