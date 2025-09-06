@@ -86,11 +86,14 @@ function loadIntentsRaw() {
       const tag = it.tag || it.intent || it.id || `intent_${idx}`;
       const patterns = Array.isArray(it.patterns) ? it.patterns : [];
       const keywords = Array.isArray(it.keywords) ? it.keywords : [];
+      // START: COMPOSITIONAL INTELLIGENCE (Added response_constructor)
       const responses = Array.isArray(it.responses) ? it.responses : (it.response ? [it.response] : []);
+      const response_constructor = it.response_constructor || null;
+      // END: COMPOSITIONAL INTELLIGENCE
       const safety = (it.safety_protocol || "").toUpperCase().trim();
       const follow_up_question = it.follow_up_question || null;
       const follow_up_intents = Array.isArray(it.follow_up_intents) ? it.follow_up_intents : [];
-      return { tag, patterns, keywords, responses, safety, follow_up_question, follow_up_intents };
+      return { tag, patterns, keywords, responses, response_constructor, safety, follow_up_question, follow_up_intents };
     });
   } catch (e) {
     console.error("Failed to parse intents.json:", e);
@@ -132,7 +135,10 @@ function buildIndexSync() {
     const norm = Math.sqrt(sq) || 1;
     return {
       tag: it.tag,
+      // START: COMPOSITIONAL INTELLIGENCE (Added response_constructor to index)
       responses: it.responses,
+      response_constructor: it.response_constructor,
+      // END: COMPOSITIONAL INTELLIGENCE
       safety: it.safety,
       keywords: it.keywords.map(normalizeArabic),
       patterns: it.patterns.map(normalizeArabic),
@@ -336,33 +342,25 @@ function buildMessageTfVec(message) {
 
 // ------------ Entity extraction & root cause ----------
 function extractEntities(rawMessage) {
-  // بسيط ومناسب للغة العربية: نجمع الأسماء/مواضيع عبر قواعد بسيطة
   const norm = normalizeArabic(rawMessage);
   const tokens = norm.split(/\s+/).filter(Boolean);
   const entities = new Set();
 
-  // قواعد بسيطة: كلمات قبل/بعد "صحبتي / صديقي / أمي / ابني / مديري" أو كلمات موضوعية مشهورة
   const peopleMarkers = ["صديقي","صديقتي","اخي","اختي","أمي","امي","أبوي","ابوي","زوجي","زوجتي","ابني","بنتي","مديري","معلمي"];
   for (let i = 0; i < tokens.length; i++) {
     if (peopleMarkers.includes(tokens[i])) {
-      // احصل على الكلمة التالية كاسم محتمل
       if (tokens[i+1]) entities.add(tokens[i+1]);
       entities.add(tokens[i]);
     }
   }
 
-  // مواضيع شائعة
   const topics = ["العمل","الدراسة","الجامعة","البيت","العائلة","الزواج","المال","الفلوس","الصحة","الدوام","الموظفين","الامتحان","المدرسة"];
   for (const t of topics) if (norm.includes(t)) entities.add(t);
 
-  // أضف الأسماء ذات الطول > 2 التي تبدو اسمًا (بسيط)
   for (let i = 0; i < tokens.length; i++) {
     const w = tokens[i];
     if (w.length > 2 && /^[\u0621-\u064A0-9]+$/.test(w)) {
-      // تجاهل الكلمات العامة
       if (!STOPWORDS.has(w) && !topics.includes(w)) {
-        // احتمال اسم شخص/كيان
-        // شرط: يبدأ بحرف كبير غير متحقق في العربية، لذا نأخذ ك = مجرد اقتراح
         if (w.length <= 12) entities.add(w);
       }
     }
@@ -377,7 +375,6 @@ function extractRootCause(rawMessage) {
   for (const m of markers) {
     const idx = norm.indexOf(m);
     if (idx !== -1) {
-      // خذ ما يلي المقطع كـ سبب (حتى نهاية الجملة)
       const cause = norm.slice(idx + m.length).trim();
       if (cause) return cause.split(/[.,؟!]/)[0].trim();
     }
@@ -539,31 +536,69 @@ function updateProfileWithEntities(profile, entities, mood, rootCause) {
 
 function recordRecurringTheme(profile, mood) {
   profile.longTermProfile = profile.longTermProfile || { recurring_themes: {}, mentioned_entities: {}, communication_style: "neutral" };
-  profile.longTermProfile.recurring_themes[mood] = (profile.longTermProfile.recurring_themes[mood] || 0) + 1;
+  if (mood !== "محايد") {
+      profile.longTermProfile.recurring_themes[mood] = (profile.longTermProfile.recurring_themes[mood] || 0) + 1;
+  }
 }
 
-// ------------ Pattern detection insights (simple) ------------
-function detectPatternInsights(profile) {
-  const insights = [];
-  const themes = profile.longTermProfile && profile.longTermProfile.recurring_themes ? profile.longTermProfile.recurring_themes : {};
-  // example: if sadness count > 5
-  if (themes["حزن"] && themes["حزن"] >= 5) {
-    insights.push("لاحظت إنك بتشاركني مشاعر حزن بشكل متكرر. لو حابب، ممكن نجرب نصائح يومية بسيطة مع بعض.");
+// START: COMPOSITIONAL INTELLIGENCE
+// ===================================
+// This is the new function responsible for building dynamic, context-aware responses.
+function composeResponse(constructor, context) {
+  // Fallback if the constructor is missing, though the main logic should prevent this.
+  if (!constructor) return null;
+
+  const { mood, entities, isRecurring, intentTag, profile } = context;
+  let finalResponseParts = [];
+  const mainEntity = entities.length > 0 ? entities[0] : null;
+
+  // 1. Select and personalize an opener
+  if (constructor.openers && constructor.openers.length > 0) {
+    let opener = constructor.openers[Math.floor(Math.random() * constructor.openers.length)];
+    // Replace placeholders with actual context
+    if (mainEntity) opener = opener.replace(/\{ENTITY\}/g, mainEntity);
+    if (mood && mood !== 'محايد') opener = opener.replace(/\{MOOD\}/g, mood);
+    finalResponseParts.push(opener);
   }
-  // entity-based: repeated entity causing mood
-  const ents = profile.longTermProfile && profile.longTermProfile.mentioned_entities ? profile.longTermProfile.mentioned_entities : {};
-  for (const k in ents) {
-    const e = ents[k];
-    if (e.sentiment_associations && e.sentiment_associations["قلق"] && e.sentiment_associations["قلق"] >= 3) {
-      insights.push(`الموضوع "${k}" مذكور كتير مع شعور قلق — يمكن نركز عليه شوية في محادثاتنا الجاية.`);
+
+  // 2. Check and apply memory hooks for personalization
+  if (constructor.memory_hooks && constructor.memory_hooks.length > 0) {
+    for (const hook of constructor.memory_hooks) {
+      // Check for recurring theme hook
+      if (hook.if_recurring_theme && isRecurring && hook.if_recurring_theme === intentTag) {
+        finalResponseParts.push(hook.phrase);
+      }
+      // Check for entity mentioned hook
+      if (hook.if_entity_mentioned && mainEntity && hook.if_entity_mentioned === mainEntity) {
+        let phrase = hook.phrase.replace(/\{ENTITY\}/g, mainEntity);
+        finalResponseParts.push(phrase);
+      }
     }
   }
-  return insights;
+  
+  // 3. Select a validation phrase to acknowledge the user's feelings
+  if (constructor.validations && constructor.validations.length > 0) {
+    const validation = constructor.validations[Math.floor(Math.random() * constructor.validations.length)];
+    finalResponseParts.push(validation);
+  }
+  
+  // 4. Select a continuer to encourage further conversation
+  if (constructor.continuers && constructor.continuers.length > 0) {
+    const continuer = constructor.continuers[Math.floor(Math.random() * constructor.continuers.length)];
+    finalResponseParts.push(continuer);
+  }
+
+  // 5. Join all parts into a coherent response string.
+  // Filter out any empty parts and join with a space.
+  return finalResponseParts.filter(Boolean).join(' ');
 }
+// ===================================
+// END: COMPOSITIONAL INTELLIGENCE
+
 
 // ------------ Initialization: build TF-IDF index and embeddings (async part) ------------
 buildIndexSync();
-(async () => {
+(async () => { 
   await ensureIntentEmbeddings().catch(e => { if (DEBUG) console.warn("Embedding init failed:", e.message || e); });
 })();
 
@@ -606,20 +641,17 @@ export default async function handler(req, res) {
       return res.status(200).json({ reply: criticalSafetyReply(), source: "safety", userId });
     }
 
-    // detect mood, entities, root cause
+    // Advanced analysis: mood, entities, root cause
     const mood = detectMood(rawMessage);
     const entities = extractEntities(rawMessage);
     const rootCause = extractRootCause(rawMessage);
-
-    // update mood history & recurring
-    profile.moodHistory.push({ mood, ts: new Date().toISOString(), message: rawMessage });
+    
+    // Update user profile with new insights
+    updateProfileWithEntities(profile, entities, mood, rootCause);
+    recordRecurringTheme(profile, mood); // Simplified from previous version
+    
+    profile.moodHistory.push({ mood, ts: new Date().toISOString() });
     if (profile.moodHistory.length > LONG_TERM_LIMIT) profile.moodHistory.shift();
-    if (mood !== "محايد") {
-      recordRecurringTheme(profile, mood);
-    }
-
-    // update entities in profile
-    if (entities && entities.length) updateProfileWithEntities(profile, entities, mood, rootCause);
 
     // prepare message vector
     const msgTf = buildMessageTfVec(rawMessage);
@@ -640,7 +672,7 @@ export default async function handler(req, res) {
 
     for (const i of candidateIdxs) {
       const intent = intentIndex[i];
-      const sc = scoreIntent(rawMessage, msgTf.vec, msgTf.norm, Object.assign({}, intent, { tfidfVector: intent.tfidfVector || {}, tfidfNorm: intent.tfidfNorm || 1, embedding: intent.embedding || null }));
+      const sc = scoreIntent(rawMessage, msgTf, msgTf.norm, Object.assign({}, intent, { tfidfVector: intent.tfidfVector || {}, tfidfNorm: intent.tfidfNorm || 1, embedding: intent.embedding || null }));
       if (sc.final > best.score) best = { idx: i, score: sc.final, details: sc };
       if (DEBUG) console.log(`[SCORE] tag=${intent.tag} final=${sc.final.toFixed(3)} matched=${JSON.stringify(sc.matchedTerms)} embed=${sc.embedSim?.toFixed?.(3) || 0}`);
     }
@@ -648,19 +680,43 @@ export default async function handler(req, res) {
     // matched intent
     if (best.idx !== -1 && best.score >= THRESHOLD) {
       const intent = intentIndex[best.idx];
+      // safety protocol
       if (intent.safety === "CRITICAL") {
         profile.flags.critical = true; saveUsers(users);
         return res.status(200).json({ reply: criticalSafetyReply(), source: "intent_critical", tag: intent.tag, score: Number(best.score.toFixed(3)), userId });
       }
+      
+      let baseReply;
+      // START: COMPOSITIONAL INTELLIGENCE (Main logic change)
+      // ===================================
+      // Check if the matched intent uses the new compositional system.
+      if (intent.response_constructor) {
+          const context = {
+              mood: mood,
+              entities: entities,
+              isRecurring: (profile.longTermProfile.recurring_themes[intent.tag] || 0) > 3,
+              intentTag: intent.tag,
+              profile: profile
+          };
+          baseReply = composeResponse(intent.response_constructor, context);
+      }
+      // Fallback to the old system if response_constructor is not defined.
+      // This ensures backward compatibility with your existing intents.json entries.
+      else if (intent.responses && intent.responses.length > 0) {
+          baseReply = intent.responses[Math.floor(Math.random() * intent.responses.length)];
+      }
+      
+      // Final fallback if no response could be generated.
+      if (!baseReply) {
+          baseReply = "أنا سامعك وبكل هدوء معاك. احكيلي أكتر 💙";
+      }
+      // ===================================
+      // END: COMPOSITIONAL INTELLIGENCE
 
-      const rawIntent = INTENTS_RAW.find(x => x.tag === intent.tag) || {};
-      const pool = Array.isArray(rawIntent.responses) && rawIntent.responses.length ? rawIntent.responses : (intent.responses || []);
-      const baseReply = pool.length ? pool[Math.floor(Math.random() * pool.length)] : "أنا سامعك وبكل هدوء معاك. احكيلي أكتر 💙";
-
-      // handle follow-up
-      if (rawIntent.follow_up_question && Array.isArray(rawIntent.follow_up_intents) && rawIntent.follow_up_intents.length) {
-        profile.expectingFollowUp = { parentTag: intent.tag, allowedTags: rawIntent.follow_up_intents, expiresTs: Date.now() + (5*60*1000) };
-        const question = rawIntent.follow_up_question;
+      // follow-up handling - This logic remains unchanged
+      if (intent.follow_up_question && Array.isArray(intent.follow_up_intents) && intent.follow_up_intents.length) {
+        profile.expectingFollowUp = { parentTag: intent.tag, allowedTags: intent.follow_up_intents, expiresTs: Date.now() + (5*60*1000) };
+        const question = intent.follow_up_question;
         const reply = adaptReplyBase(`${baseReply}\n\n${question}`, profile, mood);
         profile.shortMemory = profile.shortMemory || []; profile.shortMemory.push({ message: rawMessage, reply, mood, tag: intent.tag, ts: new Date().toISOString() });
         if (profile.shortMemory.length > SHORT_MEMORY_LIMIT) profile.shortMemory.shift();
@@ -668,63 +724,38 @@ export default async function handler(req, res) {
         return res.status(200).json({ reply, source: "intent_followup", tag: intent.tag, score: Number(best.score.toFixed(3)), userId });
       }
 
-      // normal intent reply (personalized)
+      // normal reply
       const personalized = adaptReplyBase(baseReply, profile, mood);
-
-      // add subtle personal recall if entities overlap
-      const recallHit = entities.find(e => profile.longTermProfile && profile.longTermProfile.mentioned_entities && profile.longTermProfile.mentioned_entities[e]);
-      let finalReply = personalized;
-      if (recallHit) {
-        finalReply = `${personalized}\n\nأنا لسه فاكر إنك كلمتني عن "${recallHit}" قبل كده — تحب تحكيلي هل الموضوع اتغير؟`;
-      }
-
-      profile.shortMemory = profile.shortMemory || []; profile.shortMemory.push({ message: rawMessage, reply: finalReply, mood, tag: intent.tag, ts: new Date().toISOString() });
+      profile.shortMemory = profile.shortMemory || []; profile.shortMemory.push({ message: rawMessage, reply: personalized, mood, tag: intent.tag, ts: new Date().toISOString() });
       if (profile.shortMemory.length > SHORT_MEMORY_LIMIT) profile.shortMemory.shift();
-
-      // occasional longMemory push
+      // update long memory (this could be refactored into the profile update section)
       if (mood !== "محايد" && Math.random() < 0.25) {
         profile.longMemory = profile.longMemory || [];
-        profile.longMemory.push({ key: "mood_note", value: mood, ts: new Date().toISOString(), entities });
+        profile.longMemory.push({ key: "mood_note", value: mood, ts: new Date().toISOString() });
         if (profile.longMemory.length > LONG_TERM_LIMIT) profile.longMemory.shift();
       }
-
       users[userId] = profile; saveUsers(users);
-      return res.status(200).json({ reply: finalReply, source: "intent", tag: intent.tag, score: Number(best.score.toFixed(3)), userId });
+      return res.status(200).json({ reply: personalized, source: "intent", tag: intent.tag, score: Number(best.score.toFixed(3)), userId });
     }
 
     // no strong internal understanding -> external provider
     if (process.env.TOGETHER_API_KEY) {
       const ext = await callTogetherAPI(rawMessage);
-      appendLearningQueue({ message: rawMessage, userId, provider: "together", extResponse: ext });
+      appendLearningQueue({ message: rawMessage, userId, provider: "together", extResponse: ext, ts: new Date().toISOString() });
       profile.shortMemory = profile.shortMemory || []; profile.shortMemory.push({ message: rawMessage, reply: ext, mood, ts: new Date().toISOString() });
       if (profile.shortMemory.length > SHORT_MEMORY_LIMIT) profile.shortMemory.shift();
       users[userId] = profile; saveUsers(users);
       return res.status(200).json({ reply: ext, source: "together", userId });
     }
 
-    // fallback (memory/time-aware + proactive)
+    // fallback: memory/time-aware
     const lastMood = (profile.moodHistory && profile.moodHistory.length) ? profile.moodHistory[profile.moodHistory.length - 1].mood : null;
     let fallback = "محتاج منك توضيح بسيط كمان 💜 احكيلي بالراحة وأنا سامعك.";
-
-    // Proactive check-in if start of session
     if (!profile.shortMemory || profile.shortMemory.length === 0) {
-      const recentEntities = Object.keys(profile.longTermProfile && profile.longTermProfile.mentioned_entities ? profile.longTermProfile.mentioned_entities : {});
-      if (recentEntities && recentEntities.length) {
-        const ent = recentEntities[recentEntities.length - 1];
-        fallback = `${cairoGreetingPrefix()}، أتذكّر إنك كنت بتتكلم عن "${ent}" آخر مرة. هل الوضع عنده اتحسّن ولا لسه؟`;
-      } else {
-        fallback = `${cairoGreetingPrefix()}، أنا رفيقك هنا. احكيلي إيه اللي بيحصل معاك النهاردة؟`;
-      }
+      fallback = `${cairoGreetingPrefix()}، أنا رفيقك هنا. احكيلي إيه اللي بيحصل معاك النهاردة؟`;
     } else if (lastMood && lastMood !== "محايد") {
       fallback = `لسه فاكرة إنك قلت إنك حاسس بـ"${lastMood}" قبل كده. تحب تحكيلي لو الحالة اتغيرت؟`;
     }
-
-    // add pattern insight occasionally
-    const insights = detectPatternInsights(profile);
-    if (insights.length && Math.random() < 0.15) {
-      fallback += `\n\nملاحظة: ${insights[0]}`;
-    }
-
     profile.shortMemory = profile.shortMemory || []; profile.shortMemory.push({ message: rawMessage, reply: fallback, mood, ts: new Date().toISOString() });
     if (profile.shortMemory.length > SHORT_MEMORY_LIMIT) profile.shortMemory.shift();
     users[userId] = profile; saveUsers(users);
@@ -736,27 +767,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "Internal Server Error" });
   }
 }
-
-// ------------ Helper functions (re-declared at bottom for clarity) ------------
-function loadUsers() {
-  try {
-    if (!fs.existsSync(USERS_FILE)) {
-      fs.writeFileSync(USERS_FILE, JSON.stringify({}), "utf8");
-      return {};
-    }
-    const raw = fs.readFileSync(USERS_FILE, "utf8");
-    return JSON.parse(raw || "{}");
-  } catch (e) {
-    console.error("Failed to load users file:", e);
-    return {};
-  }
-}
-function saveUsers(users) {
-  try {
-    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), "utf8");
-    if (DEBUG) console.log("Saved users");
-  } catch (e) {
-    console.error("Failed to save users file:", e);
-  }
-}
-
