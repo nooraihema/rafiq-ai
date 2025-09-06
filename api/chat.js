@@ -10,7 +10,15 @@ import crypto from "crypto";
 // ------------ إعداد عام ومسارات ------------
 const ROOT = process.cwd();
 const INTENTS_PATH = path.join(ROOT, "intents.json");
-const DATA_DIR = path.join(ROOT, "data");
+
+// --- تعديل ذكي لمسار البيانات ---
+// VERCEL_ENV متغير بيئة موجود فقط عند تشغيل الكود على Vercel
+const IS_VERCEL = process.env.VERCEL_ENV === 'production' || process.env.VERCEL_ENV === 'preview';
+
+// إذا كنا على Vercel، استخدم المجلد المؤقت /tmp. وإلا، استخدم مجلد data المحلي.
+const DATA_DIR = IS_VERCEL ? path.join("/tmp", "data") : path.join(ROOT, "data");
+// ---------------------------------
+
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 const LEARNING_QUEUE_FILE = path.join(DATA_DIR, "learning_queue.json");
 
