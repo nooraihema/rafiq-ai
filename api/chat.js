@@ -1,7 +1,7 @@
 
 // /api/chat.js
 // رفيق - محرك نوايا متقدّم (TF-IDF + Embeddings fallback + Memory + Entities + RootCause + Proactive + LearningQueue)
-// Written to extend and replace your previous version; preserves structure and env flags.
+// Final version with Advanced Intelligence Layer (Active Memory, Proactive Intelligence, Pattern Recognition)
 
 import fs from "fs";
 import path from "path";
@@ -12,10 +12,7 @@ const ROOT = process.cwd();
 const INTENTS_PATH = path.join(ROOT, "intents.json");
 
 // --- تعديل ذكي لمسار البيانات ---
-// VERCEL_ENV متغير بيئة موجود فقط عند تشغيل الكود على Vercel
 const IS_VERCEL = process.env.VERCEL_ENV === 'production' || process.env.VERCEL_ENV === 'preview';
-
-// إذا كنا على Vercel، استخدم المجلد المؤقت /tmp. وإلا، استخدم مجلد data المحلي.
 const DATA_DIR = IS_VERCEL ? path.join("/tmp", "data") : path.join(ROOT, "data");
 // ---------------------------------
 
@@ -30,31 +27,21 @@ const SHORT_MEMORY_LIMIT = parseInt(process.env.SHORT_MEMORY_LIMIT || "5", 10);
 const LONG_TERM_LIMIT = parseInt(process.env.LONG_TERM_LIMIT || "60", 10);
 
 // Embeddings config
-const EMBEDDING_PROVIDER = process.env.EMBEDDING_PROVIDER || ""; // "openai" | "hf" | ""
+const EMBEDDING_PROVIDER = process.env.EMBEDDING_PROVIDER || "";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY || "";
 const HF_API_KEY = process.env.HF_API_KEY || "";
 const HF_EMBEDDING_MODEL = process.env.HF_EMBEDDING_MODEL || "sentence-transformers/all-mpnet-base-v2";
 
 // ------------ أدوات تطبيع عربي وtokenize ------------
 function normalizeArabic(text = "") {
-  return text
-    .toString()
-    .toLowerCase()
+  return text.toString().toLowerCase()
     .replace(/[\u0610-\u061A\u064B-\u065F\u06D6-\u06ED]/g, "")
-    .replace(/[إأٱآا]/g, "ا")
-    .replace(/ى/g, "ي")
-    .replace(/[ؤئ]/g, "ء")
-    .replace(/ة/g, "ه")
-    .replace(/[^ء-ي0-9a-z\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+    .replace(/[إأٱآا]/g, "ا").replace(/ى/g, "ي")
+    .replace(/[ؤئ]/g, "ء").replace(/ة/g, "ه")
+    .replace(/[^ء-ي0-9a-z\s]/g, " ").replace(/\s+/g, " ").trim();
 }
 
-const STOPWORDS = new Set([
-  "في","من","على","عن","الى","الي","او","ام","ان","انا","انت","هو","هي","هم",
-  "مع","ما","لا","لم","لن","قد","ثم","كل","ايه","ايضا","بس","لكن","هذه","هذا",
-  "ذلك","الذي","التي","اللي","كان","كانت","كون","يكون","هوه","هيه","يا","ياعم",
-]);
+const STOPWORDS = new Set(["في","من","على","عن","الى","الي","او","ام","ان","انا","انت","هو","هي","هم","مع","ما","لا","لم","لن","قد","ثم","كل","ايه","ايضا","بس","لكن","هذه","هذا","ذلك","الذي","التي","اللي","كان","كانت","كون","يكون","هوه","هيه","يا","ياعم"]);
 
 function tokenize(text) {
   const t = normalizeArabic(text);
@@ -80,9 +67,9 @@ function levenshtein(a, b) {
   return dp[m][n];
 }
 
-// ------------ تحميل intents + بناء فهرس (TF-IDF & optional Embeddings) ------------
+// ------------ تحميل intents + بناء فهرس ------------
 let INTENTS_RAW = [];
-let intentIndex = []; // entries: { tag, responses, safety, keywords[], patterns[], tfidfVector, tfidfNorm, embedding: [] (optional) }
+let intentIndex = [];
 let tagToIdx = {};
 
 function loadIntentsRaw() {
@@ -90,42 +77,28 @@ function loadIntentsRaw() {
     const raw = fs.readFileSync(INTENTS_PATH, "utf8");
     const json = JSON.parse(raw);
     const arr = Array.isArray(json.intents) ? json.intents : json;
-    return arr.map((it, idx) => {
-      const tag = it.tag || it.intent || it.id || `intent_${idx}`;
-      const patterns = Array.isArray(it.patterns) ? it.patterns : [];
-      const keywords = Array.isArray(it.keywords) ? it.keywords : [];
-      // START: COMPOSITIONAL INTELLIGENCE (Added response_constructor)
-      const responses = Array.isArray(it.responses) ? it.responses : (it.response ? [it.response] : []);
-      const response_constructor = it.response_constructor || null;
-      // END: COMPOSITIONAL INTELLIGENCE
-      const safety = (it.safety_protocol || "").toUpperCase().trim();
-      const follow_up_question = it.follow_up_question || null;
-      const follow_up_intents = Array.isArray(it.follow_up_intents) ? it.follow_up_intents : [];
-      return { tag, patterns, keywords, responses, response_constructor, safety, follow_up_question, follow_up_intents };
-    });
-  } catch (e) {
-    console.error("Failed to parse intents.json:", e);
-    return [];
-  }
-}
-
-// TF-IDF compute
-function buildTfIdf(docsTokens) {
-  const df = {};
-  docsTokens.forEach(tokens => {
-    const uniq = new Set(tokens);
-    uniq.forEach(t => df[t] = (df[t] || 0) + 1);
-  });
-  const N = Math.max(1, docsTokens.length);
-  const idf = {};
-  Object.keys(df).forEach(t => { idf[t] = Math.log((N + 1) / (df[t] + 1)) + 1; });
-  return { idf };
+    return arr.map((it, idx) => ({
+      tag: it.tag || it.intent || it.id || `intent_${idx}`,
+      patterns: Array.isArray(it.patterns) ? it.patterns : [],
+      keywords: Array.isArray(it.keywords) ? it.keywords : [],
+      responses: Array.isArray(it.responses) ? it.responses : (it.response ? [it.response] : []),
+      response_constructor: it.response_constructor || null,
+      safety: (it.safety_protocol || "").toUpperCase().trim(),
+      follow_up_question: it.follow_up_question || null,
+      follow_up_intents: Array.isArray(it.follow_up_intents) ? it.follow_up_intents : []
+    }));
+  } catch (e) { console.error("Failed to parse intents.json:", e); return []; }
 }
 
 function buildIndexSync() {
   INTENTS_RAW = loadIntentsRaw();
   const docs = INTENTS_RAW.map(it => tokenize([...it.patterns, ...it.keywords].join(" ")));
-  const { idf } = buildTfIdf(docs);
+  
+  const df = {};
+  docs.forEach(tokens => new Set(tokens).forEach(t => df[t] = (df[t] || 0) + 1));
+  const N = Math.max(1, docs.length);
+  const idf = {};
+  Object.keys(df).forEach(t => idf[t] = Math.log((N + 1) / (df[t] + 1)) + 1);
 
   intentIndex = INTENTS_RAW.map((it, i) => {
     const tokens = docs[i];
@@ -140,31 +113,27 @@ function buildIndexSync() {
       vec[t] = v;
       sq += v * v;
     });
-    const norm = Math.sqrt(sq) || 1;
     return {
       tag: it.tag,
-      // START: COMPOSITIONAL INTELLIGENCE (Added response_constructor to index)
       responses: it.responses,
       response_constructor: it.response_constructor,
-      // END: COMPOSITIONAL INTELLIGENCE
       safety: it.safety,
       keywords: it.keywords.map(normalizeArabic),
       patterns: it.patterns.map(normalizeArabic),
       follow_up_question: it.follow_up_question,
       follow_up_intents: it.follow_up_intents,
       tfidfVector: vec,
-      tfidfNorm: norm,
-      embedding: null // to be filled if embeddings enabled
+      tfidfNorm: Math.sqrt(sq) || 1,
+      embedding: null
     };
   });
 
   tagToIdx = {};
-  intentIndex.forEach((e, idx) => { tagToIdx[e.tag] = idx; });
-
+  intentIndex.forEach((e, idx) => tagToIdx[e.tag] = idx);
   if (DEBUG) console.log("Built index (TF-IDF). Intents:", intentIndex.length);
 }
 
-// ------------ Embeddings helpers (OpenAI or HF) ------------
+// ------------ Embeddings helpers ------------
 async function embedTextOpenAI(texts) {
   const key = OPENAI_API_KEY;
   if (!key) throw new Error("OpenAI key missing");
@@ -264,7 +233,7 @@ function makeUserId() {
   return crypto.randomBytes(8).toString("hex");
 }
 
-// ------------ Learning queue (semi-automated learning) ------------
+// ------------ Learning queue ------------
 function appendLearningQueue(entry) {
   try {
     let q = [];
@@ -279,7 +248,7 @@ function appendLearningQueue(entry) {
   }
 }
 
-// ------------ Mood detection & critical ------------
+// ------------ Mood & Safety detection ------------
 const MOOD_KEYWORDS = {
   حزن: ["حزين","زعلان","مكسور","بكاء","بعيط","مكتئب","مش قادر","ضايق","متضايق","حزن","زهقان"],
   فرح: ["مبسوط","فرحان","سعيد","مبتهج","مستمتع"],
@@ -304,7 +273,7 @@ function detectCritical(msg) {
   return false;
 }
 
-// ------------ Negation / emphasis helpers ------------
+// ------------ Negation & emphasis helpers ------------
 const NEGATORS = new Set(["لا","مش","ما","ليس","لست","بدون","ابدا","أبدا","وليس"]);
 const EMPHASIS = new Set(["جدا","للغاية","بشدة","كتير","قوي","قوية","تماما","بصراحة"]);
 function tokensArray(text) { return normalizeArabic(text).split(/\s+/).filter(Boolean); }
@@ -357,23 +326,13 @@ function extractEntities(rawMessage) {
   const peopleMarkers = ["صديقي","صديقتي","اخي","اختي","أمي","امي","أبوي","ابوي","زوجي","زوجتي","ابني","بنتي","مديري","معلمي"];
   for (let i = 0; i < tokens.length; i++) {
     if (peopleMarkers.includes(tokens[i])) {
-      if (tokens[i+1]) entities.add(tokens[i+1]);
-      entities.add(tokens[i]);
+      if (tokens[i+1] && !STOPWORDS.has(tokens[i+1])) entities.add(tokens[i+1]);
     }
   }
 
   const topics = ["العمل","الدراسة","الجامعة","البيت","العائلة","الزواج","المال","الفلوس","الصحة","الدوام","الموظفين","الامتحان","المدرسة"];
   for (const t of topics) if (norm.includes(t)) entities.add(t);
-
-  for (let i = 0; i < tokens.length; i++) {
-    const w = tokens[i];
-    if (w.length > 2 && /^[\u0621-\u064A0-9]+$/.test(w)) {
-      if (!STOPWORDS.has(w) && !topics.includes(w)) {
-        if (w.length <= 12) entities.add(w);
-      }
-    }
-  }
-
+  
   return Array.from(entities);
 }
 
@@ -390,7 +349,7 @@ function extractRootCause(rawMessage) {
   return null;
 }
 
-// ------------ Scoring combining TF-IDF, Embedding, direct matches ------------
+// ------------ Scoring ------------
 function scoreIntent(rawMessage, msgTfVec, msgTfNorm, intent) {
   const normMsg = normalizeArabic(rawMessage);
   let matchCount = 0;
@@ -442,7 +401,7 @@ function cosineScore(messageVec, intentVec, messageNorm, intentNorm) {
   return denom ? (dot / denom) : 0;
 }
 
-// ------------ time-aware greeting ------------
+// ------------ Time-aware greeting ------------
 function cairoGreetingPrefix() {
   const now = new Date();
   const cairoHour = (now.getUTCHours() + 2) % 24;
@@ -451,7 +410,7 @@ function cairoGreetingPrefix() {
   return "مساء النور";
 }
 
-// ------------ External provider minimal (Together) ------------
+// ------------ External provider ------------
 async function callTogetherAPI(userText) {
   const key = process.env.TOGETHER_API_KEY;
   if (!key) throw new Error("No TOGETHER_API_KEY defined");
@@ -478,7 +437,7 @@ async function callTogetherAPI(userText) {
   } finally { clearTimeout(t); }
 }
 
-// ------------ Embedding message (add to msgTfVec) ------------
+// ------------ Embedding message ------------
 async function embedMessageIfPossible(msgObj, rawMessage) {
   try {
     if (!EMBEDDING_PROVIDER) return;
@@ -495,7 +454,7 @@ async function embedMessageIfPossible(msgObj, rawMessage) {
   }
 }
 
-// ------------ personalization small helper ------------
+// ------------ Personalization helper ------------
 function adaptReplyBase(reply, userProfile, mood) {
   const tone = (userProfile && userProfile.preferredTone) || "warm";
   let prefix = "";
@@ -516,7 +475,7 @@ function criticalSafetyReply() {
   return "كلامك مهم جدًا وأنا آخذه على محمل الجد. لو عندك أفكار لإيذاء نفسك أو فقدت الأمان، مهم جدًا تكلم حد موثوق فورًا أو تواصل مع جهة مختصة قريبة منك. لو تقدر، كلّمني أكتر دلوقتي عن اللي بيمرّ عليك وأنا معاك خطوة بخطوة 💙";
 }
 
-// ------------ Entity + profile updaters ------------
+// ------------ Profile updaters ------------
 function updateProfileWithEntities(profile, entities, mood, rootCause) {
   profile.longTermProfile = profile.longTermProfile || { recurring_themes: {}, mentioned_entities: {}, communication_style: "neutral" };
   for (const ent of entities) {
@@ -542,41 +501,139 @@ function updateProfileWithEntities(profile, entities, mood, rootCause) {
   }
 }
 
-function recordRecurringTheme(profile, mood) {
+function recordRecurringTheme(profile, tag, mood) {
   profile.longTermProfile = profile.longTermProfile || { recurring_themes: {}, mentioned_entities: {}, communication_style: "neutral" };
-  if (mood !== "محايد") {
-      profile.longTermProfile.recurring_themes[mood] = (profile.longTermProfile.recurring_themes[mood] || 0) + 1;
-  }
+  profile.longTermProfile.recurring_themes[tag] = (profile.longTermProfile.recurring_themes[tag] || 0) + 1;
 }
 
-// START: COMPOSITIONAL INTELLIGENCE
-// ===================================
-// This is the new function responsible for building dynamic, context-aware responses.
+// =================================================================
+// START: ADVANCED INTELLIGENCE LAYER - HELPER FUNCTIONS
+// =================================================================
+
+/**
+ * 1. Active Memory: Checks if any entity in the current message has a significant history.
+ * @returns An object with an { entity, insight } or null.
+ */
+function getHistoricalContext(entities, profile) {
+  if (!entities || entities.length === 0 || !profile.longTermProfile || !profile.longTermProfile.mentioned_entities) {
+    return null;
+  }
+
+  const mainEntity = entities[0];
+  const memory = profile.longTermProfile.mentioned_entities[mainEntity];
+
+  if (!memory) return null;
+
+  let dominantSentiment = null;
+  let maxCount = 0;
+  if (memory.sentiment_associations) {
+    for (const sentiment in memory.sentiment_associations) {
+      if (memory.sentiment_associations[sentiment] > maxCount) {
+        maxCount = memory.sentiment_associations[sentiment];
+        dominantSentiment = sentiment;
+      }
+    }
+  }
+
+  if (memory.mention_count > 2 && ['حزن', 'قلق', 'غضب'].includes(dominantSentiment)) {
+    return {
+      entity: mainEntity,
+      insight: `أتذكر أننا تحدثنا عن "${mainEntity}" من قبل، ويبدو أنه موضوع يمثل تحديًا مستمرًا لك.`
+    };
+  }
+  
+  return null;
+}
+
+/**
+ * 2. Proactive Intelligence: Suggests a personalized conversation starter.
+ * @returns A proactive opening string or null.
+ */
+function getProactiveOpening(profile) {
+  if (!profile.longTermProfile || !profile.longTermProfile.mentioned_entities) {
+    return null;
+  }
+
+  let lastImportantTopic = null;
+  let lastDate = new Date(0);
+
+  for (const entityName in profile.longTermProfile.mentioned_entities) {
+    const entity = profile.longTermProfile.mentioned_entities[entityName];
+    const entityDate = new Date(entity.last_mentioned);
+    
+    if (entity.mention_count > 3 && entityDate > lastDate) {
+      lastDate = entityDate;
+      lastImportantTopic = entityName;
+    }
+  }
+
+  if (lastImportantTopic) {
+    return `أهلاً بعودتك. في آخر مرة تحدثنا، كان "${lastImportantTopic}" يشغل تفكيرك. كيف هي الأمور بخصوص هذا الموضوع الآن؟`;
+  }
+
+  return null;
+}
+
+/**
+ * 3. Pattern Recognition: Periodically analyzes long-term memory for patterns.
+ * @returns An insightful observation string or null.
+ */
+function analyzePatterns(profile) {
+  if (!profile.longTermProfile || !profile.longTermProfile.mentioned_entities) {
+    return null;
+  }
+
+  let mostNegativeEntity = null;
+  let maxNegativeScore = 0;
+
+  for (const entityName in profile.longTermProfile.mentioned_entities) {
+    const entity = profile.longTermProfile.mentioned_entities[entityName];
+    const negativeScore = (entity.sentiment_associations?.['حزن'] || 0) + 
+                          (entity.sentiment_associations?.['قلق'] || 0) + 
+                          (entity.sentiment_associations?.['غضب'] || 0);
+
+    if (negativeScore > 5 && negativeScore > maxNegativeScore) {
+      maxNegativeScore = negativeScore;
+      mostNegativeEntity = entityName;
+    }
+  }
+
+  if (mostNegativeEntity) {
+    if (profile.flags && !profile.flags.shared_pattern_insight) {
+      return `لقد لاحظت شيئًا أثناء حديثنا معًا، وربما أكون مخطئًا. يبدو أن موضوع "${mostNegativeEntity}" يظهر بشكل متكرر عندما نتحدث عن المشاعر الصعبة. هل تلاحظ هذا الرابط أيضًا؟`;
+    }
+  }
+  return null;
+}
+
+// =================================================================
+// END: ADVANCED INTELLIGENCE LAYER - HELPER FUNCTIONS
+// =================================================================
+
+
+// --- Compositional Intelligence Function ---
 function composeResponse(constructor, context) {
-  // Fallback if the constructor is missing, though the main logic should prevent this.
   if (!constructor) return null;
 
-  const { mood, entities, isRecurring, intentTag, profile } = context;
+  const { mood, entities, isRecurring, intentTag, profile, historicalInsight } = context;
   let finalResponseParts = [];
   const mainEntity = entities.length > 0 ? entities[0] : null;
 
-  // 1. Select and personalize an opener
-  if (constructor.openers && constructor.openers.length > 0) {
+  // ADVANCED INTELLIGENCE: Prioritize historical insight as the strongest opener.
+  if (historicalInsight && historicalInsight.insight) {
+      finalResponseParts.push(historicalInsight.insight);
+  } else if (constructor.openers && constructor.openers.length > 0) {
     let opener = constructor.openers[Math.floor(Math.random() * constructor.openers.length)];
-    // Replace placeholders with actual context
     if (mainEntity) opener = opener.replace(/\{ENTITY\}/g, mainEntity);
     if (mood && mood !== 'محايد') opener = opener.replace(/\{MOOD\}/g, mood);
     finalResponseParts.push(opener);
   }
 
-  // 2. Check and apply memory hooks for personalization
   if (constructor.memory_hooks && constructor.memory_hooks.length > 0) {
     for (const hook of constructor.memory_hooks) {
-      // Check for recurring theme hook
       if (hook.if_recurring_theme && isRecurring && hook.if_recurring_theme === intentTag) {
         finalResponseParts.push(hook.phrase);
       }
-      // Check for entity mentioned hook
       if (hook.if_entity_mentioned && mainEntity && hook.if_entity_mentioned === mainEntity) {
         let phrase = hook.phrase.replace(/\{ENTITY\}/g, mainEntity);
         finalResponseParts.push(phrase);
@@ -584,27 +641,20 @@ function composeResponse(constructor, context) {
     }
   }
   
-  // 3. Select a validation phrase to acknowledge the user's feelings
   if (constructor.validations && constructor.validations.length > 0) {
     const validation = constructor.validations[Math.floor(Math.random() * constructor.validations.length)];
     finalResponseParts.push(validation);
   }
   
-  // 4. Select a continuer to encourage further conversation
   if (constructor.continuers && constructor.continuers.length > 0) {
     const continuer = constructor.continuers[Math.floor(Math.random() * constructor.continuers.length)];
     finalResponseParts.push(continuer);
   }
 
-  // 5. Join all parts into a coherent response string.
-  // Filter out any empty parts and join with a space.
   return finalResponseParts.filter(Boolean).join(' ');
 }
-// ===================================
-// END: COMPOSITIONAL INTELLIGENCE
 
-
-// ------------ Initialization: build TF-IDF index and embeddings (async part) ------------
+// ------------ Initialization ------------
 buildIndexSync();
 (async () => { 
   await ensureIntentEmbeddings().catch(e => { if (DEBUG) console.warn("Embedding init failed:", e.message || e); });
@@ -619,7 +669,6 @@ export default async function handler(req, res) {
     const rawMessage = (body.message || "").toString();
     if (!rawMessage || !rawMessage.trim()) return res.status(400).json({ error: "Empty message" });
 
-    // load/create user
     const users = loadUsers();
     let userId = body.userId || null;
     if (!userId || !users[userId]) {
@@ -636,36 +685,29 @@ export default async function handler(req, res) {
         flags: {},
         expectingFollowUp: null
       };
-      saveUsers(users);
       if (DEBUG) console.log("Created user", userId);
     }
     const profile = users[userId];
     profile.lastSeen = new Date().toISOString();
 
-    // safety quick
     if (detectCritical(rawMessage)) {
       profile.flags.critical = true;
       saveUsers(users);
       return res.status(200).json({ reply: criticalSafetyReply(), source: "safety", userId });
     }
 
-    // Advanced analysis: mood, entities, root cause
     const mood = detectMood(rawMessage);
     const entities = extractEntities(rawMessage);
     const rootCause = extractRootCause(rawMessage);
     
-    // Update user profile with new insights
     updateProfileWithEntities(profile, entities, mood, rootCause);
-    recordRecurringTheme(profile, mood); // Simplified from previous version
     
     profile.moodHistory.push({ mood, ts: new Date().toISOString() });
     if (profile.moodHistory.length > LONG_TERM_LIMIT) profile.moodHistory.shift();
 
-    // prepare message vector
     const msgTf = buildMessageTfVec(rawMessage);
     await embedMessageIfPossible(msgTf, rawMessage);
 
-    // follow-up restriction
     let allowedIdxs = null;
     if (profile.expectingFollowUp && profile.expectingFollowUp.expiresTs > Date.now()) {
       allowedIdxs = (profile.expectingFollowUp.allowedTags || []).map(t => tagToIdx[t]).filter(i=>typeof i==="number");
@@ -674,99 +716,113 @@ export default async function handler(req, res) {
       profile.expectingFollowUp = null;
     }
 
-    // scoring candidates
     let best = { idx: -1, score: 0, details: null };
     const candidateIdxs = (Array.isArray(allowedIdxs) && allowedIdxs.length) ? allowedIdxs : intentIndex.map((_,i)=>i);
 
     for (const i of candidateIdxs) {
       const intent = intentIndex[i];
-      const sc = scoreIntent(rawMessage, msgTf, msgTf.norm, Object.assign({}, intent, { tfidfVector: intent.tfidfVector || {}, tfidfNorm: intent.tfidfNorm || 1, embedding: intent.embedding || null }));
+      const sc = scoreIntent(rawMessage, msgTf, msgTf.norm, intent);
       if (sc.final > best.score) best = { idx: i, score: sc.final, details: sc };
       if (DEBUG) console.log(`[SCORE] tag=${intent.tag} final=${sc.final.toFixed(3)} matched=${JSON.stringify(sc.matchedTerms)} embed=${sc.embedSim?.toFixed?.(3) || 0}`);
     }
 
-    // matched intent
     if (best.idx !== -1 && best.score >= THRESHOLD) {
       const intent = intentIndex[best.idx];
-      // safety protocol
+      recordRecurringTheme(profile, intent.tag, mood); // Record theme when intent is confirmed
+
       if (intent.safety === "CRITICAL") {
-        profile.flags.critical = true; saveUsers(users);
+        profile.flags.critical = true; 
+        saveUsers(users);
         return res.status(200).json({ reply: criticalSafetyReply(), source: "intent_critical", tag: intent.tag, score: Number(best.score.toFixed(3)), userId });
       }
       
       let baseReply;
-      // START: COMPOSITIONAL INTELLIGENCE (Main logic change)
-      // ===================================
-      // Check if the matched intent uses the new compositional system.
+      
       if (intent.response_constructor) {
+          const historicalInsight = getHistoricalContext(entities, profile);
           const context = {
               mood: mood,
               entities: entities,
               isRecurring: (profile.longTermProfile.recurring_themes[intent.tag] || 0) > 3,
               intentTag: intent.tag,
-              profile: profile
+              profile: profile,
+              historicalInsight: historicalInsight
           };
           baseReply = composeResponse(intent.response_constructor, context);
-      }
-      // Fallback to the old system if response_constructor is not defined.
-      // This ensures backward compatibility with your existing intents.json entries.
-      else if (intent.responses && intent.responses.length > 0) {
+      } else if (intent.responses && intent.responses.length > 0) {
           baseReply = intent.responses[Math.floor(Math.random() * intent.responses.length)];
       }
       
-      // Final fallback if no response could be generated.
       if (!baseReply) {
           baseReply = "أنا سامعك وبكل هدوء معاك. احكيلي أكتر 💙";
       }
-      // ===================================
-      // END: COMPOSITIONAL INTELLIGENCE
 
-      // follow-up handling - This logic remains unchanged
+      let insightReply = null;
+      const totalMessages = (profile.shortMemory?.length || 0) + (profile.longMemory?.length || 0) + profile.moodHistory.length;
+      if ([10, 25, 50, 100].includes(totalMessages) && !(profile.flags?.shared_pattern_insight)) {
+          insightReply = analyzePatterns(profile);
+          if (insightReply) {
+              profile.flags = profile.flags || {};
+              profile.flags.shared_pattern_insight = true;
+          }
+      }
+
+      if (insightReply) {
+          baseReply = `${baseReply}\n\nبالمناسبة، ${insightReply}`;
+      }
+      
       if (intent.follow_up_question && Array.isArray(intent.follow_up_intents) && intent.follow_up_intents.length) {
         profile.expectingFollowUp = { parentTag: intent.tag, allowedTags: intent.follow_up_intents, expiresTs: Date.now() + (5*60*1000) };
         const question = intent.follow_up_question;
         const reply = adaptReplyBase(`${baseReply}\n\n${question}`, profile, mood);
-        profile.shortMemory = profile.shortMemory || []; profile.shortMemory.push({ message: rawMessage, reply, mood, tag: intent.tag, ts: new Date().toISOString() });
+        profile.shortMemory.push({ message: rawMessage, reply, mood, tag: intent.tag, ts: new Date().toISOString() });
         if (profile.shortMemory.length > SHORT_MEMORY_LIMIT) profile.shortMemory.shift();
-        users[userId] = profile; saveUsers(users);
+        users[userId] = profile; 
+        saveUsers(users);
         return res.status(200).json({ reply, source: "intent_followup", tag: intent.tag, score: Number(best.score.toFixed(3)), userId });
       }
 
-      // normal reply
       const personalized = adaptReplyBase(baseReply, profile, mood);
-      profile.shortMemory = profile.shortMemory || []; profile.shortMemory.push({ message: rawMessage, reply: personalized, mood, tag: intent.tag, ts: new Date().toISOString() });
+      profile.shortMemory.push({ message: rawMessage, reply: personalized, mood, tag: intent.tag, ts: new Date().toISOString() });
       if (profile.shortMemory.length > SHORT_MEMORY_LIMIT) profile.shortMemory.shift();
-      // update long memory (this could be refactored into the profile update section)
+      
       if (mood !== "محايد" && Math.random() < 0.25) {
         profile.longMemory = profile.longMemory || [];
         profile.longMemory.push({ key: "mood_note", value: mood, ts: new Date().toISOString() });
         if (profile.longMemory.length > LONG_TERM_LIMIT) profile.longMemory.shift();
       }
-      users[userId] = profile; saveUsers(users);
+      users[userId] = profile; 
+      saveUsers(users);
       return res.status(200).json({ reply: personalized, source: "intent", tag: intent.tag, score: Number(best.score.toFixed(3)), userId });
     }
 
-    // no strong internal understanding -> external provider
     if (process.env.TOGETHER_API_KEY) {
       const ext = await callTogetherAPI(rawMessage);
       appendLearningQueue({ message: rawMessage, userId, provider: "together", extResponse: ext, ts: new Date().toISOString() });
-      profile.shortMemory = profile.shortMemory || []; profile.shortMemory.push({ message: rawMessage, reply: ext, mood, ts: new Date().toISOString() });
+      profile.shortMemory.push({ message: rawMessage, reply: ext, mood, ts: new Date().toISOString() });
       if (profile.shortMemory.length > SHORT_MEMORY_LIMIT) profile.shortMemory.shift();
-      users[userId] = profile; saveUsers(users);
+      users[userId] = profile; 
+      saveUsers(users);
       return res.status(200).json({ reply: ext, source: "together", userId });
     }
 
-    // fallback: memory/time-aware
-    const lastMood = (profile.moodHistory && profile.moodHistory.length) ? profile.moodHistory[profile.moodHistory.length - 1].mood : null;
-    let fallback = "محتاج منك توضيح بسيط كمان 💜 احكيلي بالراحة وأنا سامعك.";
+    let fallback;
     if (!profile.shortMemory || profile.shortMemory.length === 0) {
-      fallback = `${cairoGreetingPrefix()}، أنا رفيقك هنا. احكيلي إيه اللي بيحصل معاك النهاردة؟`;
-    } else if (lastMood && lastMood !== "محايد") {
-      fallback = `لسه فاكرة إنك قلت إنك حاسس بـ"${lastMood}" قبل كده. تحب تحكيلي لو الحالة اتغيرت؟`;
+        const proactiveOpening = getProactiveOpening(profile);
+        fallback = proactiveOpening || `${cairoGreetingPrefix()}، أنا رفيقك هنا. احكيلي إيه اللي بيحصل معاك النهاردة؟`;
+    } else {
+        const lastMood = profile.moodHistory?.slice(-1)[0]?.mood;
+        if (lastMood && lastMood !== "محايد") {
+            fallback = `لسه فاكرة إنك قلت إنك حاسس بـ"${lastMood}" قبل كده. تحب تحكيلي لو الحالة اتغيرت؟`;
+        } else {
+            fallback = "محتاج منك توضيح بسيط كمان 💜 احكيلي بالراحة وأنا سامعك.";
+        }
     }
-    profile.shortMemory = profile.shortMemory || []; profile.shortMemory.push({ message: rawMessage, reply: fallback, mood, ts: new Date().toISOString() });
+    
+    profile.shortMemory.push({ message: rawMessage, reply: fallback, mood, ts: new Date().toISOString() });
     if (profile.shortMemory.length > SHORT_MEMORY_LIMIT) profile.shortMemory.shift();
-    users[userId] = profile; saveUsers(users);
+    users[userId] = profile; 
+    saveUsers(users);
 
     return res.status(200).json({ reply: fallback, source: "fallback", userId });
 
