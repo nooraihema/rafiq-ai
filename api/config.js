@@ -41,4 +41,4 @@ export const MOOD_KEYWORDS = {
 };
 
 export const CRITICAL_KEYWORDS = ["انتحار","عايز اموت","عايز أموت","مش عايز اعيش","هقتل نفسي","اقتل نفسي","انا هموت","موتي"];
-```
+
