@@ -1,8 +1,14 @@
-{
-  "name": "rafiq-ai-app",
-  "version": "1.0.0",
-  "private": true,
-  "dependencies": {
-    "@google/generative-ai": "^0.14.1"
-  }
-}
+
+    {
+      "name": "rafiq-ai-server",
+      "version": "1.0.0",
+      "description": "Rafiq AI Chatbot Server",
+      "main": "api/chat.js",
+      "type": "module",
+      "scripts": {
+        "start": "node api/chat.js"
+      },
+      "author": "hema",
+      "license": "ISC"
+    }
+    ```
