@@ -75,4 +75,4 @@ export function recordRecurringTheme(profile, tag) {
   profile.longTermProfile = profile.longTermProfile || { recurring_themes: {}, mentioned_entities: {}, communication_style: "neutral" };
   profile.longTermProfile.recurring_themes[tag] = (profile.longTermProfile.recurring_themes[tag] || 0) + 1;
 }
-```
+
