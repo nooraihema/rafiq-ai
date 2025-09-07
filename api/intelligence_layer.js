@@ -133,4 +133,4 @@ export function composeResponse(constructor, context) {
 
   return finalResponseParts.filter(Boolean).join(' ');
 }
-```
+
