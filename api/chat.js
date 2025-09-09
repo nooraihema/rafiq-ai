@@ -1,182 +1,218 @@
-// /api/chat.js
-// رفيق - محرك نوايا متقدّم (الإصدار المعاد هيكلته)
+// chat.js v12.1 - The Harmonized Conductor
+// دمج v11 (clarification) + v12 (multi-intent suggestions) + إدارة ذاكرة سليمة
 
-import { THRESHOLD, SHORT_MEMORY_LIMIT, LONG_TERM_LIMIT, DEBUG } from './config.js';
-import { detectMood, detectCritical, extractEntities, extractRootCause, cairoGreetingPrefix, adaptReplyBase, criticalSafetyReply } from './utils.js';
-import { loadUsers, saveUsers, makeUserId, appendLearningQueue, updateProfileWithEntities, recordRecurringTheme } from './storage.js';
-import { intentIndex, tagToIdx, buildIndexSync, ensureIntentEmbeddings, scoreIntent, buildMessageTfVec, embedMessageIfPossible, callTogetherAPI } from './intent_engine.js';
-import { getHistoricalContext, getProactiveOpening, analyzePatterns, composeResponse } from './intelligence_layer.js';
+import { DEBUG, SHORT_MEMORY_LIMIT, LONG_TERM_LIMIT } from './config.js';
+import {
+detectMood,
+detectCritical,
+extractEntities,
+extractRootCause,
+adaptReplyBase,
+criticalSafetyReply,
+tokenize
+} from './utils.js';
+import {
+loadUsers,
+saveUsers,
+makeUserId,
+appendLearningQueue,
+updateProfileWithEntities,
+recordRecurringTheme
+} from './storage.js';
+import {
+intentIndex,
+buildIndexSync,
+getTopIntents,
+registerIntentSuccess
+} from './intent_engine.js';
 
-// ------------ Initialization ------------
-// This code runs once when the server starts
+// --- Initialization ---
 buildIndexSync();
-(async () => { 
-  await ensureIntentEmbeddings().catch(e => { if (DEBUG) console.warn("Embedding init failed:", e.message || e); });
-})();
 
-// ------------ Main handler ------------
-export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+// --- Configuration for v12.1 ---
+const CONFIDENCE_BASE_THRESHOLD = 0.40; // base confidence for direct answer
+const AMBIGUITY_MARGIN = 0.10; // if top2 within this, ask clarifying question
+const MULTI_INTENT_THRESHOLD = 0.55; // secondary intent must be >= this to be suggested
+const CLARIFICATION_VALID_CHOICES = /^[1-9][0-9]*$/; // allow numeric choices (1..n)
 
-  try {
-    const body = req.body || {};
-    const rawMessage = (body.message || "").toString();
-    if (!rawMessage || !rawMessage.trim()) return res.status(400).json({ error: "Empty message" });
+// --- Dynamic Confidence Threshold Function ---
+function getDynamicThreshold(message, bestIntent) {
+const tokenCount = tokenize(message).length;
+let threshold = CONFIDENCE_BASE_THRESHOLD;
 
-    const users = loadUsers();
-    let userId = body.userId || null;
-    if (!userId || !users[userId]) {
-      userId = makeUserId();
-      users[userId] = {
-        id: userId, createdAt: new Date().toISOString(), lastSeen: new Date().toISOString(),
-        preferredTone: "warm", shortMemory: [], longMemory: [],
-        longTermProfile: { recurring_themes: {}, mentioned_entities: {}, communication_style: "neutral" },
-        moodHistory: [], flags: {}, expectingFollowUp: null
-      };
-      if (DEBUG) console.log("Created user", userId);
-    }
-    const profile = users[userId];
-    profile.lastSeen = new Date().toISOString();
+if (tokenCount <= 3) threshold = 0.60;
 
-    if (detectCritical(rawMessage)) {
-      profile.flags.critical = true;
-      saveUsers(users);
-      return res.status(200).json({ reply: criticalSafetyReply(), source: "safety", userId });
-    }
-
-    const mood = detectMood(rawMessage);
-    const entities = extractEntities(rawMessage);
-    const rootCause = extractRootCause(rawMessage);
-    
-    updateProfileWithEntities(profile, entities, mood, rootCause);
-    
-    profile.moodHistory.push({ mood, ts: new Date().toISOString() });
-    if (profile.moodHistory.length > LONG_TERM_LIMIT) profile.moodHistory.shift();
-
-    const msgTf = buildMessageTfVec(rawMessage);
-    await embedMessageIfPossible(msgTf, rawMessage);
-
-    let allowedIdxs = null;
-    if (profile.expectingFollowUp && profile.expectingFollowUp.expiresTs > Date.now()) {
-      allowedIdxs = (profile.expectingFollowUp.allowedTags || []).map(t => tagToIdx[t]).filter(i=>typeof i==="number");
-      if (DEBUG) console.log("Follow-up allowed indices", allowedIdxs);
-    } else {
-      profile.expectingFollowUp = null;
-    }
-
-    let best = { idx: -1, score: 0, details: null };
-    const candidateIdxs = (Array.isArray(allowedIdxs) && allowedIdxs.length) ? allowedIdxs : intentIndex.map((_,i)=>i);
-
-    for (const i of candidateIdxs) {
-      const intent = intentIndex[i];
-      const sc = scoreIntent(rawMessage, msgTf.vec, msgTf.norm, intent);
-      if (sc.final > best.score) best = { idx: i, score: sc.final, details: sc };
-      if (DEBUG) console.log(`[SCORE] tag=${intent.tag} final=${sc.final.toFixed(3)} matched=${JSON.stringify(sc.matchedTerms)} embed=${sc.embedSim?.toFixed?.(3) || 0}`);
-    }
-
-    if (best.idx !== -1 && best.score >= THRESHOLD) {
-      const intent = intentIndex[best.idx];
-      recordRecurringTheme(profile, intent.tag); // Record theme when intent is confirmed
-
-      if (intent.safety === "CRITICAL") {
-        profile.flags.critical = true; 
-        saveUsers(users);
-        return res.status(200).json({ reply: criticalSafetyReply(), source: "intent_critical", tag: intent.tag, score: Number(best.score.toFixed(3)), userId });
-      }
-      
-      let baseReply;
-      
-      if (intent.response_constructor) {
-          const historicalInsight = getHistoricalContext(entities, profile);
-          const context = {
-              mood: mood,
-              entities: entities,
-              isRecurring: (profile.longTermProfile.recurring_themes[intent.tag] || 0) > 3,
-              intentTag: intent.tag,
-              profile: profile,
-              historicalInsight: historicalInsight
-          };
-          baseReply = composeResponse(intent.response_constructor, context);
-      } else if (intent.responses && intent.responses.length > 0) {
-          baseReply = intent.responses[Math.floor(Math.random() * intent.responses.length)];
-      }
-      
-      if (!baseReply) {
-          baseReply = "أنا سامعك وبكل هدوء معاك. احكيلي أكتر 💙";
-      }
-
-      let insightReply = null;
-      const totalMessages = (profile.shortMemory?.length || 0) + (profile.longMemory?.length || 0) + profile.moodHistory.length;
-      if ([10, 25, 50, 100].includes(totalMessages) && !(profile.flags?.shared_pattern_insight)) {
-          insightReply = analyzePatterns(profile);
-          if (insightReply) {
-              profile.flags = profile.flags || {};
-              profile.flags.shared_pattern_insight = true;
-          }
-      }
-
-      if (insightReply) {
-          baseReply = `${baseReply}\n\nبالمناسبة، ${insightReply}`;
-      }
-      
-      if (intent.follow_up_question && Array.isArray(intent.follow_up_intents) && intent.follow_up_intents.length) {
-        profile.expectingFollowUp = { parentTag: intent.tag, allowedTags: intent.follow_up_intents, expiresTs: Date.now() + (5*60*1000) };
-        const question = intent.follow_up_question;
-        const reply = adaptReplyBase(`${baseReply}\n\n${question}`, profile, mood);
-        profile.shortMemory.push({ message: rawMessage, reply, mood, tag: intent.tag, ts: new Date().toISOString() });
-        if (profile.shortMemory.length > SHORT_MEMORY_LIMIT) profile.shortMemory.shift();
-        users[userId] = profile; 
-        saveUsers(users);
-        return res.status(200).json({ reply, source: "intent_followup", tag: intent.tag, score: Number(best.score.toFixed(3)), userId });
-      }
-
-      const personalized = adaptReplyBase(baseReply, profile, mood);
-      profile.shortMemory.push({ message: rawMessage, reply: personalized, mood, tag: intent.tag, ts: new Date().toISOString() });
-      if (profile.shortMemory.length > SHORT_MEMORY_LIMIT) profile.shortMemory.shift();
-      
-      if (mood !== "محايد" && Math.random() < 0.25) {
-        profile.longMemory = profile.longMemory || [];
-        profile.longMemory.push({ key: "mood_note", value: mood, ts: new Date().toISOString() });
-        if (profile.longMemory.length > LONG_TERM_LIMIT) profile.longMemory.shift();
-      }
-      users[userId] = profile; 
-      saveUsers(users);
-      return res.status(200).json({ reply: personalized, source: "intent", tag: intent.tag, score: Number(best.score.toFixed(3)), userId });
-    }
-
-    if (process.env.TOGETHER_API_KEY) {
-      const ext = await callTogetherAPI(rawMessage);
-      appendLearningQueue({ message: rawMessage, userId, provider: "together", extResponse: ext, ts: new Date().toISOString() });
-      profile.shortMemory.push({ message: rawMessage, reply: ext, mood, ts: new Date().toISOString() });
-      if (profile.shortMemory.length > SHORT_MEMORY_LIMIT) profile.shortMemory.shift();
-      users[userId] = profile; 
-      saveUsers(users);
-      return res.status(200).json({ reply: ext, source: "together", userId });
-    }
-
-    let fallback;
-    if (!profile.shortMemory || profile.shortMemory.length === 0) {
-        const proactiveOpening = getProactiveOpening(profile);
-        fallback = proactiveOpening || `${cairoGreetingPrefix()}، أنا رفيقك هنا. احكيلي إيه اللي بيحصل معاك النهاردة؟`;
-    } else {
-        const lastMood = profile.moodHistory?.slice(-1)[0]?.mood;
-        if (lastMood && lastMood !== "محايد") {
-            fallback = `لسه فاكرة إنك قلت إنك حاسس بـ"${lastMood}" قبل كده. تحب تحكيلي لو الحالة اتغيرت؟`;
-        } else {
-            fallback = "محتاج منك توضيح بسيط كمان 💜 احكيلي بالراحة وأنا سامعك.";
-        }
-    }
-    
-    profile.shortMemory.push({ message: rawMessage, reply: fallback, mood, ts: new Date().toISOString() });
-    if (profile.shortMemory.length > SHORT_MEMORY_LIMIT) profile.shortMemory.shift();
-    users[userId] = profile; 
-    saveUsers(users);
-
-    return res.status(200).json({ reply: fallback, source: "fallback", userId });
-
-  } catch (err) {
-    console.error("API error:", err);
-    return res.status(500).json({ error: "Internal Server Error" });
-  }
+if (bestIntent && bestIntent.tag) {
+const tagWords = new Set((bestIntent.tag || "").split('_').map(t => t.trim()).filter(Boolean));
+const msgTokens = tokenize(message);
+if (msgTokens.some(token => tagWords.has(token))) {
+threshold = Math.max(0.30, threshold - 0.15);
+}
+}
+return threshold;
 }
 
+// --- Helper: Build clarification prompt ---
+function buildClarificationPrompt(options) {
+let question = "لم أكن متأكدًا تمامًا مما تقصده. هل يمكنك توضيح ما إذا كنت تقصد أحد هذه المواضيع؟\n";
+const lines = options.map((opt, i) => ${i + 1}. ${opt.prompt});
+return ${question}${lines.join('\n')}\n(يمكنك الرد برقم الاختيار);
+}
+
+// --- Main Handler v12.1 ---
+export default async function handler(req, res) {
+if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+
+try {
+const body = req.body || {};
+const rawMessage = (body.message || "").toString().trim();
+if (!rawMessage) return res.status(400).json({ error: "Empty message" });
+
+const users = loadUsers();  
+let userId = body.userId || null;  
+if (!userId || !users[userId]) {  
+  userId = makeUserId();  
+  users[userId] = {  
+    id: userId, createdAt: new Date().toISOString(), lastSeen: new Date().toISOString(), preferredTone: "warm",  
+    shortMemory: [], longMemory: [], longTermProfile: {}, moodHistory: [], flags: {},  
+    intentSuccessCount: {}, intentLastSuccess: {}  
+  };  
+  if (DEBUG) console.log("Created user", userId);  
+}  
+const profile = users[userId];  
+profile.lastSeen = new Date().toISOString();  
+
+if (detectCritical(rawMessage)) {  
+  profile.flags.critical = true;  
+  saveUsers(users);  
+  return res.status(200).json({ reply: criticalSafetyReply(), source: "safety", userId });  
+}  
+
+const mood = detectMood(rawMessage);  
+const entities = extractEntities(rawMessage);  
+const rootCause = extractRootCause ? extractRootCause(rawMessage) : null;  
+
+updateProfileWithEntities(profile, entities, mood, rootCause);  
+profile.moodHistory = profile.moodHistory || [];  
+profile.moodHistory.push({ mood, ts: new Date().toISOString() });  
+if (profile.moodHistory.length > LONG_TERM_LIMIT) profile.moodHistory.shift();  
+
+profile.shortMemory = profile.shortMemory || [];  
+profile.shortMemory.forEach(item => { item.age = (item.age || 0) + 1; });  
+
+// --- Handle Clarification Response ---  
+if (profile.expectingFollowUp?.isClarification) {  
+  const candidate = profile.expectingFollowUp;  
+  const trimmed = rawMessage.trim();  
+  if (CLARIFICATION_VALID_CHOICES.test(trimmed)) {  
+    const idx = parseInt(trimmed, 10) - 1;  
+    if (idx >= 0 && idx < (candidate.options || []).length) {  
+      const chosen = candidate.options[idx];  
+      profile.expectingFollowUp = null;  
+
+      registerIntentSuccess(profile, chosen.tag);  
+
+      const intent = intentIndex.find(i => i.tag === chosen.tag);  
+      const baseReply = (intent?.responses?.length) ? intent.responses[Math.floor(Math.random() * intent.responses.length)] : "شكرًا للتوضيح. كيف يمكنني المساعدة أكثر؟";  
+      const personalized = adaptReplyBase(baseReply, profile, mood);  
+
+      profile.shortMemory.push({ message: rawMessage, reply: personalized, mood, tag: chosen.tag, age: 0, ts: new Date().toISOString(), entities });  
+      if (profile.shortMemory.length > SHORT_MEMORY_LIMIT) profile.shortMemory.shift();  
+      saveUsers(users);  
+
+      return res.status(200).json({ reply: personalized, source: "intent_clarified", tag: chosen.tag, userId });  
+    }  
+  }  
+  // If not a valid numeric choice, fall through to normal processing.  
+  profile.expectingFollowUp = null; // Clear the expectation to avoid getting stuck.  
+}  
+
+// --- Prepare Context for Intent Engine ---  
+const context = {  
+  history: profile.shortMemory.slice(-3).map(it => ({ tag: it.tag, age: it.age || 0 })),  
+  lastEntities: profile.shortMemory.length ? profile.shortMemory[profile.shortMemory.length - 1].entities || [] : []  
+};  
+
+// --- Get Top Intents ---  
+const topCandidates = getTopIntents(rawMessage, { topN: 3, context, userProfile: profile });  
+
+if (DEBUG) {  
+  console.log("\n--- TOP CANDIDATES ---");  
+  topCandidates.forEach(c => {  
+    console.log(`- ${c.tag}: ${c.score.toFixed(4)}`);  
+    if (c.reasoning) console.log(`  Reasoning: ${c.reasoning.replace(/\n/g, "\n  ")}`);  
+  });  
+}  
+
+// --- Decision Logic ---  
+if (topCandidates.length > 0) {  
+  const bestCandidate = topCandidates[0];  
+  const confidenceThreshold = getDynamicThreshold(rawMessage, bestCandidate);  
+
+  if (bestCandidate.score >= confidenceThreshold) {  
+    const secondCandidate = topCandidates.length > 1 ? topCandidates[1] : null;  
+
+    if (secondCandidate && (bestCandidate.score - secondCandidate.score < AMBIGUITY_MARGIN)) {  
+      // --- Ambiguity Detected: Ask for clarification ---  
+      const options = [bestCandidate, secondCandidate].map(opt => ({  
+        tag: opt.tag,  
+        prompt: (opt.tag || "").replace(/_/g, " ")  
+      }));  
+
+      profile.expectingFollowUp = {  
+        isClarification: true,  
+        options,  
+        expiresTs: Date.now() + (5 * 60 * 1000)  
+      };  
+
+      const prompt = buildClarificationPrompt(options);  
+      profile.shortMemory.push({ message: rawMessage, reply: prompt, mood, tag: 'clarification_request', age: 0, ts: new Date().toISOString(), entities });  
+      saveUsers(users);  
+      return res.status(200).json({ reply: prompt, source: "clarification", userId });  
+    }  
+
+    // --- No Ambiguity: Proceed with primary intent ---  
+    const primaryTag = bestCandidate.tag;  
+    const intent = intentIndex.find(i => i.tag === primaryTag);  
+      
+    if (intent) {  
+      registerIntentSuccess(profile, primaryTag);  
+      recordRecurringTheme(profile, primaryTag, mood);  
+
+      const baseReply = intent.responses.length ? intent.responses[Math.floor(Math.random() * intent.responses.length)] : "أنا أسمعك. هل يمكنك أن تخبرني المزيد؟";  
+      let finalReply = adaptReplyBase(baseReply, profile, mood);  
+
+      // Multi-intent suggestion  
+      const secondaryCandidate = topCandidates.find(c => c.tag !== primaryTag && c.score >= MULTI_INTENT_THRESHOLD);  
+      if (secondaryCandidate) {  
+        const suggestionText = `\n\nبالمناسبة، لاحظت أنك قد تكون تتحدث أيضًا عن "${secondaryCandidate.tag.replace(/_/g, ' ')}". هل ننتقل لهذا الموضوع بعد ذلك؟`;  
+        finalReply += suggestionText;  
+        profile.expectingFollowUp = { isSuggestion: true, next_tag: secondaryCandidate.tag, expiresTs: Date.now() + (5 * 60 * 1000) };  
+      }  
+
+      profile.shortMemory.push({ message: rawMessage, reply: finalReply, mood, tag: primaryTag, age: 0, ts: new Date().toISOString(), entities });  
+      if (profile.shortMemory.length > SHORT_MEMORY_LIMIT) profile.shortMemory.shift();  
+
+      saveUsers(users);  
+      return res.status(200).json({ reply: finalReply, source: "intent", tag: primaryTag, score: Number(bestCandidate.score.toFixed(3)), userId });  
+    }  
+  }  
+}  
+  
+// --- Fallback (no confident intent) ---  
+if (DEBUG && topCandidates.length > 0) {  
+  console.log(`LOW CONFIDENCE: best ${topCandidates[0].tag} (${topCandidates[0].score.toFixed(3)}) < threshold ${getDynamicThreshold(rawMessage, topCandidates[0]).toFixed(3)}`);  
+}  
+
+appendLearningQueue({ message: rawMessage, userId, topCandidate: topCandidates[0]?.tag, score: topCandidates[0]?.score, ts: new Date().toISOString() });  
+
+const fallback = "لم أفهم قصدك تمامًا، هل يمكنك التوضيح بجملة مختلفة؟ أحيانًا يساعدني ذلك على فهمك بشكل أفضل. أنا هنا لأسمعك.";  
+profile.shortMemory.push({ message: rawMessage, reply: fallback, mood, age: 0, ts: new Date().toISOString(), entities });  
+saveUsers(users);  
+return res.status(200).json({ reply: fallback, source: "fallback_low_confidence", userId });
+
+} catch (err) {
+console.error("API error:", err);
+return res.status(500).json({ error: "Internal Server Error" });
+}
+}
