@@ -1,7 +1,7 @@
 // intent_engine.js
 
 import fs from "fs";
-import path from "path"; // <-- تم التأكد من وجود هذا السطر
+import path from "path";
 import { ROOT, DEBUG, OPENAI_API_KEY, HF_API_KEY, HF_EMBEDDING_MODEL, EMBEDDING_PROVIDER } from './config.js';
 import { normalizeArabic, tokenize, levenshtein, hasNegationNearby, hasEmphasisNearby } from './utils.js';
 
@@ -10,11 +10,28 @@ let INTENTS_RAW = [];
 export let intentIndex = [];
 export let tagToIdx = {};
 
-// ===== بداية الكود المعدل =====
+// ===== بداية الكود المعدل (المحقق الذكي) =====
 function loadIntentsRaw() {
-    const intentsDir = path.join(ROOT, "intents"); // <-- التعديل هنا: يقرأ من مجلد "intents" بحرف صغير
-    let allIntents = [];
+    //
+    // هذا الكود الذكي سيحاول إيجاد مجلد "intents" في الأماكن المحتملة
+    //
+    let intentsDir = path.join(process.cwd(), "intents");
 
+    if (!fs.existsSync(intentsDir)) {
+      console.log("INFO: 'intents/' directory not found in project root. Checking inside 'api/' directory...");
+      intentsDir = path.join(process.cwd(), "api", "intents");
+    }
+
+    if (!fs.existsSync(intentsDir)) {
+        const errorMsg = "CRITICAL ERROR: Could not find the 'intents/' directory in the project root or inside the 'api/' directory. Please ensure your `intents` folder is placed correctly.";
+        console.error(errorMsg);
+        // This will cause the deployment to fail, which is good because the bot can't run without intents.
+        throw new Error(errorMsg);
+    } 
+    
+    console.log(`✅ SUCCESS: Located intents directory at: ${intentsDir}`);
+    
+    let allIntents = [];
     try {
         const files = fs.readdirSync(intentsDir);
 
@@ -31,7 +48,7 @@ function loadIntentsRaw() {
                 allIntents = allIntents.concat(intentsArray);
 
                 if (DEBUG) {
-                    console.log(`✅ Loaded ${intentsArray.length} intents from [${file}]`);
+                    console.log(`- Loaded ${intentsArray.length} intents from [${file}]`);
                 }
             }
         }
@@ -42,7 +59,7 @@ function loadIntentsRaw() {
         return allIntents;
 
     } catch (e) {
-        console.error(`❌ Failed to load intents from the "intents/" directory. Please ensure the directory exists and contains valid JSON files. Error: ${e.message}`);
+        console.error(`❌ ERROR: Failed to read or parse files from the intents directory. Error: ${e.message}`);
         return [];
     }
 }
@@ -51,6 +68,10 @@ function loadIntentsRaw() {
 
 export function buildIndexSync() {
     INTENTS_RAW = loadIntentsRaw();
+    // If loading intents fails and returns an empty array, we should handle it gracefully.
+    if (INTENTS_RAW.length === 0) {
+        console.warn("WARNING: No intents were loaded. The bot will not be able to match any intents.");
+    }
     const docs = INTENTS_RAW.map(it => tokenize([...it.patterns, ...it.keywords].join(" ")));
     const df = {};
     docs.forEach(tokens => new Set(tokens).forEach(t => df[t] = (df[t] || 0) + 1));
@@ -81,7 +102,7 @@ export function buildIndexSync() {
 
     tagToIdx = {};
     intentIndex.forEach((e, idx) => tagToIdx[e.tag] = idx);
-    if (DEBUG) console.log("Built index (TF-IDF). Intents:", intentIndex.length);
+    if (DEBUG) console.log("Built index (TF-IDF). Total Intents:", intentIndex.length);
 }
 
 // ------------ Embeddings helpers ------------
@@ -264,7 +285,7 @@ export async function callTogetherAPI(userText) {
     const data = await res.json();
     const out = data.output_text || data.output?.[0]?.content || data[0]?.generated_text;
     return (typeof out === "string" && out.trim()) ? out.trim() : "محتاج منك توضيح بسيط كمان 💜";
-  } catch (e) {
+  } catch (e).g {
     if (DEBUG) console.warn("Together error", e);
     return "حالياً مش قادر أستخدم الموديل الخارجي، بس أنا معاك وجاهز أسمعك. احكيلي أكتر 💙";
   } finally { clearTimeout(t); }
