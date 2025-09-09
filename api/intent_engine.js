@@ -1,7 +1,8 @@
 // intent_engine.js
 
 import fs from "fs";
-import { INTENTS_PATH, DEBUG, OPENAI_API_KEY, HF_API_KEY, HF_EMBEDDING_MODEL, EMBEDDING_PROVIDER } from './config.js';
+import path from "path"; // <-- تم التأكد من وجود هذا السطر
+import { ROOT, DEBUG, OPENAI_API_KEY, HF_API_KEY, HF_EMBEDDING_MODEL, EMBEDDING_PROVIDER } from './config.js';
 import { normalizeArabic, tokenize, levenshtein, hasNegationNearby, hasEmphasisNearby } from './utils.js';
 
 // ------------ تحميل intents + بناء فهرس ------------
@@ -9,23 +10,44 @@ let INTENTS_RAW = [];
 export let intentIndex = [];
 export let tagToIdx = {};
 
+// ===== بداية الكود المعدل =====
 function loadIntentsRaw() {
+    const intentsDir = path.join(ROOT, "intents"); // <-- التعديل هنا: يقرأ من مجلد "intents" بحرف صغير
+    let allIntents = [];
+
     try {
-        const raw = fs.readFileSync(INTENTS_PATH, "utf8");
-        const json = JSON.parse(raw);
-        const arr = Array.isArray(json.intents) ? json.intents : json;
-        return arr.map((it, idx) => ({
-            tag: it.tag || it.intent || it.id || `intent_${idx}`,
-            patterns: Array.isArray(it.patterns) ? it.patterns : [],
-            keywords: Array.isArray(it.keywords) ? it.keywords : [],
-            responses: Array.isArray(it.responses) ? it.responses : (it.response ? [it.response] : []),
-            response_constructor: it.response_constructor || null,
-            safety: (it.safety_protocol || "").toUpperCase().trim(),
-            follow_up_question: it.follow_up_question || null,
-            follow_up_intents: Array.isArray(it.follow_up_intents) ? it.follow_up_intents : []
-        }));
-    } catch (e) { console.error("Failed to parse intents.json:", e); return []; }
+        const files = fs.readdirSync(intentsDir);
+
+        for (const file of files) {
+            if (file.endsWith(".json")) {
+                const filePath = path.join(intentsDir, file);
+                const rawContent = fs.readFileSync(filePath, "utf8");
+                const jsonContent = JSON.parse(rawContent);
+
+                const intentsArray = Array.isArray(jsonContent.intents) 
+                                      ? jsonContent.intents 
+                                      : (Array.isArray(jsonContent) ? jsonContent : []);
+                
+                allIntents = allIntents.concat(intentsArray);
+
+                if (DEBUG) {
+                    console.log(`✅ Loaded ${intentsArray.length} intents from [${file}]`);
+                }
+            }
+        }
+        
+        if (DEBUG) {
+            console.log(`✨ Total intents loaded: ${allIntents.length}`);
+        }
+        return allIntents;
+
+    } catch (e) {
+        console.error(`❌ Failed to load intents from the "intents/" directory. Please ensure the directory exists and contains valid JSON files. Error: ${e.message}`);
+        return [];
+    }
 }
+// ===== نهاية الكود المعدل =====
+
 
 export function buildIndexSync() {
     INTENTS_RAW = loadIntentsRaw();
@@ -247,4 +269,3 @@ export async function callTogetherAPI(userText) {
     return "حالياً مش قادر أستخدم الموديل الخارجي، بس أنا معاك وجاهز أسمعك. احكيلي أكتر 💙";
   } finally { clearTimeout(t); }
 }
-
