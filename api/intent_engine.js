@@ -12,9 +12,6 @@ export let tagToIdx = {};
 
 // ===== بداية الكود المعدل (المحقق الذكي) =====
 function loadIntentsRaw() {
-    //
-    // هذا الكود الذكي سيحاول إيجاد مجلد "intents" في الأماكن المحتملة
-    //
     let intentsDir = path.join(process.cwd(), "intents");
 
     if (!fs.existsSync(intentsDir)) {
@@ -25,7 +22,6 @@ function loadIntentsRaw() {
     if (!fs.existsSync(intentsDir)) {
         const errorMsg = "CRITICAL ERROR: Could not find the 'intents/' directory in the project root or inside the 'api/' directory. Please ensure your `intents` folder is placed correctly.";
         console.error(errorMsg);
-        // This will cause the deployment to fail, which is good because the bot can't run without intents.
         throw new Error(errorMsg);
     } 
     
@@ -68,7 +64,6 @@ function loadIntentsRaw() {
 
 export function buildIndexSync() {
     INTENTS_RAW = loadIntentsRaw();
-    // If loading intents fails and returns an empty array, we should handle it gracefully.
     if (INTENTS_RAW.length === 0) {
         console.warn("WARNING: No intents were loaded. The bot will not be able to match any intents.");
     }
@@ -285,7 +280,7 @@ export async function callTogetherAPI(userText) {
     const data = await res.json();
     const out = data.output_text || data.output?.[0]?.content || data[0]?.generated_text;
     return (typeof out === "string" && out.trim()) ? out.trim() : "محتاج منك توضيح بسيط كمان 💜";
-  } catch (e).g {
+  } catch (e) { // <-- تم إصلاح الخطأ هنا
     if (DEBUG) console.warn("Together error", e);
     return "حالياً مش قادر أستخدم الموديل الخارجي، بس أنا معاك وجاهز أسمعك. احكيلي أكتر 💙";
   } finally { clearTimeout(t); }
