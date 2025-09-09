@@ -1,297 +1,411 @@
-// intent_engine.js v10.0 - The Meta-Cognitive Oracle
+// intent_engine.js v11.0 - The Resilient Hybrid Cognitive Engine
+// - Multi-intent detection (Top N)
+// - Ensemble scoring with adaptive weights (with safe persistence)
+// - Synonym expansion (weighted)
+// - Style & emotion signals (question, sarcasm, emphasis)
+// - Internal reasoning layer (explainable decisions)
+// No external APIs required.
 
 import fs from "fs";
 import path from "path";
-import { DEBUG } from './config.js';
-import { normalizeArabic, tokenize, levenshtein, hasNegationNearby, hasEmphasisNearby } from './utils.js';
+import { DEBUG, ROOT } from './config.js';
+import {
+  normalizeArabic,
+  tokenize,
+  levenshtein,
+  hasNegationNearby,
+  hasEmphasisNearby,
+} from './utils.js';
 
-// --- Global Variables ---
+// ------------------- Configuration -------------------
+const INTENTS_DIRS = [
+  path.join(process.cwd(), "intents"),
+  path.join(process.cwd(), "api", "intents"),
+];
+const ADAPTIVE_WEIGHTS_FILE = path.join(process.cwd(), "data", "adaptive_weights.json");
+const SYNONYMS_FILE = path.join(process.cwd(), "synonyms.json");
+
+const DEFAULT_WEIGHTS = {
+  wKeywords: 0.55,
+  wTfIdf: 0.12,
+  wPattern: 0.20,
+  wContext: 0.25,
+};
+const DEFAULT_TOP_N = 3;
+
+// ------------------- Internal State -------------------
 let intentIndex = [];
 export let tagToIdx = {};
 let synonymData = { map: {}, weights: {} };
+let adaptiveWeights = {};
 
-// --- Synonym Engine v3.0 (Dynamic Weights) ---
+// ------------------- Resilient Utilities -------------------
+function safeReadJson(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    const content = fs.readFileSync(filePath, "utf8");
+    return JSON.parse(content || "null");
+  } catch (e) {
+    console.error(`❌ SAFE_READ_ERROR: Could not read or parse ${path.basename(filePath)}. Error: ${e.message}`);
+    return null; // Return null on failure instead of crashing
+  }
+}
+
+function safeWriteJson(filePath, obj) {
+  try {
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(obj, null, 2), "utf8");
+  } catch (e) {
+    console.error(`❌ SAFE_WRITE_ERROR: Could not write to ${path.basename(filePath)}. Adaptive weights will not be saved. Error: ${e.message}`);
+  }
+}
+
+// ------------------- Synonym Engine -------------------
 function loadSynonyms() {
-    const synonymsPath = path.join(process.cwd(), "synonyms.json");
-    if (fs.existsSync(synonymsPath)) {
-        try {
-            const raw = fs.readFileSync(synonymsPath, "utf8");
-            const parsedSynonyms = JSON.parse(raw);
-            synonymData = { map: {}, weights: {} };
-            
-            for (const key in parsedSynonyms) {
-                const normalizedKey = normalizeArabic(key);
-                const values = parsedSynonyms[key].map(v => normalizeArabic(v));
-                const allWords = [normalizedKey, ...values];
-
-                allWords.forEach(word => {
-                    synonymData.map[word] = allWords;
-                    const distance = levenshtein(word, normalizedKey);
-                    const weight = Math.max(0.7, 1 - (distance / (normalizedKey.length * 1.5)));
-                    synonymData.weights[word] = (word === normalizedKey) ? 1.0 : parseFloat(weight.toFixed(2));
-                });
-            }
-            if (DEBUG) console.log(`📚 Synonyms v3.0 (Dynamic Weights) loaded with ${Object.keys(parsedSynonyms).length} groups.`);
-        } catch (e) {
-            console.error("❌ Failed to parse synonyms.json.", e);
-        }
+  synonymData = { map: {}, weights: {} };
+  const parsed = safeReadJson(SYNONYMS_FILE);
+  if (!parsed) {
+    if (DEBUG) console.log("ℹ️ No synonyms.json found or it's invalid, skipping synonyms load.");
+    return;
+  }
+  try {
+    for (const key in parsed) {
+      const normalKey = normalizeArabic(key);
+      const vals = (parsed[key] || []).map(v => normalizeArabic(v));
+      const group = [normalKey, ...vals];
+      group.forEach((w) => {
+        synonymData.map[w] = group;
+        const distance = levenshtein(w, normalKey);
+        const base = (w === normalKey) ? 1.0 : Math.max(0.75, 1 - (distance / Math.max(3, normalKey.length)));
+        synonymData.weights[w] = parseFloat(base.toFixed(2));
+      });
     }
+    if (DEBUG) console.log(`📚 Loaded ${Object.keys(parsed).length} synonym groups.`);
+  } catch (e) {
+    console.error("❌ Error processing synonym data:", e.message);
+  }
+}
+
+function expandTokensWithSynonyms(tokens) {
+  const out = new Set(tokens);
+  tokens.forEach(t => {
+    if (synonymData.map[t]) {
+      synonymData.map[t].forEach(s => out.add(s));
+    }
+  });
+  return out;
 }
 
 function getSynonymWeight(token) {
-    return synonymData.weights[token] || 1.0;
+  return synonymData.weights[token] || 1.0;
 }
 
-// --- Intent Loading and Indexing ---
+// ------------------- Intents Loading & Indexing -------------------
+function findIntentsDir() {
+  for (const d of INTENTS_DIRS) {
+    if (fs.existsSync(d) && fs.statSync(d).isDirectory()) return d;
+  }
+  return null;
+}
+
 function loadIntentsRaw() {
-    let intentsDir = path.join(process.cwd(), "intents");
-    if (!fs.existsSync(intentsDir)) intentsDir = path.join(process.cwd(), "api", "intents");
-    
-    if (!fs.existsSync(intentsDir)) {
-        const errorMsg = "CRITICAL ERROR: Could not find the 'intents/' directory.";
-        console.error(errorMsg);
-        throw new Error(errorMsg);
-    } 
-    console.log(`✅ SUCCESS: Located intents directory at: ${intentsDir}`);
-    
-    let allIntents = [];
-    try {
-        const files = fs.readdirSync(intentsDir);
-        for (const file of files) {
-            if (file.endsWith(".json")) {
-                const filePath = path.join(intentsDir, file);
-                const rawContent = fs.readFileSync(filePath, "utf8");
-                const jsonContent = JSON.parse(rawContent);
-                const intentsArray = Array.isArray(jsonContent.intents) ? jsonContent.intents : (Array.isArray(jsonContent) ? jsonContent : []);
-                allIntents = allIntents.concat(intentsArray);
-            }
-        }
-        if (DEBUG) console.log(`✨ Total intents loaded: ${allIntents.length}`);
-        return allIntents;
-    } catch (e) {
-        console.error(`❌ ERROR: Failed to read/parse files from intents directory. Error: ${e.message}`);
-        return [];
+  const dir = findIntentsDir();
+  if (!dir) {
+    console.error(`❌ CRITICAL: Failed to find intents directory in any of: ${INTENTS_DIRS.join(", ")}`);
+    return [];
+  }
+  const files = fs.readdirSync(dir).filter(f => f.endsWith(".json"));
+  let all = [];
+  for (const f of files) {
+    const j = safeReadJson(path.join(dir, f));
+    if (j) {
+      const arr = Array.isArray(j.intents) ? j.intents : (Array.isArray(j) ? j : []);
+      all = all.concat(arr);
+      if (DEBUG) console.log(`- Loaded ${arr.length} intents from ${f}`);
+    } else {
+      console.warn(`⚠️ Skipping invalid JSON file: ${f}`);
     }
+  }
+  return all;
 }
 
-function cosineScore(vecA, vecB, normA, normB) {
+function autoLinkIntents() {
+  let links = 0;
+  for (let i = 0; i < intentIndex.length; i++) {
+    for (let j = i + 1; j < intentIndex.length; j++) {
+      const a = intentIndex[i];
+      const b = intentIndex[j];
+      const sim = cosineScore(a.tfidfVector, b.tfidfVector, a.tfidfNorm, b.tfidfNorm);
+      if (sim > 0.6) {
+        if (!a.related_intents.includes(b.tag)) a.related_intents.push(b.tag);
+        if (!b.related_intents.includes(a.tag)) b.related_intents.push(a.tag);
+        links++;
+      }
+    }
+  }
+  if (DEBUG) console.log(`🔗 Auto-linked ${links} related intent pairs.`);
+}
+
+export function buildIndexSync() {
+  loadSynonyms();
+  loadAdaptiveWeights();
+
+  const raw = loadIntentsRaw();
+  if (!raw || raw.length === 0) {
+    if (DEBUG) console.warn("WARNING: No intents found while building index.");
+    intentIndex = [];
+    tagToIdx = {};
+    return;
+  }
+
+  const docsTokens = raw.map(it => tokenize([...(it.patterns || []), ...(it.keywords || [])].join(" ")));
+  const df = {};
+  docsTokens.forEach(tokens => { new Set(tokens).forEach(t => df[t] = (df[t] || 0) + 1); });
+  const N = Math.max(1, docsTokens.length);
+  const idf = {};
+  Object.keys(df).forEach(t => idf[t] = Math.log((N + 1) / (df[t] + 1)) + 1);
+
+  intentIndex = raw.map((it, idx) => {
+    const tokens = docsTokens[idx] || [];
+    const counts = tokens.reduce((acc, t) => { acc[t] = (acc[t] || 0) + 1; return acc; }, {});
+    const total = Math.max(1, tokens.length);
+    const vec = {};
+    let sq = 0;
+    Object.keys(counts).forEach(t => {
+      const tf = counts[t] / total;
+      const v = tf * (idf[t] || 1);
+      vec[t] = v;
+      sq += v * v;
+    });
+
+    const compiled = (it.patterns || []).map(p => {
+      try {
+        const esc = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(esc, 'i');
+      } catch (e) {
+        if (DEBUG) console.warn("Invalid pattern", p, e.message || e);
+        return null;
+      }
+    }).filter(Boolean);
+
+    return {
+      tag: it.tag || it.intent || `intent_${idx}`,
+      responses: it.responses || [],
+      response_constructor: it.response_constructor || null,
+      safety: (it.safety_protocol || "").toUpperCase(),
+      keywords: (it.keywords || []).map(normalizeArabic),
+      patterns: compiled,
+      follow_up_intents: it.follow_up_intents || [],
+      related_intents: Array.isArray(it.related_intents) ? it.related_intents.slice() : [],
+      tfidfVector: vec,
+      tfidfNorm: Math.sqrt(sq) || 1,
+    };
+  });
+
+  tagToIdx = {};
+  intentIndex.forEach((it, i) => tagToIdx[it.tag] = i);
+
+  autoLinkIntents();
+
+  if (DEBUG) console.log(`🚀 Engine v11.0 (Resilient Cognitive Engine) indexed successfully. Total Intents: ${intentIndex.length}`);
+}
+
+// ------------------- Vector & Style helpers -------------------
+function cosineScore(vecA, vecB, normA = 1, normB = 1) {
   if (!vecA || !vecB) return 0;
   let dot = 0;
-  for (const t in vecA) {
-    if (vecB[t]) dot += vecA[t] * vecB[t];
+  for (const k in vecA) {
+    if (vecB[k]) dot += vecA[k] * vecB[k];
   }
   const denom = (normA || 1) * (normB || 1);
   return denom ? (dot / denom) : 0;
 }
 
-function autoLinkIntents() {
-    let linkCount = 0;
-    for (let i = 0; i < intentIndex.length; i++) {
-        for (let j = i + 1; j < intentIndex.length; j++) {
-            const sim = cosineScore(
-                intentIndex[i].tfidfVector,
-                intentIndex[j].tfidfVector,
-                intentIndex[i].tfidfNorm,
-                intentIndex[j].tfidfNorm
-            );
-            if (sim > 0.6) { // Similarity threshold for auto-linking
-                intentIndex[i].related_intents.push(intentIndex[j].tag);
-                intentIndex[j].related_intents.push(intentIndex[i].tag);
-                linkCount++;
-            }
-        }
-    }
-    if (DEBUG) console.log(`🔗 Auto-linked ${linkCount} pairs of related intents.`);
+function detectStyleSignals(rawMessage) {
+  const tokens = tokenize(rawMessage);
+  const isQuestion = /[\?؟]$/.test(rawMessage.trim()) || /^\s*(هل|متى|لماذا|أين|كيف|من|ما|كم)\b/.test(rawMessage.trim());
+  const sarcasm = /(بجد\?|عنجد\?|يا سلام\?)/i.test(rawMessage) || /(؟\?){1,}/.test(rawMessage);
+  const emphasis = tokens.some(t => ["جدا","للغاية","كتير","بشدة","أوي","اوي"].includes(t)) || /!{2,}/.test(rawMessage);
+  const short = tokens.length <= 3;
+  return { isQuestion, sarcasm, emphasis, short, tokens };
 }
 
-
-export function buildIndexSync() {
-    loadSynonyms();
-    const INTENTS_RAW = loadIntentsRaw();
-    if (INTENTS_RAW.length === 0) console.warn("WARNING: No intents were loaded.");
-    
-    const docs = INTENTS_RAW.map(it => tokenize([...(it.patterns || []), ...(it.keywords || [])].join(" ")));
-    
-    const df = {};
-    docs.forEach(tokens => new Set(tokens).forEach(t => df[t] = (df[t] || 0) + 1));
-    const N = Math.max(1, docs.length);
-    const idf = {};
-    Object.keys(df).forEach(t => idf[t] = Math.log((N + 1) / (df[t] + 1)) + 1);
-
-    intentIndex = INTENTS_RAW.map((it, i) => {
-        const tokens = docs[i];
-        const vec = {};
-        let sq = 0;
-        const tokenCounts = tokens.reduce((acc, t) => { acc[t] = (acc[t] || 0) + 1; return acc; }, {});
-        const totalTokens = Math.max(1, tokens.length);
-        
-        for (const t in tokenCounts) {
-            const tf = tokenCounts[t] / totalTokens;
-            const v = tf * (idf[t] || 1);
-            vec[t] = v;
-            sq += v * v;
-        }
-        
-        const compiledPatterns = (it.patterns || []).map(p => {
-            try {
-                const escapedPattern = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                return new RegExp(escapedPattern, 'i');
-            } catch (e) {
-                console.warn(`⚠️ Invalid regex pattern skipped in tag [${it.tag}]: ${p}`);
-                return null;
-            }
-        }).filter(Boolean);
-
-        return {
-            tag: it.tag, 
-            responses: it.responses, 
-            response_constructor: it.response_constructor, 
-            safety: it.safety,
-            keywords: (it.keywords || []).map(normalizeArabic), 
-            patterns: compiledPatterns,
-            follow_up_intents: it.follow_up_intents || [],
-            related_intents: it.related_intents || [],
-            tfidfVector: vec, 
-            tfidfNorm: Math.sqrt(sq) || 1, 
-        };
-    });
-    
-    autoLinkIntents(); // Auto-link intents after they are all indexed
-
-    tagToIdx = {};
-    intentIndex.forEach((e, idx) => tagToIdx[e.tag] = idx);
-    if (DEBUG) console.log("🚀 Engine v10.0 (Meta-Cognitive Oracle) indexed successfully. Total Intents:", intentIndex.length);
+// ------------------- Reasoning Layer -------------------
+function buildReasoning(intent, breakdown, matchedTerms, contextSummary) {
+  const lines = [`لأنّي وجدت دلائل على النية "${intent.tag}":`];
+  if (matchedTerms && matchedTerms.length) lines.push(`- كلمات/أنماط مطابقة: ${[...matchedTerms].join(", ")}`);
+  if (breakdown.base) lines.push(`- وزن الكلمات (أساسي): ${breakdown.base.count.toFixed(3)}, وزن TF-IDF: ${breakdown.base.tfidf.toFixed(3)}, وزن الأنماط: ${breakdown.base.pattern.toFixed(3)}`);
+  const bonuses = [];
+  if (breakdown.bonuses.emphasis) bonuses.push(`تشديد: ${breakdown.bonuses.emphasis.toFixed(3)}`);
+  if (breakdown.bonuses.question) bonuses.push(`سؤال: ${breakdown.bonuses.question.toFixed(3)}`);
+  if (bonuses.length) lines.push(`- مكافآت: ${bonuses.join(" | ")}`);
+  if (breakdown.context) lines.push(`- سياق/تعلم: سياق سابق: ${breakdown.context.contextBoost.toFixed(3)}, تعلم ذاتي: ${breakdown.context.adaptiveBoost.toFixed(3)}`);
+  if (contextSummary) lines.push(`- ملخص السياق: ${contextSummary}`);
+  lines.push(`النتيجة النهائية: ثقة ${breakdown.final.toFixed(3)}`);
+  return lines.join("\n");
 }
 
-// --- Scoring Engine v10.0 ---
-function jaccardSimilarity(setA, setB) {
-    if (setA.size === 0 || setB.size === 0) return 0;
-    const intersection = new Set([...setA].filter(x => setB.has(x)));
-    const union = new Set([...setA, ...setB]);
-    return intersection.size / union.size;
+// ------------------- Adaptive weights persistence -------------------
+function loadAdaptiveWeights() {
+  const aw = safeReadJson(ADAPTIVE_WEIGHTS_FILE);
+  adaptiveWeights = aw && typeof aw === 'object' ? aw : {};
+  if (DEBUG) console.log(`Loaded ${Object.keys(adaptiveWeights).length} adaptive weight rules.`);
+}
+function saveAdaptiveWeights() {
+  safeWriteJson(ADAPTIVE_WEIGHTS_FILE, adaptiveWeights);
 }
 
-export function scoreIntent(rawMessage, msgTfVec, msgTfNorm, intent, context, userProfile) {
+// ------------------- Multi-intent detection & scoring -------------------
+export function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
+  const { context = null, userProfile = null, weightsOverrides = {} } = options;
   const normMsg = normalizeArabic(rawMessage);
-  const originalMsgTokens = tokenize(rawMessage);
-  
-  let weightedMatchCount = 0;
+  const origTokens = msgTf.tokens;
+  const expandedUserTokens = expandTokensWithSynonyms(origTokens);
+
+  let keywordMatchWeight = 0;
   const matchedTerms = new Set();
-  
   (intent.keywords || []).forEach(kw => {
     const nkw = normalizeArabic(kw);
-    const kwTokens = tokenize(nkw);
-    const expandedKwTokens = expandTokensWithSynonyms(kwTokens);
-    
-    if ([...expandedKwTokens].some(et => normMsg.includes(et)) && !hasNegationNearby(rawMessage, nkw)) {
-        const matchingToken = originalMsgTokens.find(ut => expandedKwTokens.has(ut));
-        if (matchingToken) {
-            weightedMatchCount += getSynonymWeight(matchingToken);
-            matchedTerms.add(nkw);
-        }
+    const expandedKwTokens = expandTokensWithSynonyms(tokenize(nkw));
+    const matched = [...expandedKwTokens].some(t => expandedUserTokens.has(t) || normMsg.includes(t));
+    if (matched && !hasNegationNearby(rawMessage, nkw)) {
+      const matchingToken = origTokens.find(t => expandedKwTokens.has(t));
+      const w = matchingToken ? getSynonymWeight(matchingToken) : 0.9;
+      keywordMatchWeight += w;
+      matchedTerms.add(nkw);
     }
   });
 
-  let bestPatternSimilarity = 0;
+  let patternMatchScore = 0;
   (intent.patterns || []).forEach(regex => {
-    if (regex.test(normMsg) && !hasNegationNearby(rawMessage, regex.source)) {
-      weightedMatchCount += 1.0;
+    if (regex.test(rawMessage) && !hasNegationNearby(rawMessage, regex.source)) {
+      patternMatchScore += 1.0;
       matchedTerms.add(regex.source);
-      
-      const patternTokens = new Set(tokenize(regex.source));
-      const similarity = jaccardSimilarity(new Set(originalMsgTokens), patternTokens);
-      if (similarity > bestPatternSimilarity) {
-        bestPatternSimilarity = similarity;
-      }
     }
   });
-  
-  const countScore = weightedMatchCount > 0 ? (weightedMatchCount / (weightedMatchCount + 2)) : 0;
-  const csTf = cosineScore(msgTfVec, intent.tfidfVector, msgTfNorm, intent.tfidfNorm) || 0;
 
-  // --- Smart Bonuses v10.0 ---
-  const tagWords = new Set((intent.tag || "").split('_'));
-  const tagMatchCount = originalMsgTokens.filter(token => tagWords.has(token)).length;
-  const tagBonus = tagMatchCount > 0 ? 0.25 * tagMatchCount : 0;
-  const specificityBonus = bestPatternSimilarity * 0.30;
-  let emphasisBoost = 0;
-  matchedTerms.forEach(t => {
-      if (hasEmphasisNearby(rawMessage, t)) emphasisBoost += 0.10;
+  const tfidfSim = cosineScore(msgTf.vec, intent.tfidfVector, msgTf.norm, intent.tfidfNorm);
+
+  const style = detectStyleSignals(rawMessage);
+  const emphasisBoost = style.emphasis ? 0.08 : 0;
+  const questionBoost = style.isQuestion ? 0.05 : 0;
+  const sarcasmPenalty = style.sarcasm ? -0.05 : 0;
+
+  let contextBoost = 0;
+  if (context && Array.isArray(context.history)) {
+    for (const item of context.history) {
+      const decay = Math.exp(-0.15 * (item.age || 0));
+      const lastIntentObj = intentIndex.find(i => i.tag === item.tag);
+      if (!lastIntentObj) continue;
+      if (lastIntentObj.follow_up_intents.includes(intent.tag)) contextBoost += 0.35 * decay;
+      else if (lastIntentObj.related_intents.includes(intent.tag)) contextBoost += 0.12 * decay;
+    }
+  }
+
+  let adaptiveBoost = 0;
+  if (userProfile?.intentSuccessCount?.[intent.tag]) {
+    const successes = userProfile.intentSuccessCount[intent.tag];
+    adaptiveBoost = Math.min(0.20, successes * 0.015);
+    const lastUsed = userProfile.intentLastSuccess?.[intent.tag];
+    if (lastUsed) {
+      const ageDays = (Date.now() - new Date(lastUsed)) / (1000 * 60 * 60 * 24);
+      adaptiveBoost *= Math.exp(-0.03 * ageDays);
+    }
+  }
+
+  const baseWeights = { ...DEFAULT_WEIGHTS, ...weightsOverrides };
+  const perIntentAdaptive = adaptiveWeights[intent.tag] || {};
+  const wKeywords = perIntentAdaptive.wKeywords || baseWeights.wKeywords;
+  const wTfIdf = perIntentAdaptive.wTfIdf || baseWeights.wTfIdf;
+  const wPattern = perIntentAdaptive.wPattern || baseWeights.wPattern;
+  const wContext = baseWeights.wContext;
+
+  const kwScore = Math.tanh(keywordMatchWeight / 2.0);
+  const patScore = Math.tanh(patternMatchScore / 1.5);
+  const tfScore = Math.max(0, tfidfSim);
+  
+  const finalScore = (kwScore * wKeywords) + (tfScore * wTfIdf) + (patScore * wPattern) + (contextBoost * wContext) + emphasisBoost + questionBoost + adaptiveBoost + sarcasmPenalty;
+
+  const breakdown = {
+    base: { count: kwScore * wKeywords, tfidf: tfScore * wTfIdf, pattern: patScore * wPattern },
+    bonuses: { emphasis: emphasisBoost, question: questionBoost, sarcasm: sarcasmPenalty },
+    context: { contextBoost, adaptiveBoost },
+    final: Math.min(Math.max(finalScore, -1), 1),
+  };
+  
+  const contextSummary = context?.history?.length ? `سياق (${context.history.length} دور)` : "لا سياق";
+  const reasoning = buildReasoning(intent, breakdown, matchedTerms, contextSummary);
+
+  return { breakdown, matchedTerms: [...matchedTerms], reasoning, score: breakdown.final };
+}
+
+export function getTopIntents(rawMessage, options = {}) {
+  const topN = options.topN || DEFAULT_TOP_N;
+  const context = options.context || null;
+  const userProfile = options.userProfile || null;
+  const minScore = typeof options.minScore === 'number' ? options.minScore : 0.08;
+
+  const msgTf = buildMessageTfVec(rawMessage);
+  msgTf.norm = Math.sqrt(Object.values(msgTf.vec).reduce((sum, val) => sum + val * val, 0)) || 1;
+
+
+  const results = intentIndex.map(intent => {
+    const det = scoreIntentDetailed(rawMessage, msgTf, intent, { context, userProfile });
+    return {
+      tag: intent.tag,
+      score: det.score,
+      breakdown: det.breakdown,
+      matchedTerms: det.matchedTerms,
+      reasoning: det.reasoning,
+    };
   });
 
-  // --- Decaying & Multi-Dimensional Context Boost v10.0 ---
-  let contextBoost = 0;
-  if (context && context.history) {
-    context.history.forEach(item => {
-        const lastIntent = intentIndex.find(i => i.tag === item.tag);
-        if (lastIntent) {
-            const decayFactor = Math.exp(-0.1 * item.age); // Exponential decay
-            if (lastIntent.follow_up_intents.includes(intent.tag)) {
-                contextBoost += 0.40 * decayFactor; 
-            }
-            if (lastIntent.related_intents.includes(intent.tag)) {
-                contextBoost += 0.20 * decayFactor;
-            }
-        }
-    });
-  }
+  results.sort((a, b) => b.score - a.score);
 
-  // --- Adaptive Learning Boost v10.0 ---
-  let adaptiveBoost = 0;
-  if (userProfile && userProfile.intentSuccessCount && userProfile.intentSuccessCount[intent.tag]) {
-      const successes = userProfile.intentSuccessCount[intent.tag];
-      adaptiveBoost = Math.min(0.20, successes * 0.02);
-      const lastUsed = userProfile.intentLastSuccess?.[intent.tag];
-      if (lastUsed) {
-          const ageDays = (Date.now() - new Date(lastUsed)) / (1000 * 60 * 60 * 24);
-          adaptiveBoost *= Math.exp(-0.05 * ageDays);
-      }
-  }
-
-  // --- Final Score Calculation v10.0 ---
-  const wCount = 0.55;
-  const wTf = 0.10;
-  const final = (countScore * wCount) + (csTf * wTf) + tagBonus + specificityBonus + emphasisBoost + contextBoost + adaptiveBoost;
-  
-  // --- Confidence Levels v10.0 ---
-  let confidence = "low";
-  if (final > 0.7) confidence = "high";
-  else if (final > 0.4) confidence = "medium";
-
-  const scoreBreakdown = {
-      base: { count: countScore * wCount, tfidf: csTf * wTf },
-      bonuses: { tag: tagBonus, specificity: specificityBonus, emphasis: emphasisBoost },
-      context: { context: contextBoost, adaptive: adaptiveBoost },
-      final: Math.min(final, 1.0),
-      confidence,
-      matchedTerms: [...matchedTerms]
-  };
-
-  if (DEBUG && scoreBreakdown.final > 0.20) {
-      console.log(`\n--- DEBUG [${intent.tag}] | Final: ${scoreBreakdown.final.toFixed(3)} (${confidence}) ---`);
-      Object.keys(scoreBreakdown).forEach(key => {
-          if (typeof scoreBreakdown[key] === 'object' && key !== 'matchedTerms') {
-              const parts = Object.entries(scoreBreakdown[key]).map(([k, v]) => `${k}: ${v.toFixed(3)}`).join(' | ');
-              console.log(`  - ${key.padEnd(10)}: ${parts}`);
-          }
-      });
-  }
-  
-  return scoreBreakdown;
+  return results.filter(r => r.score >= minScore).slice(0, topN);
 }
 
+// ------------------- Feedback / Learning hooks -------------------
+export function registerIntentSuccess(userProfile, tag) {
+  if (!userProfile) return;
+  userProfile.intentSuccessCount = userProfile.intentSuccessCount || {};
+  userProfile.intentLastSuccess = userProfile.intentLastSuccess || {};
+  userProfile.intentSuccessCount[tag] = (userProfile.intentSuccessCount[tag] || 0) + 1;
+  userProfile.intentLastSuccess[tag] = new Date().toISOString();
+
+  adaptiveWeights[tag] = adaptiveWeights[tag] || {};
+  adaptiveWeights[tag].wKeywords = Math.min(0.9, (adaptiveWeights[tag].wKeywords || DEFAULT_WEIGHTS.wKeywords) + 0.02);
+  adaptiveWeights[tag].wTfIdf = Math.max(0.05, (adaptiveWeights[tag].wTfIdf || DEFAULT_WEIGHTS.wTfIdf) - 0.005);
+  
+  saveAdaptiveWeights();
+}
+
+// ------------------- Init loader -------------------
+(function init() {
+  try {
+    buildIndexSync();
+  } catch (e) {
+    if (DEBUG) console.warn("intent_engine init failed:", e.message || e);
+  }
+})();
+
+// --- The following are kept for potential future re-integration but are not used by the core engine v11 ---
 export function buildMessageTfVec(message) {
-  const tokens = tokenize(message);
-  const vec = {};
-  const tokenCounts = tokens.reduce((acc, t) => { acc[t] = (acc[t] || 0) + 1; return acc; }, {});
-  const totalTokens = Math.max(1, tokens.length);
-  for (const t in tokenCounts) {
-    const tf = tokenCounts[t] / totalTokens;
-    vec[t] = tf;
-  }
-  // Norm calculation is not needed here as it's part of msgTfNorm in the handler
-  return vec;
+    // This is a simplified version for the main handler, scoreIntentDetailed uses its own
+    const tokens = tokenize(message);
+    const vec = {};
+    const tokenCounts = tokens.reduce((acc, t) => { acc[t] = (acc[t] || 0) + 1; return acc; }, {});
+    const totalTokens = Math.max(1, tokens.length);
+    for (const t in tokenCounts) {
+        const tf = tokenCounts[t] / totalTokens;
+        vec[t] = tf;
+    }
+    return { vec, tokens };
 }
-
-// All other functions (Embeddings etc.) are kept for potential future use but are not essential for v10.0 logic.
-// They can be copy-pasted from previous versions if needed.
+export async function ensureIntentEmbeddings() {
+  if (DEBUG) console.log("ensureIntentEmbeddings: noop (no external embeddings configured).");
+}
+export async function embedMessageIfPossible(msgObj, rawMessage) {
+  // noop
+}
