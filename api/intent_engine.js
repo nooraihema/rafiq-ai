@@ -62,12 +62,16 @@ function loadIntentsRaw() {
 // ===== نهاية الكود المعدل =====
 
 
+// ===== بداية الدالة المعدلة (مع شبكة الأمان) =====
 export function buildIndexSync() {
     INTENTS_RAW = loadIntentsRaw();
     if (INTENTS_RAW.length === 0) {
         console.warn("WARNING: No intents were loaded. The bot will not be able to match any intents.");
     }
-    const docs = INTENTS_RAW.map(it => tokenize([...it.patterns, ...it.keywords].join(" ")));
+    
+    // التعديل الأول هنا: يضمن عدم حدوث خطأ إذا كانت patterns أو keywords غير موجودة
+    const docs = INTENTS_RAW.map(it => tokenize([...(it.patterns || []), ...(it.keywords || [])].join(" ")));
+    
     const df = {};
     docs.forEach(tokens => new Set(tokens).forEach(t => df[t] = (df[t] || 0) + 1));
     const N = Math.max(1, docs.length);
@@ -88,10 +92,18 @@ export function buildIndexSync() {
             sq += v * v;
         });
         return {
-            tag: it.tag, responses: it.responses, response_constructor: it.response_constructor, safety: it.safety,
-            keywords: it.keywords.map(normalizeArabic), patterns: it.patterns.map(normalizeArabic),
-            follow_up_question: it.follow_up_question, follow_up_intents: it.follow_up_intents,
-            tfidfVector: vec, tfidfNorm: Math.sqrt(sq) || 1, embedding: null
+            tag: it.tag, 
+            responses: it.responses, 
+            response_constructor: it.response_constructor, 
+            safety: it.safety,
+            // التعديل الثاني والثالث هنا: يضمن عدم حدوث خطأ إذا كانت keywords أو patterns غير موجودة
+            keywords: (it.keywords || []).map(normalizeArabic), 
+            patterns: (it.patterns || []).map(normalizeArabic),
+            follow_up_question: it.follow_up_question, 
+            follow_up_intents: it.follow_up_intents,
+            tfidfVector: vec, 
+            tfidfNorm: Math.sqrt(sq) || 1, 
+            embedding: null
         };
     });
 
@@ -99,6 +111,8 @@ export function buildIndexSync() {
     intentIndex.forEach((e, idx) => tagToIdx[e.tag] = idx);
     if (DEBUG) console.log("Built index (TF-IDF). Total Intents:", intentIndex.length);
 }
+// ===== نهاية الدالة المعدلة =====
+
 
 // ------------ Embeddings helpers ------------
 async function embedTextOpenAI(texts) {
@@ -160,7 +174,7 @@ function cosineVectors(a, b) {
 export async function ensureIntentEmbeddings() {
     if (!EMBEDDING_PROVIDER) return;
     try {
-        const texts = intentIndex.map(it => (it.keywords.concat(it.patterns).join(" ")) || it.tag);
+        const texts = intentIndex.map(it => ((it.keywords || []).concat(it.patterns || [])).join(" ") || it.tag);
         let embeddings = [];
         if (EMBEDDING_PROVIDER === "openai") embeddings = await embedTextOpenAI(texts);
         else if (EMBEDDING_PROVIDER === "hf") embeddings = await embedTextHF(texts);
@@ -204,7 +218,8 @@ export function scoreIntent(rawMessage, msgTfVec, msgTfNorm, intent) {
   const normMsg = normalizeArabic(rawMessage);
   let matchCount = 0;
   const matchedTerms = [];
-  for (const kw of intent.keywords || []) {
+  // Added || [] for safety here as well
+  for (const kw of (intent.keywords || [])) {
     if (!kw) continue;
     const nkw = normalizeArabic(kw);
     if (nkw && normMsg.includes(nkw) && !hasNegationNearby(rawMessage, nkw)) {
@@ -218,7 +233,8 @@ export function scoreIntent(rawMessage, msgTfVec, msgTfNorm, intent) {
       }
     }
   }
-  for (const pat of intent.patterns || []) {
+  // Added || [] for safety here as well
+  for (const pat of (intent.patterns || [])) {
     if (!pat) continue;
     const npat = normalizeArabic(pat);
     if (npat && normMsg.includes(npat) && !hasNegationNearby(rawMessage, npat)) {
@@ -280,7 +296,7 @@ export async function callTogetherAPI(userText) {
     const data = await res.json();
     const out = data.output_text || data.output?.[0]?.content || data[0]?.generated_text;
     return (typeof out === "string" && out.trim()) ? out.trim() : "محتاج منك توضيح بسيط كمان 💜";
-  } catch (e) { // <-- تم إصلاح الخطأ هنا
+  } catch (e) {
     if (DEBUG) console.warn("Together error", e);
     return "حالياً مش قادر أستخدم الموديل الخارجي، بس أنا معاك وجاهز أسمعك. احكيلي أكتر 💙";
   } finally { clearTimeout(t); }
