@@ -4,7 +4,7 @@ import path from "path";
 
 // ------------ إعداد عام ومسارات ------------
 export const ROOT = process.cwd();
-export const INTENTS_PATH = path.join(ROOT, "intents.json");
+// export const INTENTS_PATH = path.join(ROOT, "intents.json"); // <-- تم حذف هذا السطر أو تحويله إلى تعليق
 
 // --- تعديل ذكي لمسار البيانات ---
 export const IS_VERCEL = process.env.VERCEL_ENV === 'production' || process.env.VERCEL_ENV === 'preview';
@@ -41,4 +41,3 @@ export const MOOD_KEYWORDS = {
 };
 
 export const CRITICAL_KEYWORDS = ["انتحار","عايز اموت","عايز أموت","مش عايز اعيش","هقتل نفسي","اقتل نفسي","انا هموت","موتي"];
-
