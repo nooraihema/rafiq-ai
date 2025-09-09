@@ -1,20 +1,16 @@
-// intent_engine.js v11.0 - The Resilient Hybrid Cognitive Engine
-// - Multi-intent detection (Top N)
-// - Ensemble scoring with adaptive weights (with safe persistence)
-// - Synonym expansion (weighted)
-// - Style & emotion signals (question, sarcasm, emphasis)
-// - Internal reasoning layer (explainable decisions)
-// No external APIs required.
+// intent_engine.js v13.0 - The Harmonized Core
+// Fully compatible with chat.js v12.1
+// Features: Multi-intent detection, Adaptive Learning, Reasoning Layer, Synonym Engine, and more.
 
 import fs from "fs";
 import path from "path";
-import { DEBUG, ROOT } from './config.js';
+import { DEBUG } from './config.js';
 import {
   normalizeArabic,
   tokenize,
   levenshtein,
   hasNegationNearby,
-  hasEmphasisNearby,
+  hasEmphasisNearby // Note: We will create a new, more powerful style sensor
 } from './utils.js';
 
 // ------------------- Configuration -------------------
@@ -47,7 +43,7 @@ function safeReadJson(filePath) {
     return JSON.parse(content || "null");
   } catch (e) {
     console.error(`❌ SAFE_READ_ERROR: Could not read or parse ${path.basename(filePath)}. Error: ${e.message}`);
-    return null; // Return null on failure instead of crashing
+    return null;
   }
 }
 
@@ -130,6 +126,17 @@ function loadIntentsRaw() {
   return all;
 }
 
+function cosineScore(vecA, vecB, normA = 1, normB = 1) {
+  if (!vecA || !vecB) return 0;
+  let dot = 0;
+  for (const k in vecA) {
+    if (vecB[k]) dot += vecA[k] * vecB[k];
+  }
+  const denom = (normA || 1) * (normB || 1);
+  return denom ? (dot / denom) : 0;
+}
+
+
 function autoLinkIntents() {
   let links = 0;
   for (let i = 0; i < intentIndex.length; i++) {
@@ -208,33 +215,29 @@ export function buildIndexSync() {
 
   autoLinkIntents();
 
-  if (DEBUG) console.log(`🚀 Engine v11.0 (Resilient Cognitive Engine) indexed successfully. Total Intents: ${intentIndex.length}`);
+  if (DEBUG) console.log(`🚀 Engine v13.0 (Harmonized Core) indexed successfully. Total Intents: ${intentIndex.length}`);
 }
 
 // ------------------- Vector & Style helpers -------------------
-function cosineScore(vecA, vecB, normA = 1, normB = 1) {
-  if (!vecA || !vecB) return 0;
-  let dot = 0;
-  for (const k in vecA) {
-    if (vecB[k]) dot += vecA[k] * vecB[k];
-  }
-  const denom = (normA || 1) * (normB || 1);
-  return denom ? (dot / denom) : 0;
+function jaccardSimilarity(setA, setB) {
+  if (!setA || !setB || setA.size === 0 || setB.size === 0) return 0;
+  const inter = new Set([...setA].filter(x => setB.has(x)));
+  const union = new Set([...setA, ...setB]);
+  return inter.size / union.size;
 }
 
 function detectStyleSignals(rawMessage) {
-  const tokens = tokenize(rawMessage);
-  const isQuestion = /[\?؟]$/.test(rawMessage.trim()) || /^\s*(هل|متى|لماذا|أين|كيف|من|ما|كم)\b/.test(rawMessage.trim());
-  const sarcasm = /(بجد\?|عنجد\?|يا سلام\?)/i.test(rawMessage) || /(؟\?){1,}/.test(rawMessage);
-  const emphasis = tokens.some(t => ["جدا","للغاية","كتير","بشدة","أوي","اوي"].includes(t)) || /!{2,}/.test(rawMessage);
-  const short = tokens.length <= 3;
-  return { isQuestion, sarcasm, emphasis, short, tokens };
+    const tokens = tokenize(rawMessage);
+    const isQuestion = /[\?؟]$/.test(rawMessage.trim()) || /^\s*(هل|متى|لماذا|أين|كيف|من|ما|كم)\b/.test(rawMessage.trim());
+    const sarcasm = /(بجد\?|عنجد\?|يا سلام\?)/i.test(rawMessage) || /(؟\?){1,}/.test(rawMessage);
+    const hasBasicEmphasis = tokens.some(t => ["جدا","للغاية","كتير","بشدة","أوي","اوي"].includes(t)) || /!{2,}/.test(rawMessage);
+    return { isQuestion, sarcasm, hasBasicEmphasis, tokens };
 }
 
 // ------------------- Reasoning Layer -------------------
 function buildReasoning(intent, breakdown, matchedTerms, contextSummary) {
   const lines = [`لأنّي وجدت دلائل على النية "${intent.tag}":`];
-  if (matchedTerms && matchedTerms.length) lines.push(`- كلمات/أنماط مطابقة: ${[...matchedTerms].join(", ")}`);
+  if (matchedTerms && matchedTerms.size > 0) lines.push(`- كلمات/أنماط مطابقة: ${[...matchedTerms].join(", ")}`);
   if (breakdown.base) lines.push(`- وزن الكلمات (أساسي): ${breakdown.base.count.toFixed(3)}, وزن TF-IDF: ${breakdown.base.tfidf.toFixed(3)}, وزن الأنماط: ${breakdown.base.pattern.toFixed(3)}`);
   const bonuses = [];
   if (breakdown.bonuses.emphasis) bonuses.push(`تشديد: ${breakdown.bonuses.emphasis.toFixed(3)}`);
@@ -257,7 +260,7 @@ function saveAdaptiveWeights() {
 }
 
 // ------------------- Multi-intent detection & scoring -------------------
-export function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
+function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
   const { context = null, userProfile = null, weightsOverrides = {} } = options;
   const normMsg = normalizeArabic(rawMessage);
   const origTokens = msgTf.tokens;
@@ -278,17 +281,28 @@ export function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
   });
 
   let patternMatchScore = 0;
+  let bestPatternSimilarity = 0;
   (intent.patterns || []).forEach(regex => {
     if (regex.test(rawMessage) && !hasNegationNearby(rawMessage, regex.source)) {
       patternMatchScore += 1.0;
       matchedTerms.add(regex.source);
+
+      const patternTokens = new Set(tokenize(regex.source));
+      const similarity = jaccardSimilarity(new Set(origTokens), patternTokens);
+      if (similarity > bestPatternSimilarity) {
+        bestPatternSimilarity = similarity;
+      }
     }
   });
 
   const tfidfSim = cosineScore(msgTf.vec, intent.tfidfVector, msgTf.norm, intent.tfidfNorm);
 
   const style = detectStyleSignals(rawMessage);
-  const emphasisBoost = style.emphasis ? 0.08 : 0;
+  let emphasisBoost = style.hasBasicEmphasis ? 0.05 : 0;
+  matchedTerms.forEach(t => {
+      if (hasEmphasisNearby(rawMessage, t)) emphasisBoost += 0.05;
+  });
+  
   const questionBoost = style.isQuestion ? 0.05 : 0;
   const sarcasmPenalty = style.sarcasm ? -0.05 : 0;
 
@@ -315,7 +329,7 @@ export function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
   }
 
   const baseWeights = { ...DEFAULT_WEIGHTS, ...weightsOverrides };
-  const perIntentAdaptive = adaptiveWeights[intent.tag] || {};
+  const perIntentAdaptive = adaptiveWeights[tag] || {};
   const wKeywords = perIntentAdaptive.wKeywords || baseWeights.wKeywords;
   const wTfIdf = perIntentAdaptive.wTfIdf || baseWeights.wTfIdf;
   const wPattern = perIntentAdaptive.wPattern || baseWeights.wPattern;
@@ -331,13 +345,13 @@ export function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
     base: { count: kwScore * wKeywords, tfidf: tfScore * wTfIdf, pattern: patScore * wPattern },
     bonuses: { emphasis: emphasisBoost, question: questionBoost, sarcasm: sarcasmPenalty },
     context: { contextBoost, adaptiveBoost },
-    final: Math.min(Math.max(finalScore, -1), 1),
+    final: Math.min(Math.max(finalScore, 0), 1),
   };
   
   const contextSummary = context?.history?.length ? `سياق (${context.history.length} دور)` : "لا سياق";
   const reasoning = buildReasoning(intent, breakdown, matchedTerms, contextSummary);
 
-  return { breakdown, matchedTerms: [...matchedTerms], reasoning, score: breakdown.final };
+  return { breakdown, matchedTerms, reasoning, score: breakdown.final };
 }
 
 export function getTopIntents(rawMessage, options = {}) {
@@ -346,9 +360,16 @@ export function getTopIntents(rawMessage, options = {}) {
   const userProfile = options.userProfile || null;
   const minScore = typeof options.minScore === 'number' ? options.minScore : 0.08;
 
-  const msgTf = buildMessageTfVec(rawMessage);
-  msgTf.norm = Math.sqrt(Object.values(msgTf.vec).reduce((sum, val) => sum + val * val, 0)) || 1;
-
+  const tokens = tokenize(rawMessage);
+  const vec = {};
+  const tokenCounts = tokens.reduce((acc, t) => { acc[t] = (acc[t] || 0) + 1; return acc; }, {});
+  const totalTokens = Math.max(1, tokens.length);
+  for (const t in tokenCounts) {
+      const tf = tokenCounts[t] / totalTokens;
+      vec[t] = tf;
+  }
+  const norm = Math.sqrt(Object.values(vec).reduce((sum, val) => sum + val * val, 0)) || 1;
+  const msgTf = { vec, norm, tokens };
 
   const results = intentIndex.map(intent => {
     const det = scoreIntentDetailed(rawMessage, msgTf, intent, { context, userProfile });
@@ -369,6 +390,7 @@ export function getTopIntents(rawMessage, options = {}) {
 // ------------------- Feedback / Learning hooks -------------------
 export function registerIntentSuccess(userProfile, tag) {
   if (!userProfile) return;
+  
   userProfile.intentSuccessCount = userProfile.intentSuccessCount || {};
   userProfile.intentLastSuccess = userProfile.intentLastSuccess || {};
   userProfile.intentSuccessCount[tag] = (userProfile.intentSuccessCount[tag] || 0) + 1;
@@ -379,33 +401,4 @@ export function registerIntentSuccess(userProfile, tag) {
   adaptiveWeights[tag].wTfIdf = Math.max(0.05, (adaptiveWeights[tag].wTfIdf || DEFAULT_WEIGHTS.wTfIdf) - 0.005);
   
   saveAdaptiveWeights();
-}
-
-// ------------------- Init loader -------------------
-(function init() {
-  try {
-    buildIndexSync();
-  } catch (e) {
-    if (DEBUG) console.warn("intent_engine init failed:", e.message || e);
-  }
-})();
-
-// --- The following are kept for potential future re-integration but are not used by the core engine v11 ---
-export function buildMessageTfVec(message) {
-    // This is a simplified version for the main handler, scoreIntentDetailed uses its own
-    const tokens = tokenize(message);
-    const vec = {};
-    const tokenCounts = tokens.reduce((acc, t) => { acc[t] = (acc[t] || 0) + 1; return acc; }, {});
-    const totalTokens = Math.max(1, tokens.length);
-    for (const t in tokenCounts) {
-        const tf = tokenCounts[t] / totalTokens;
-        vec[t] = tf;
-    }
-    return { vec, tokens };
-}
-export async function ensureIntentEmbeddings() {
-  if (DEBUG) console.log("ensureIntentEmbeddings: noop (no external embeddings configured).");
-}
-export async function embedMessageIfPossible(msgObj, rawMessage) {
-  // noop
 }
