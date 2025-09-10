@@ -1,12 +1,8 @@
-// chat.js v14.0 - The Meta-Fusion Conductor
-// Fully asynchronous, diagnostic + fusion-based decisioning,
-// adds: Dynamic Fusion Engine, Per-Intent Adaptive Thresholds, Self-Learning persistence.
-// Compatible with intent_engine v13.x
 
-import fs from "fs";
-import path from "path";
+// chat.js v16.0 - The Meta-Fusion Conductor (Final Polished Version)
+// Fully asynchronous, diagnostic, fusion-based decisioning with clarification and adaptive thresholds.
 
-import { DEBUG, SHORT_MEMORY_LIMIT, LONG_TERM_LIMIT, ROOT } from './config.js';
+import { DEBUG, SHORT_MEMORY_LIMIT, LONG_TERM_LIMIT } from './config.js';
 import {
   detectMood,
   detectCritical,
@@ -22,7 +18,11 @@ import {
   makeUserId,
   appendLearningQueue,
   updateProfileWithEntities,
-  recordRecurringTheme
+  recordRecurringTheme,
+  loadIntentThresholds,
+  saveIntentThresholds,
+  loadOccurrenceCounters,
+  saveOccurrenceCounters
 } from './storage.js';
 import {
   intentIndex,
@@ -31,154 +31,97 @@ import {
   registerIntentSuccess
 } from './intent_engine.js';
 
-// --------------------------- New persistence files ---------------------------
-const DATA_DIR = path.join(process.cwd(), "data");
-const INTENT_THRESHOLDS_FILE = path.join(DATA_DIR, "intent_thresholds.json");
-const OCCURRENCE_COUNTERS_FILE = path.join(DATA_DIR, "intent_occurrences.json");
+// --- Initialization ---
+buildIndexSync();
 
-// --------------------------- Configurable Fusion Weights ---------------------------
-// These control how the base intent engine score is fused with other evidence.
+// --- Configuration for The Fusion Engine ---
 const FUSION_WEIGHTS = {
-  baseScore: 0.60,     // weight for the original engine score
-  moodMatch: 0.18,     // boost if detected mood matches intent keywords/tag heuristics
-  entityMatch: 0.12,   // boost if entities match intent keywords
-  contextMatch: 0.06,  // boost for recent related intents (history)
-  userAdaptive: 0.04   // boost based on user's past success with the same intent
+  baseScore: 0.60,
+  moodMatch: 0.18,
+  entityMatch: 0.12,
+  contextMatch: 0.06,
+  userAdaptive: 0.04
 };
-
-// Safety caps
-const MAX_FUSION_BOOST = 0.40; // don't boost more than this cumulative amount
-
-// --- Existing configuration (kept) ---
+const MAX_FUSION_BOOST = 0.40;
 const CONFIDENCE_BASE_THRESHOLD = 0.40;
 const AMBIGUITY_MARGIN = 0.10;
 const MULTI_INTENT_THRESHOLD = 0.55;
-const CLARIFICATION_VALID_CHOICES = /^[1-9][0-9]*$/; // allow numeric choices (1..n)
+const CLARIFICATION_VALID_CHOICES = /^[1-9][0-9]*$/;
 const DIAGNOSTIC_MIN_SCORE = 0.05;
-const DIAGNOSTIC_VISIBLE_TO_USER = true;
+const DIAGNOSTIC_VISIBLE_TO_USER = true; // 🔄 خليها false في الإنتاج
 
-// --- Init index (ensure intents loaded) ---
-buildIndexSync();
+// --- Internal State for Meta-Learning ---
+let INTENT_THRESHOLDS = {};
+let OCCURRENCE_COUNTERS = {};
 
-// --------------------------- Utility: Safe JSON read/write ---------------------------
-function safeReadJson(filePath) {
-  try {
-    if (!fs.existsSync(filePath)) return null;
-    const raw = fs.readFileSync(filePath, 'utf8');
-    return JSON.parse(raw || 'null');
-  } catch (e) {
-    console.error(`safeReadJson failed for ${filePath}:`, e.message || e);
-    return null;
+// --- Meta-Learning Initialization ---
+(async () => {
+  INTENT_THRESHOLDS = await loadIntentThresholds() || {};
+  OCCURRENCE_COUNTERS = await loadOccurrenceCounters() || {};
+  if (DEBUG) {
+    console.log(
+      `🧠 Meta-Learning Initialized: ${Object.keys(INTENT_THRESHOLDS).length} thresholds, ${Object.keys(OCCURRENCE_COUNTERS).length} occurrence counters loaded.`
+    );
   }
-}
+})();
 
-function safeWriteJson(filePath, obj) {
-  try {
-    const dir = path.dirname(filePath);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(obj, null, 2), 'utf8');
-  } catch (e) {
-    console.error(`safeWriteJson failed for ${filePath}:`, e.message || e);
-  }
-}
-
-// --------------------------- Adaptive thresholds persistence ---------------------------
-let INTENT_THRESHOLDS = {}; // tag -> threshold
-
-function loadIntentThresholds() {
-  const parsed = safeReadJson(INTENT_THRESHOLDS_FILE);
-  if (parsed && typeof parsed === 'object') {
-    INTENT_THRESHOLDS = parsed;
-  } else {
-    INTENT_THRESHOLDS = {};
-  }
-  if (DEBUG) console.log("Loaded intent thresholds:", Object.keys(INTENT_THRESHOLDS).length);
-}
-
-function saveIntentThresholds() {
-  safeWriteJson(INTENT_THRESHOLDS_FILE, INTENT_THRESHOLDS);
-}
-
+// --- Meta-Learning Helpers ---
 function getThresholdForTag(tag) {
   if (!tag) return CONFIDENCE_BASE_THRESHOLD;
-  return (typeof INTENT_THRESHOLDS[tag] === 'number') ? INTENT_THRESHOLDS[tag] : CONFIDENCE_BASE_THRESHOLD;
+  return (typeof INTENT_THRESHOLDS[tag] === 'number')
+    ? INTENT_THRESHOLDS[tag]
+    : CONFIDENCE_BASE_THRESHOLD;
 }
 
-// Adjust threshold on success to become slightly more permissive for that intent (meta-learning)
-function adjustThresholdOnSuccess(tag) {
+async function adjustThresholdOnSuccess(tag) {
   if (!tag) return;
   const current = getThresholdForTag(tag);
-  const newVal = Math.max(0.15, current - 0.02); // make slightly easier to trigger
+  const newVal = Math.max(0.15, current - 0.02);
   INTENT_THRESHOLDS[tag] = parseFloat(newVal.toFixed(3));
-  saveIntentThresholds();
-  if (DEBUG) console.log(`Adjusted threshold for ${tag}: ${current} -> ${INTENT_THRESHOLDS[tag]}`);
+  await saveIntentThresholds(INTENT_THRESHOLDS);
+  if (DEBUG) console.log(`💡 Meta-Learn: Adjusted threshold for ${tag}: ${current} -> ${INTENT_THRESHOLDS[tag]}`);
 }
 
-// Occurrence counters (for self-learning from repeated ambiguous signals)
-let OCCURRENCE_COUNTERS = {}; // { tag: count }
-
-function loadOccurrenceCounters() {
-  const parsed = safeReadJson(OCCURRENCE_COUNTERS_FILE);
-  OCCURRENCE_COUNTERS = parsed && typeof parsed === 'object' ? parsed : {};
-  if (DEBUG) console.log("Loaded occurrence counters:", Object.keys(OCCURRENCE_COUNTERS).length);
-}
-
-function saveOccurrenceCounters() {
-  safeWriteJson(OCCURRENCE_COUNTERS_FILE, OCCURRENCE_COUNTERS);
-}
-
-function incrementOccurrence(tag) {
+async function incrementOccurrence(tag) {
   if (!tag) return;
   OCCURRENCE_COUNTERS[tag] = (OCCURRENCE_COUNTERS[tag] || 0) + 1;
-  // If threshold crossings occur across many occurrences, slightly lower threshold
-  const cnt = OCCURRENCE_COUNTERS[tag];
-  if (cnt % 10 === 0) {
-    // every 10 occurrences, reduce threshold by 0.01 (small step)
-    INTENT_THRESHOLDS[tag] = Math.max(0.12, (INTENT_THRESHOLDS[tag] || CONFIDENCE_BASE_THRESHOLD) - 0.01);
-    saveIntentThresholds();
-    if (DEBUG) console.log(`Occurrence-driven adjust for ${tag}, new threshold: ${INTENT_THRESHOLDS[tag]}`);
+  const count = OCCURRENCE_COUNTERS[tag];
+  if (count % 10 === 0) {
+    const currentThreshold = getThresholdForTag(tag);
+    INTENT_THRESHOLDS[tag] = Math.max(0.12, currentThreshold - 0.01);
+    await saveIntentThresholds(INTENT_THRESHOLDS);
+    if (DEBUG) console.log(`💡 Meta-Learn: Occurrence-driven adjustment for ${tag}, new threshold: ${INTENT_THRESHOLDS[tag]}`);
   }
-  saveOccurrenceCounters();
+  await saveOccurrenceCounters(OCCURRENCE_COUNTERS);
 }
 
-// Load persisted artifacts
-loadIntentThresholds();
-loadOccurrenceCounters();
-
-// --------------------------- Helpers: matching heuristics ---------------------------
-// Heuristics to detect mood/entity matches for an intent. Uses intent.keywords and tag text.
-// Returns boost values (not weighted by fusion weights yet).
+// --- Fusion Engine Helpers ---
 function moodMatchBoost(intent, detectedMood) {
-  if (!detectedMood || !intent) return 0;
-  // Simple heuristic: if tag includes mood word or keywords contain mood token
-  const m = detectedMood.toString().toLowerCase();
-  if ((intent.tag || '').toLowerCase().includes(m)) return 1.0;
-  const kws = (intent.keywords || []).map(k => (k || '').toLowerCase());
-  if (kws.some(k => k.includes(m))) return 1.0;
+  if (!detectedMood || !intent || detectedMood === 'محايد') return 0;
+  const moodStr = detectedMood.toString().toLowerCase();
+  if ((intent.tag || '').toLowerCase().includes(moodStr)) return 1.0;
+  const keywords = (intent.keywords || []).map(k => (k || '').toLowerCase());
+  if (keywords.some(k => k.includes(moodStr))) return 1.0;
   return 0;
 }
 
 function entityMatchBoost(intent, entities = []) {
   if (!entities || entities.length === 0 || !intent) return 0;
-  const kws = new Set((intent.keywords || []).map(k => (k || '').toLowerCase()));
+  const keywords = new Set((intent.keywords || []).map(k => (k || '').toLowerCase()));
   const tag = (intent.tag || '').toLowerCase();
-  for (const e of entities) {
-    const ev = (e || '').toLowerCase();
-    if (kws.has(ev)) return 1.0;
-    if (tag.includes(ev)) return 1.0;
+  for (const entity of entities) {
+    const entityStr = (entity || '').toLowerCase();
+    if (keywords.has(entityStr) || tag.includes(entityStr)) return 1.0;
   }
   return 0;
 }
 
 function contextMatchBoost(intent, context) {
   if (!context || !Array.isArray(context.history) || !intent) return 0;
-  // if any recent history tag equals this intent or is related_intents, give small boost
-  const recent = context.history || [];
-  for (const h of recent) {
-    if (!h || !h.tag) continue;
-    if (h.tag === intent.tag) return 1.0; // strong if same intent repeated
-    // check related intents list (intentIndex entry)
-    const lastIntentObj = intentIndex.find(i => i.tag === h.tag);
+  for (const historyItem of context.history) {
+    if (!historyItem || !historyItem.tag) continue;
+    if (historyItem.tag === intent.tag) return 1.0; // Strong boost for repetition
+    const lastIntentObj = intentIndex.find(i => i.tag === historyItem.tag);
     if (lastIntentObj && (lastIntentObj.related_intents || []).includes(intent.tag)) return 1.0;
   }
   return 0;
@@ -187,66 +130,40 @@ function contextMatchBoost(intent, context) {
 function userAdaptiveBoostForIntent(profile, intent) {
   if (!profile || !intent) return 0;
   const count = (profile.intentSuccessCount && profile.intentSuccessCount[intent.tag]) || 0;
-  // small decaying boost based on successes
-  return Math.min(1.0, count / 10); // normalized 0..1
+  return Math.min(1.0, count / 10); // Normalized 0..1, caps at 10 successes
 }
 
-// Fuse candidate base score with heuristics to compute fusedScore
 function computeFusedScore(candidate, intentObj, detectedMood, entities, context, profile) {
-  // candidate.score is original engine score in [0,1]
   const base = Math.max(0, Math.min(1, candidate.score || 0));
-  let moodMatch = moodMatchBoost(intentObj, detectedMood);    // 0 or 1
-  let entityMatch = entityMatchBoost(intentObj, entities);    // 0 or 1
-  let ctxMatch = contextMatchBoost(intentObj, context);       // 0 or 1
-  let userAdapt = userAdaptiveBoostForIntent(profile, intentObj); // 0..1
 
-  // Convert binary matches into scaled boosts
-  const moodBoost = moodMatch ? FUSION_WEIGHTS.moodMatch * moodMatch : 0;
-  const entityBoost = entityMatch ? FUSION_WEIGHTS.entityMatch * entityMatch : 0;
-  const contextBoost = ctxMatch ? FUSION_WEIGHTS.contextMatch * ctxMatch : 0;
-  const userBoost = userAdapt ? FUSION_WEIGHTS.userAdaptive * userAdapt : 0;
+  const moodBoost = FUSION_WEIGHTS.moodMatch * moodMatchBoost(intentObj, detectedMood);
+  const entityBoost = FUSION_WEIGHTS.entityMatch * entityMatchBoost(intentObj, entities);
+  const contextBoost = FUSION_WEIGHTS.contextMatch * contextMatchBoost(intentObj, context);
+  const userBoost = FUSION_WEIGHTS.userAdaptive * userAdaptiveBoostForIntent(profile, intentObj);
 
   let totalBoost = moodBoost + entityBoost + contextBoost + userBoost;
   if (totalBoost > MAX_FUSION_BOOST) totalBoost = MAX_FUSION_BOOST;
 
-  const fused = (base * FUSION_WEIGHTS.baseScore) + totalBoost;
-  // also allow direct combination with base, ensure capped to 0..1
-  return Math.min(1, Math.max(0, fused));
+  const fusedScore = (base * FUSION_WEIGHTS.baseScore) + totalBoost;
+  return Math.min(1, Math.max(0, fusedScore));
 }
 
-// --------------------------- Diagnostic builders (kept/extended) ---------------------------
+// --- Diagnostic Builders ---
 function buildClarificationPrompt(options) {
   let question = "لم أكن متأكدًا تمامًا مما تقصده. هل يمكنك توضيح ما إذا كنت تقصد أحد هذه المواضيع؟\n";
   const lines = options.map((opt, i) => `${i + 1}. ${opt.prompt}`);
   return `${question}${lines.join('\n')}\n(يمكنك الرد برقم الاختيار)`;
 }
 
-function buildDiagnosticHint(rawMessage, topCandidates) {
-  if (!topCandidates || topCandidates.length === 0) {
-    return "ماقدرتش ألقط نية واضحة من الرسالة — ممكن تكون عامة أو قصيرة جدًا. حاول توضيح المطلوب بجملة أطول أو بكلمات مختلفة.";
-  }
-  const visible = topCandidates.slice(0, 4);
-  const parts = visible.map(c => {
-    const score = (typeof c.score === 'number') ? c.score.toFixed(3) : c.score;
-    let reasonLine = "";
-    if (c.reasoning) {
-      const firstLine = c.reasoning.split('\n')[0] || "";
-      reasonLine = firstLine ? ` — ${firstLine.replace(/\n/g, ' ').slice(0, 120)}` : "";
-    }
-    return `- ${c.tag} (ثقة: ${score})${reasonLine}`;
-  }).join("\n");
-  return `قطفت احتمالات لكن بدرجات ثقة منخفضة:\n${parts}\n\nلو تحب أوضح لك ليه النسب دي طالعة كده (الكلمات أو الأنماط المؤثرة)، راسلني بعبارة "اشرح" أو فعّل DEBUG أثناء التطوير.`;
-}
-
 function buildConciseDiagnosticForUser(topCandidates) {
   if (!DIAGNOSTIC_VISIBLE_TO_USER || !topCandidates || topCandidates.length === 0) return null;
-  const visible = topCandidates.filter(c => (typeof c.score === 'number' ? c.score : 0) >= DIAGNOSTIC_MIN_SCORE).slice(0, 2);
+  const visible = topCandidates.filter(c => (c.score || 0) >= DIAGNOSTIC_MIN_SCORE).slice(0, 2);
   if (visible.length === 0) return null;
-  const lines = visible.map(c => `• ${c.tag.replace(/_/g, ' ')} (ثقة: ${(c.score).toFixed(2)})`);
-  return `احتمالات قريبة: \n${lines.join("\n")}\nلو كانت غير مقصودة، حاول توضح جملة أو تضيف كلمة مفتاحية.`;
+  const lines = visible.map(c => `• ${c.tag.replace(/_/g, ' ')} (ثقة: ${(c.score * 100).toFixed(0)}%)`);
+  return `احتمالات قريبة:\n${lines.join("\n")}\nإذا كانت غير مقصودة، حاول توضيح جملتك.`;
 }
 
-// --------------------------- Main Handler v14.0 ---------------------------
+// --- Main Handler ---
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
@@ -255,214 +172,134 @@ export default async function handler(req, res) {
     const rawMessage = (body.message || "").toString().trim();
     if (!rawMessage) return res.status(400).json({ error: "Empty message" });
 
-    // load users (async storage expected)
-    let users;
-    try {
-      users = await loadUsers();
-    } catch (e) {
-      console.error("Failed to load users storage:", e.message || e);
-      users = {};
-    }
-
+    let users = await loadUsers();
     let userId = body.userId || null;
     if (!userId || !users[userId]) {
       userId = makeUserId();
-      users[userId] = {
-        id: userId,
-        createdAt: new Date().toISOString(),
-        lastSeen: new Date().toISOString(),
-        preferredTone: "warm",
-        shortMemory: [],
-        longMemory: [],
-        longTermProfile: {},
-        moodHistory: [],
-        flags: {},
-        intentSuccessCount: {},
-        intentLastSuccess: {}
-      };
-      if (DEBUG) console.error("Created user", userId);
+      users[userId] = { id: userId, createdAt: new Date().toISOString(), shortMemory: [], intentSuccessCount: {}, intentLastSuccess: {} };
     }
     const profile = users[userId];
     profile.lastSeen = new Date().toISOString();
 
-    // safety check
+    // --- Critical check ---
     if (detectCritical(rawMessage)) {
+      profile.flags = profile.flags || {};
       profile.flags.critical = true;
-      try { await saveUsers(users); } catch (e) { console.error("saveUsers failed (critical path):", e.message || e); }
+      await saveUsers(users);
       return res.status(200).json({ reply: criticalSafetyReply(), source: "safety", userId });
     }
 
-    // analyze message
-    const mood = detectMood(rawMessage);                       // e.g. 'حزن', 'فرح', etc.
-    const entities = extractEntities(rawMessage) || [];        // array of entity strings
-    const rootCause = (typeof extractRootCause === "function") ? extractRootCause(rawMessage) : null;
+    const mood = detectMood(rawMessage);
+    const entities = extractEntities(rawMessage) || [];
 
-    try {
-      updateProfileWithEntities(profile, entities, mood, rootCause);
-    } catch (e) {
-      console.error("updateProfileWithEntities failed:", e.message || e);
-    }
-
-    profile.moodHistory = profile.moodHistory || [];
+    updateProfileWithEntities(profile, entities, mood, null);
+    profile.moodHistory = (profile.moodHistory || []).slice(-LONG_TERM_LIMIT + 1);
     profile.moodHistory.push({ mood, ts: new Date().toISOString() });
-    if (profile.moodHistory.length > LONG_TERM_LIMIT) profile.moodHistory.shift();
 
     profile.shortMemory = profile.shortMemory || [];
     profile.shortMemory.forEach(item => { item.age = (item.age || 0) + 1; });
 
-    // --- Handle Clarification Response if expected ---
+    // --- Handle Clarification Response ---
     if (profile.expectingFollowUp?.isClarification) {
-      const candidate = profile.expectingFollowUp;
       const trimmed = rawMessage.trim();
       if (CLARIFICATION_VALID_CHOICES.test(trimmed)) {
         const idx = parseInt(trimmed, 10) - 1;
-        if (idx >= 0 && idx < (candidate.options || []).length) {
-          const chosen = candidate.options[idx];
+        const chosen = profile.expectingFollowUp.options[idx];
+        if (chosen) {
           profile.expectingFollowUp = null;
-
-          // mark success
           registerIntentSuccess(profile, chosen.tag);
-          // meta-learn: adjust threshold and counters
-          adjustThresholdOnSuccess(chosen.tag);
+          await adjustThresholdOnSuccess(chosen.tag);
 
           const intent = intentIndex.find(i => i.tag === chosen.tag);
-          const baseReply = (intent?.responses?.length) ? intent.responses[Math.floor(Math.random() * intent.responses.length)] : "شكرًا للتوضيح. كيف يمكنني المساعدة أكثر؟";
+          const baseReply = Array.isArray(intent?.responses) && intent.responses.length
+            ? intent.responses[Math.floor(Math.random() * intent.responses.length)]
+            : "شكرًا للتوضيح. كيف يمكنني المساعدة أكثر؟";
           const personalized = adaptReplyBase(baseReply, profile, mood);
 
-          profile.shortMemory.push({ message: rawMessage, reply: personalized, mood, tag: chosen.tag, age: 0, ts: new Date().toISOString(), entities });
-          if (profile.shortMemory.length > SHORT_MEMORY_LIMIT) profile.shortMemory.shift();
-
-          try { await saveUsers(users); } catch (e) { console.error("saveUsers failed (clarification):", e.message || e); }
-
+          profile.shortMemory.push({ message: rawMessage, reply: personalized, mood, tag: chosen.tag, age: 0, entities });
+          await saveUsers(users);
           return res.status(200).json({ reply: personalized, source: "intent_clarified", tag: chosen.tag, userId });
         }
       }
-      profile.expectingFollowUp = null;
+      profile.expectingFollowUp = null; // Invalid choice
     }
 
-    // --- Prepare Context for Intent Engine ---
-    const context = {
-      history: profile.shortMemory.slice(-3).map(it => ({ tag: it.tag, age: it.age || 0 })),
-      lastEntities: profile.shortMemory.length ? profile.shortMemory[profile.shortMemory.length - 1].entities || [] : []
-    };
+    // --- Intent Recognition Pipeline ---
+    const context = { history: profile.shortMemory.slice(-3) };
+    const coreCandidates = getTopIntents(rawMessage, { topN: 5, context, userProfile: profile });
 
-    // --- Get Top Intents from core engine ---
-    const coreCandidates = getTopIntents(rawMessage, { topN: 6, context, userProfile: profile }) || [];
-
-    // If no candidates returned, fallback quickly
-    if (!coreCandidates || coreCandidates.length === 0) {
-      // fallback logic below (will append to learning queue etc.)
-    }
-
-    // Compute fused scores for each candidate
     const fusedCandidates = coreCandidates.map(c => {
       const intentObj = intentIndex.find(i => i.tag === c.tag);
-      const fusedScore = intentObj
-        ? computeFusedScore(c, intentObj, mood, entities, context, profile)
-        : c.score;
+      const fusedScore = intentObj ? computeFusedScore(c, intentObj, mood, entities, context, profile) : c.score;
       return { ...c, fusedScore, intentObj };
-    });
-
-    // Sort by fusedScore desc
-    fusedCandidates.sort((a, b) => (b.fusedScore || 0) - (a.fusedScore || 0));
+    }).sort((a, b) => (b.fusedScore || 0) - (a.fusedScore || 0));
 
     if (DEBUG) {
-      console.error("\n--- CORE CANDIDATES (base) ---");
-      coreCandidates.forEach(c => console.error(`- ${c.tag}: ${typeof c.score === 'number' ? c.score.toFixed(4) : c.score}`));
-      console.error("\n--- FUSED CANDIDATES ---");
-      fusedCandidates.forEach(c => {
-        try {
-          const reason = c.intentObj ? ` (moodK:${mood}, ents:${entities.join(',')})` : '';
-          console.error(`- ${c.tag}: base=${(c.score).toFixed(4)} fused=${(c.fusedScore || 0).toFixed(4)}${reason}`);
-        } catch (e) {}
-      });
+      console.log("\n--- FUSED CANDIDATES ---");
+      fusedCandidates.forEach(c => console.log(`- ${c.tag}: base=${(c.score).toFixed(4)} fused=${(c.fusedScore || 0).toFixed(4)}`));
     }
 
-    // Decision: use fusedScore and per-intent threshold
-    const chosen = fusedCandidates[0];
-    const chosenTag = chosen?.tag;
-    const chosenIntentObj = chosen?.intentObj;
-    const chosenFused = chosen ? (chosen.fusedScore || chosen.score || 0) : 0;
+    // --- Decision Logic ---
+    const best = fusedCandidates[0];
+    if (best) {
+      let threshold = getThresholdForTag(best.tag);
 
-    // If candidate exists, get its threshold (adaptive per-intent)
-    const thresholdForChosen = getThresholdForTag(chosenTag);
+      // Dynamic threshold adjustment for short inputs
+      const tokens = tokenize(rawMessage);
+      if (tokens.length <= 3) threshold = Math.min(0.9, threshold + 0.20);
+      else if (tokens.length <= 6) threshold = Math.min(0.9, threshold + 0.10);
 
-    // Ambiguity check using top two fused scores
-    const second = fusedCandidates[1];
-    const secondFused = second ? (second.fusedScore || second.score || 0) : 0;
+      if (best.fusedScore >= threshold) {
+        const second = fusedCandidates[1];
 
-    // If best fused >= threshold, and not ambiguous, accept it.
-    if (chosen && chosenFused >= thresholdForChosen) {
-      // Ambiguity detection
-      if (second && (chosenFused - secondFused < AMBIGUITY_MARGIN)) {
-        // Ask clarification between top two fusedCandidates
-        const options = [chosen, second].map(opt => ({ tag: opt.tag, prompt: (opt.tag || "").replace(/_/g, " ") }));
-        profile.expectingFollowUp = { isClarification: true, options, expiresTs: Date.now() + (5 * 60 * 1000) };
-        const prompt = buildClarificationPrompt(options);
+        // --- Ambiguity Handling ---
+        if (second && (best.fusedScore - second.fusedScore < AMBIGUITY_MARGIN)) {
+          const options = [best, second].map(c => ({
+            tag: c.tag,
+            prompt: c.tag.replace(/_/g, ' ')
+          }));
+          profile.expectingFollowUp = { isClarification: true, options, expiresTs: Date.now() + (5 * 60 * 1000) };
+          await saveUsers(users);
+          return res.status(200).json({ reply: buildClarificationPrompt(options), source: "clarification", userId });
+        }
 
-        profile.shortMemory.push({ message: rawMessage, reply: prompt, mood, tag: 'clarification_request', age: 0, ts: new Date().toISOString(), entities });
-        try { await saveUsers(users); } catch (e) { console.error("saveUsers failed (clarification ask):", e.message || e); }
-        return res.status(200).json({ reply: prompt, source: "clarification", userId });
+        // --- No Ambiguity: Proceed with best intent ---
+        registerIntentSuccess(profile, best.tag);
+        await adjustThresholdOnSuccess(best.tag);
+        await incrementOccurrence(best.tag);
+        recordRecurringTheme(profile, best.tag, mood);
+
+        const intent = best.intentObj;
+        const baseReply = Array.isArray(intent?.responses) && intent.responses.length
+          ? intent.responses[Math.floor(Math.random() * intent.responses.length)]
+          : "أنا أسمعك...";
+        let finalReply = adaptReplyBase(baseReply, profile, mood);
+
+        // Multi-intent suggestion (only if no clarification)
+        const secondary = fusedCandidates.find(c => c.tag !== best.tag && (c.fusedScore || 0) >= MULTI_INTENT_THRESHOLD);
+        if (secondary) {
+          finalReply += `\n\nبالمناسبة، لاحظت أنك قد تكون تتحدث أيضًا عن "${secondary.tag.replace(/_/g, ' ')}". هل ننتقل لهذا الموضوع بعد ذلك؟`;
+          profile.expectingFollowUp = { isSuggestion: true, next_tag: secondary.tag, expiresTs: Date.now() + (5 * 60 * 1000) };
+        }
+
+        profile.shortMemory.push({ message: rawMessage, reply: finalReply, mood, tag: best.tag, age: 0, entities });
+        await saveUsers(users);
+        return res.status(200).json({ reply: finalReply, source: "intent_fused", tag: best.tag, score: Number(best.fusedScore.toFixed(3)), userId });
       }
-
-      // No ambiguity -> accept chosen
-      // Mark success & meta-learn
-      registerIntentSuccess(profile, chosenTag);
-      adjustThresholdOnSuccess(chosenTag);      // make it slightly easier next time
-      incrementOccurrence(chosenTag);           // count occurrence for self-learning counters
-
-      // record recurring theme
-      try { recordRecurringTheme(profile, chosenTag, mood); } catch (e) { if (DEBUG) console.error("recordRecurringTheme failed:", e.message || e); }
-
-      // Build reply
-      const baseReply = chosenIntentObj?.responses?.length ? chosenIntentObj.responses[Math.floor(Math.random() * chosenIntentObj.responses.length)] : "أنا أسمعك. هل يمكنك أن تخبرني المزيد؟";
-      let finalReply = adaptReplyBase(baseReply, profile, mood);
-
-      // Multi-intent suggestion using other fused candidates
-      const secondarySuggestion = fusedCandidates.find(c => c.tag !== chosenTag && (c.fusedScore || c.score || 0) >= MULTI_INTENT_THRESHOLD);
-      if (secondarySuggestion) {
-        finalReply += `\n\nبالمناسبة، لاحظت أنك قد تكون تتحدث أيضًا عن "${secondarySuggestion.tag.replace(/_/g, ' ')}". هل ننتقل لهذا الموضوع بعد ذلك؟`;
-        profile.expectingFollowUp = { isSuggestion: true, next_tag: secondarySuggestion.tag, expiresTs: Date.now() + (5 * 60 * 1000) };
-      }
-
-      profile.shortMemory.push({ message: rawMessage, reply: finalReply, mood, tag: chosenTag, age: 0, ts: new Date().toISOString(), entities });
-      if (profile.shortMemory.length > SHORT_MEMORY_LIMIT) profile.shortMemory.shift();
-
-      try { await saveUsers(users); } catch (e) { console.error("saveUsers failed (intent path):", e.message || e); }
-      return res.status(200).json({ reply: finalReply, source: "intent_fused", tag: chosenTag, score: Number(chosenFused.toFixed(3)), userId });
     }
 
-    // If we reach here: no confident intent accepted. We'll do diagnostic fallback.
-    if (chosen) {
-      // increment occurrence count for the chosen tag to learn from repeated ambiguous triggers
-      incrementOccurrence(chosenTag);
-    }
+    // --- Fallback Logic ---
+    if (best) await incrementOccurrence(best.tag);
+    if (DEBUG) console.log(`LOW CONFIDENCE: Best candidate [${best?.tag}] with fused score ${best?.fusedScore?.toFixed(3)} did not meet its threshold.`);
 
-    // Append to learning queue (best candidate & context) but don't block user if it fails
-    try {
-      await appendLearningQueue({ message: rawMessage, userId, topCandidate: chosenTag, baseScore: chosen?.score, fusedScore: chosenFused, ts: new Date().toISOString() });
-    } catch (e) {
-      if (DEBUG) console.error("appendLearningQueue failed:", e.message || e);
-    }
+    await appendLearningQueue({ message: rawMessage, userId, topCandidate: best?.tag, score: best?.fusedScore });
 
-    // Diagnostic messages
-    const diagHint = buildDiagnosticHint(rawMessage, coreCandidates);
     const conciseDiag = buildConciseDiagnosticForUser(coreCandidates);
-
     const generalFallback = "لم أفهم قصدك تمامًا، هل يمكنك التوضيح بجملة مختلفة؟ أحيانًا يساعدني ذلك على فهمك بشكل أفضل. أنا هنا لأسمعك.";
-    let fallback;
-    if (DEBUG) {
-      fallback = `تشخيصي:\n${diagHint}\n\nالرد العام: ${generalFallback}`;
-    } else if (conciseDiag) {
-      fallback = `${conciseDiag}\n\n${generalFallback}`;
-    } else {
-      fallback = generalFallback;
-    }
+    const fallback = conciseDiag ? `${conciseDiag}\n\n${generalFallback}` : generalFallback;
 
-    profile.shortMemory.push({ message: rawMessage, reply: fallback, mood, age: 0, ts: new Date().toISOString(), entities });
-    if (profile.shortMemory.length > SHORT_MEMORY_LIMIT) profile.shortMemory.shift();
-
-    try { await saveUsers(users); } catch (e) { console.error("saveUsers failed (fallback):", e.message || e); }
+    profile.shortMemory.push({ message: rawMessage, reply: fallback, mood, age: 0, entities });
+    await saveUsers(users);
     return res.status(200).json({ reply: fallback, source: "fallback_diagnostic", userId });
 
   } catch (err) {
