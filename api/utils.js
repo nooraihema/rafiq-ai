@@ -1,4 +1,4 @@
-// utils.js
+// utils.js v13.0 - The Harmonized Core compatible version
 
 import { STOPWORDS, NEGATORS, EMPHASIS, MOOD_KEYWORDS, CRITICAL_KEYWORDS } from './config.js';
 
@@ -52,7 +52,7 @@ export function detectCritical(msg) {
   return false;
 }
 
-// ------------ Negation & emphasis helpers ------------
+// ------------ Negation & Emphasis Helpers ------------
 function tokensArray(text) { return normalizeArabic(text).split(/\s+/).filter(Boolean); }
 
 export function hasNegationNearby(rawMessage, term) {
@@ -78,6 +78,37 @@ export function hasEmphasisNearby(rawMessage, term) {
   }
   return false;
 }
+
+// ===== بداية الترقية الجديدة v13.0 =====
+/**
+ * Advanced Style Sensor v13.0
+ * Detects not just keywords, but the *style* of the message, including intensity.
+ */
+export function detectStyleSignals(rawMessage) {
+    const norm = normalizeArabic(rawMessage);
+    const tokens = tokenize(rawMessage);
+    
+    const isQuestion = /[\?؟]$/.test(rawMessage.trim()) || /^\s*(هل|متى|لماذا|أين|كيف|من|ما|كم)\b/.test(rawMessage.trim());
+    const sarcasm = /(بجد\?|عنجد\?|يا سلام\?)/i.test(rawMessage) || /(؟\?){1,}/.test(rawMessage);
+    
+    // Check for general emphasis words from the config
+    const hasBasicEmphasis = tokens.some(t => EMPHASIS.has(t)) || /[!！]{2,}/.test(rawMessage);
+    
+    // Check for emotional intensity through character repetition and emojis
+    let emotionalIntensity = 1.0;
+    if (/(.)\1{2,}/.test(norm)) emotionalIntensity += 0.2; // Repeated characters
+    if (/[😭😢😡😠😥😫😩🔥💥]/.test(rawMessage)) emotionalIntensity += 0.3; // Intensity emojis
+
+    return { 
+        isQuestion, 
+        sarcasm, 
+        hasBasicEmphasis,
+        emotionalIntensity: parseFloat(emotionalIntensity.toFixed(2)),
+        tokens 
+    };
+}
+// ===== نهاية الترقية الجديدة v13.0 =====
+
 
 // ------------ Entity extraction & root cause ----------
 export function extractEntities(rawMessage) {
@@ -134,4 +165,3 @@ export function adaptReplyBase(reply, userProfile, mood) {
 export function criticalSafetyReply() {
   return "كلامك مهم جدًا وأنا آخذه على محمل الجد. لو عندك أفكار لإيذاء نفسك أو فقدت الأمان، مهم جدًا تكلم حد موثوق فورًا أو تواصل مع جهة مختصة قريبة منك. لو تقدر، كلّمني أكتر دلوقتي عن اللي بيمرّ عليك وأنا معاك خطوة بخطوة 💙";
 }
-
