@@ -1,8 +1,5 @@
-
-
-// intent_engine.js v13.0 - The Harmonized Core (fixed)
+// intent_engine.js v13.0 - The Harmonized Core (with mandatory logging)
 // Fully compatible with chat.js v12.1
-// Features: Multi-intent detection, Adaptive Learning, Reasoning Layer, Synonym Engine, and more.
 
 import fs from "fs";
 import path from "path";
@@ -32,7 +29,7 @@ const DEFAULT_WEIGHTS = {
 const DEFAULT_TOP_N = 3;
 
 // ------------------- Internal State -------------------
-export let intentIndex = []; // exported so other modules can read it
+export let intentIndex = [];
 export let tagToIdx = {};
 let synonymData = { map: {}, weights: {} };
 let adaptiveWeights = {};
@@ -226,7 +223,15 @@ export function buildIndexSync() {
 
   autoLinkIntents();
 
-  if (DEBUG) console.log(`🚀 Engine v13.0 (Harmonized Core) indexed successfully. Total Intents: ${intentIndex.length}`);
+  // ===== بداية التعديل المطلوب =====
+  if (DEBUG) {
+    console.log(`🚀 Engine v13.0 (Harmonized Core) indexed successfully.`);
+    console.log(`📂 Total intents loaded: ${intentIndex.length}`);
+    // Log first 10 tags to avoid spamming the console if there are many
+    const sampleTags = Object.keys(tagToIdx).slice(0, 10);
+    console.log(`📌 Sample Tags: [${sampleTags.join(", ")}]...`);
+  }
+  // ===== نهاية التعديل المطلوب =====
 }
 
 // ------------------- Vector & Style helpers -------------------
@@ -256,7 +261,6 @@ function buildReasoning(intent, breakdown, matchedTerms, contextSummary) {
   if (bonuses.length) lines.push(`- مكافآت: ${bonuses.join(" | ")}`);
   if (breakdown.context) lines.push(`- سياق/تعلم: سياق سابق: ${breakdown.context.contextBoost.toFixed(3)}, تعلم ذاتي: ${breakdown.context.adaptiveBoost.toFixed(3)}`);
   if (contextSummary) lines.push(`- ملخص السياق: ${contextSummary}`);
-  // final confidence
   lines.push(`النتيجة النهائية: ثقة ${breakdown.final.toFixed(3)}`);
   return lines.join("\n");
 }
