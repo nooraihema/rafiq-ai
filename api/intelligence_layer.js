@@ -1,41 +1,54 @@
-// intelligence_layer.js
+// intelligence_layer.js v13.0 - Integrated Wisdom Layer
+// Now fully integrated with the main chat handler and featuring periodic insights.
 
 // =================================================================
-// START: ADVANCED INTELLIGENCE LAYER - HELPER FUNCTIONS
+// START: ADVANCED MEMORY & PATTERN RECOGNITION FUNCTIONS
 // =================================================================
+
+/**
+ * Checks if any entity in the current message has a significant negative history.
+ * @returns {object|null} An object with { entity, insight } or null.
+ */
 export function getHistoricalContext(entities, profile) {
-  if (!entities || entities.length === 0 || !profile.longTermProfile || !profile.longTermProfile.mentioned_entities) {
+  if (!entities || entities.length === 0 || !profile?.longTermProfile?.mentioned_entities) {
     return null;
   }
 
-  const mainEntity = entities[0];
-  const memory = profile.longTermProfile.mentioned_entities[mainEntity];
+  // Find the first entity mentioned that has a significant history
+  for (const entity of entities) {
+    const memory = profile.longTermProfile.mentioned_entities[entity];
+    if (!memory) continue;
 
-  if (!memory) return null;
-
-  let dominantSentiment = null;
-  let maxCount = 0;
-  if (memory.sentiment_associations) {
-    for (const sentiment in memory.sentiment_associations) {
-      if (memory.sentiment_associations[sentiment] > maxCount) {
-        maxCount = memory.sentiment_associations[sentiment];
-        dominantSentiment = sentiment;
+    let dominantSentiment = null;
+    let maxCount = 0;
+    if (memory.sentiment_associations) {
+      for (const sentiment in memory.sentiment_associations) {
+        if (memory.sentiment_associations[sentiment] > maxCount) {
+          maxCount = memory.sentiment_associations[sentiment];
+          dominantSentiment = sentiment;
+        }
       }
     }
-  }
 
-  if (memory.mention_count > 2 && ['حزن', 'قلق', 'غضب'].includes(dominantSentiment)) {
-    return {
-      entity: mainEntity,
-      insight: `أتذكر أننا تحدثنا عن "${mainEntity}" من قبل، ويبدو أنه موضوع يمثل تحديًا مستمرًا لك.`
-    };
+    // If the entity is mentioned often and is associated with negative feelings, create an insight.
+    if (memory.mention_count > 2 && ['حزن', 'قلق', 'غضب'].includes(dominantSentiment)) {
+      return {
+        entity,
+        insight: `أتذكر أننا تحدثنا عن "${entity}" من قبل. يبدو أنه موضوع يمثل تحديًا مستمرًا لك.`
+      };
+    }
   }
   
   return null;
 }
 
+/**
+ * Suggests a personalized conversation starter based on long-term memory.
+ * Used for returning users with an empty message or generic greeting.
+ * @returns {string|null} A proactive opening string or null.
+ */
 export function getProactiveOpening(profile) {
-  if (!profile.longTermProfile || !profile.longTermProfile.mentioned_entities) {
+  if (!profile?.longTermProfile?.mentioned_entities) {
     return null;
   }
 
@@ -46,21 +59,40 @@ export function getProactiveOpening(profile) {
     const entity = profile.longTermProfile.mentioned_entities[entityName];
     const entityDate = new Date(entity.last_mentioned);
     
+    // An important topic is one mentioned multiple times and recently.
     if (entity.mention_count > 3 && entityDate > lastDate) {
       lastDate = entityDate;
       lastImportantTopic = entityName;
     }
   }
 
-  if (lastImportantTopic) {
-    return `أهلاً بعودتك. في آخر مرة تحدثنا، كان "${lastImportantTopic}" يشغل تفكيرك. كيف هي الأمور بخصوص هذا الموضوع الآن؟`;
+  // Check if the last conversation was recent (e.g., within the last 7 days)
+  const daysSinceLastTalk = (new Date() - lastDate) / (1000 * 60 * 60 * 24);
+  
+  if (lastImportantTopic && daysSinceLastTalk < 7) {
+    return `أهلاً بعودتك. في آخر مرة تحدثنا، كان موضوع "${lastImportantTopic}" يشغل تفكيرك. كيف هي الأمور بخصوص هذا الموضوع الآن؟`;
   }
 
   return null;
 }
 
-export function analyzePatterns(profile) {
-  if (!profile.longTermProfile || !profile.longTermProfile.mentioned_entities) {
+
+/**
+ * Periodically analyzes long-term memory for recurring negative patterns.
+ * This should be called only at certain milestones (e.g., every 25 messages).
+ * @returns {string|null} An insightful observation string or null.
+ */
+export function getPeriodicInsight(profile) {
+  if (!profile?.longTermProfile?.mentioned_entities || !profile.moodHistory) {
+    return null;
+  }
+  
+  const totalMessages = profile.moodHistory.length;
+  // Trigger only at specific milestones and only once per milestone.
+  const milestones = [25, 50, 100, 200];
+  const currentMilestone = milestones.find(m => totalMessages >= m && !profile.flags[`insight_shared_${m}`]);
+
+  if (!currentMilestone) {
     return null;
   }
 
@@ -73,6 +105,7 @@ export function analyzePatterns(profile) {
                           (entity.sentiment_associations?.['قلق'] || 0) + 
                           (entity.sentiment_associations?.['غضب'] || 0);
 
+    // An entity becomes a significant pattern if associated with negative feelings many times.
     if (negativeScore > 5 && negativeScore > maxNegativeScore) {
       maxNegativeScore = negativeScore;
       mostNegativeEntity = entityName;
@@ -80,18 +113,21 @@ export function analyzePatterns(profile) {
   }
 
   if (mostNegativeEntity) {
-    if (profile.flags && !profile.flags.shared_pattern_insight) {
-      return `لقد لاحظت شيئًا أثناء حديثنا معًا، وربما أكون مخطئًا. يبدو أن موضوع "${mostNegativeEntity}" يظهر بشكل متكرر عندما نتحدث عن المشاعر الصعبة. هل تلاحظ هذا الرابط أيضًا؟`;
-    }
+    // Mark this insight as shared so we don't repeat it.
+    profile.flags[`insight_shared_${currentMilestone}`] = true;
+    return `بالمناسبة، أثناء حديثنا معًا، لاحظت شيئًا قد يكون مهمًا. يبدو أن موضوع "${mostNegativeEntity}" يظهر بشكل متكرر عندما نتحدث عن المشاعر الصعبة. هل تلاحظ هذا الرابط أيضًا؟`;
   }
+
   return null;
 }
+
 // =================================================================
-// END: ADVANCED INTELLIGENCE LAYER - HELPER FUNCTIONS
+// END: ADVANCED MEMORY & PATTERN RECOGNITION FUNCTIONS
 // =================================================================
 
 
-// --- Compositional Intelligence Function ---
+// --- Compositional Intelligence Function (For structured intents) ---
+// This function remains for intents that have a "response_constructor" field.
 export function composeResponse(constructor, context) {
   if (!constructor) return null;
 
@@ -99,7 +135,6 @@ export function composeResponse(constructor, context) {
   let finalResponseParts = [];
   const mainEntity = entities.length > 0 ? entities[0] : null;
 
-  // ADVANCED INTELLIGENCE: Prioritize historical insight as the strongest opener.
   if (historicalInsight && historicalInsight.insight) {
       finalResponseParts.push(historicalInsight.insight);
   } else if (constructor.openers && constructor.openers.length > 0) {
@@ -133,4 +168,3 @@ export function composeResponse(constructor, context) {
 
   return finalResponseParts.filter(Boolean).join(' ');
 }
-
