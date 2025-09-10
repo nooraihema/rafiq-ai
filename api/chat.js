@@ -5,6 +5,7 @@
 // - Include per-intent short reasoning in diagnostic message to help user clarify.
 // - More robust async saves with try/catch so failures don't block replies.
 // - Minor logging improvements for easier debugging on server (Vercel).
+// - v13.2a: Removed special-case tightening for very short messages (short messages no longer increase threshold)
 
 import { DEBUG, SHORT_MEMORY_LIMIT, LONG_TERM_LIMIT } from './config.js';
 import {
@@ -44,11 +45,13 @@ const DIAGNOSTIC_MIN_SCORE = 0.05; // under this, we show simpler hint
 const DIAGNOSTIC_VISIBLE_TO_USER = true;
 
 // --- Dynamic Confidence Threshold Function ---
+// NOTE: v13.2a: removed special-case raising of threshold for short messages.
+// Short messages will be treated with the base threshold unless tag-words match.
 function getDynamicThreshold(message, bestIntent) {
   const tokenCount = tokenize(message).length;
   let threshold = CONFIDENCE_BASE_THRESHOLD;
 
-  if (tokenCount <= 3) threshold = 0.60;
+  // (Removed: if (tokenCount <= 3) threshold = 0.60;)
 
   if (bestIntent && bestIntent.tag) {
     const tagWords = new Set((bestIntent.tag || "").split('_').map(t => t.trim()).filter(Boolean));
