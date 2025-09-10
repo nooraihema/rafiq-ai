@@ -1,5 +1,5 @@
-// intent_engine.js v12.0 - The Practical Sage
-// Re-architected for robust and accurate matching of core intents.
+// intent_engine.js v12.1 - The Final Key
+// Fully compatible with chat.js v12.1 and fixes the final export issue.
 
 import fs from "fs";
 import path from "path";
@@ -12,25 +12,28 @@ import {
   hasEmphasisNearby
 } from './utils.js';
 
-// ------------------- Configuration (Adjusted Weights) -------------------
+// ------------------- Configuration -------------------
 const INTENTS_DIRS = [ path.join(process.cwd(), "intents"), path.join(process.cwd(), "api", "intents") ];
 const ADAPTIVE_WEIGHTS_FILE = path.join(process.cwd(), "data", "adaptive_weights.json");
 const SYNONYMS_FILE = path.join(process.cwd(), "synonyms.json");
 
 const DEFAULT_WEIGHTS = {
-  wPattern: 0.60,      // Pattern matches are now the most important
-  wKeywords: 0.30,     // Keyword matches are second
-  wTfIdf: 0.05,        // TF-IDF is now for subtle context, not primary matching
-  wContext: 0.15,      // Context is still important for flow
+  wPattern: 0.60,
+  wKeywords: 0.30,
+  wTfIdf: 0.05,
+  wContext: 0.15,
 };
 const DEFAULT_TOP_N = 3;
 
-// ------------------- Internal State, Utilities, Synonym Engine, Intent Loading (No major changes needed in structure) -------------------
-let intentIndex = [];
+// ------------------- Internal State -------------------
+// ===== التعديل الحاسم هنا =====
+export let intentIndex = []; 
 export let tagToIdx = {};
+// =============================
 let synonymData = { map: {}, weights: {} };
 let adaptiveWeights = {};
 
+// ------------------- Resilient Utilities -------------------
 function safeReadJson(filePath) {
   try {
     if (!fs.existsSync(filePath)) return null;
@@ -52,6 +55,7 @@ function safeWriteJson(filePath, obj) {
   }
 }
 
+// ------------------- Synonym Engine -------------------
 function loadSynonyms() {
   synonymData = { map: {}, weights: {} };
   const parsed = safeReadJson(SYNONYMS_FILE);
@@ -91,6 +95,7 @@ function getSynonymWeight(token) {
   return synonymData.weights[token] || 1.0;
 }
 
+// ------------------- Intents Loading & Indexing -------------------
 function findIntentsDir() {
   for (const d of INTENTS_DIRS) {
     if (fs.existsSync(d) && fs.statSync(d).isDirectory()) return d;
@@ -179,7 +184,6 @@ export function buildIndexSync() {
       sq += v * v;
     });
     
-    // Keep original patterns for direct matching, and also compile regex versions.
     const originalPatterns = (it.patterns || []);
     const compiledPatterns = originalPatterns.map(p => {
       try {
@@ -197,8 +201,8 @@ export function buildIndexSync() {
       response_constructor: it.response_constructor || null,
       safety: (it.safety_protocol || "").toUpperCase(),
       keywords: (it.keywords || []).map(normalizeArabic),
-      originalPatterns: originalPatterns.map(normalizeArabic), // Store normalized original patterns
-      patterns: compiledPatterns, // Store compiled regexes
+      originalPatterns: originalPatterns.map(normalizeArabic),
+      patterns: compiledPatterns,
       follow_up_intents: it.follow_up_intents || [],
       related_intents: Array.isArray(it.related_intents) ? it.related_intents.slice() : [],
       tfidfVector: vec,
@@ -209,17 +213,11 @@ export function buildIndexSync() {
   tagToIdx = {};
   intentIndex.forEach((it, i) => tagToIdx[it.tag] = i);
   autoLinkIntents();
-  if (DEBUG) console.log(`🚀 Engine v12.0 (Practical Sage) indexed successfully. Total Intents: ${intentIndex.length}`);
+  if (DEBUG) console.log(`🚀 Engine v12.1 (Final Key) indexed successfully. Total Intents: ${intentIndex.length}`);
 }
 
 
-// --- Scoring Engine v12.0 (Re-architected for Accuracy) ---
-function detectStyleSignals(rawMessage) {
-    const tokens = tokenize(rawMessage);
-    const isQuestion = /[\?؟]$/.test(rawMessage.trim()) || /^\s*(هل|متى|لماذا|أين|كيف|من|ما|كم)\b/.test(rawMessage.trim());
-    return { isQuestion, tokens };
-}
-
+// --- Scoring Engine v12.0 (The Practical Sage) ---
 function loadAdaptiveWeights() {
     const aw = safeReadJson(ADAPTIVE_WEIGHTS_FILE);
     adaptiveWeights = aw && typeof aw === 'object' ? aw : {};
@@ -230,7 +228,6 @@ function saveAdaptiveWeights() {
     safeWriteJson(ADAPTIVE_WEIGHTS_FILE, adaptiveWeights);
 }
 
-
 export function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
   const { context = null, userProfile = null } = options;
   const normMsg = normalizeArabic(rawMessage);
@@ -238,22 +235,20 @@ export function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
 
   const matchedTerms = new Set();
   
-  // --- 1. Certainty Score: Direct Pattern Matching (Highest Priority) ---
   let certaintyBoost = 0;
   if (intent.originalPatterns) {
       for (const p_text of intent.originalPatterns) {
           if (normMsg.includes(p_text)) {
               const lengthRatio = Math.min(normMsg.length, p_text.length) / Math.max(normMsg.length, p_text.length);
-              if (lengthRatio > 0.85) { // If message is very similar in length to a pattern
-                  certaintyBoost = 0.6; // HUGE bonus for a direct, precise match
+              if (lengthRatio > 0.85) {
+                  certaintyBoost = 0.6;
                   matchedTerms.add(p_text);
-                  break; // Found a strong match, no need to check other patterns
+                  break;
               }
           }
       }
   }
 
-  // --- 2. Keyword Matching (Direct and Synonym) ---
   let keywordMatchWeight = 0;
   (intent.keywords || []).forEach(kw => {
     const nkw = normalizeArabic(kw);
@@ -272,7 +267,6 @@ export function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
 
   const tfidfSim = cosineScore(msgTf.vec, intent.tfidfVector, msgTf.norm, intent.tfidfNorm);
 
-  // --- 3. Re-balanced Bonuses ---
   const tagWords = new Set((intent.tag || "").split('_'));
   const tagMatchCount = origTokens.filter(token => tagWords.has(token)).length;
   const tagBonus = tagMatchCount > 0 ? 0.10 * tagMatchCount : 0;
@@ -282,7 +276,6 @@ export function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
       emphasisBoost = 0.05;
   }
   
-  // Context and Adaptive boosts remain as subtle influencers
   let contextBoost = 0;
   if (context && Array.isArray(context.history)) {
     for (const item of context.history) {
@@ -305,7 +298,6 @@ export function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
     }
   }
 
-  // --- 4. Final Score with New Weights ---
   const baseWeights = { ...DEFAULT_WEIGHTS };
   const kwScore = Math.tanh(keywordMatchWeight / 3.0);
   const tfScore = Math.max(0, tfidfSim);
