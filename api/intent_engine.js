@@ -1,7 +1,6 @@
 
-// intent_engine.js v13.3 - Enhanced & Stable
-// Fully compatible with chat.js v12.1
-// Includes adaptive weights load/save + safety fixes + improvements
+// intent_engine.js v13.2 - Final Syntax Fix
+// Fully compatible with chat.js v12.1 and fixes the final export issue.
 
 import fs from "fs";
 import path from "path";
@@ -31,7 +30,7 @@ const DEFAULT_WEIGHTS = {
 const DEFAULT_TOP_N = 3;
 
 // ------------------- Internal State -------------------
-export let intentIndex = []; 
+export let intentIndex = [];
 export let tagToIdx = {};
 let synonymData = { map: {}, weights: {} };
 let adaptiveWeights = {};
@@ -52,22 +51,10 @@ function safeWriteJson(filePath, obj) {
   try {
     const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    // atomic write
-    fs.writeFileSync(filePath + ".tmp", JSON.stringify(obj, null, 2), "utf8");
-    fs.renameSync(filePath + ".tmp", filePath);
+    fs.writeFileSync(filePath, JSON.stringify(obj, null, 2), "utf8");
   } catch (e) {
-    console.error(`❌ SAFE_WRITE_ERROR: Could not write to ${path.basename(filePath)}. Error: ${e.message}`);
+    console.error(`❌ SAFE_WRITE_ERROR: Could not write to ${path.basename(filePath)}. Adaptive weights will not be saved. Error: ${e.message}`);
   }
-}
-
-// ------------------- Adaptive weights persistence -------------------
-function loadAdaptiveWeights() {
-  const aw = safeReadJson(ADAPTIVE_WEIGHTS_FILE);
-  adaptiveWeights = aw && typeof aw === 'object' ? aw : {};
-  if (DEBUG) console.log(`Loaded ${Object.keys(adaptiveWeights).length} adaptive weight rules.`);
-}
-function saveAdaptiveWeights() {
-  safeWriteJson(ADAPTIVE_WEIGHTS_FILE, adaptiveWeights);
 }
 
 // ------------------- Synonym Engine -------------------
@@ -208,10 +195,6 @@ export function buildIndexSync() {
       }
     }).filter(Boolean);
 
-    if (tagToIdx[it.tag]) {
-      console.warn(`⚠️ Duplicate intent tag detected: ${it.tag}`);
-    }
-
     return {
       tag: it.tag || it.intent || `intent_${idx}`,
       responses: it.responses || [],
@@ -231,7 +214,7 @@ export function buildIndexSync() {
 
   autoLinkIntents();
 
-  if (DEBUG) console.log(`🚀 Engine v13.3 indexed successfully. Total Intents: ${intentIndex.length}`);
+  if (DEBUG) console.log(`🚀 Engine v13.2 (Final Fix) indexed successfully. Total Intents: ${intentIndex.length}`);
 }
 
 // ------------------- Vector & Style helpers -------------------
@@ -253,7 +236,7 @@ function detectStyleSignals(rawMessage) {
 // ------------------- Reasoning Layer -------------------
 function buildReasoning(intent, breakdown, matchedTerms, contextSummary) {
   const lines = [`لأنّي وجدت دلائل على النية "${intent.tag}":`];
-  if (matchedTerms && matchedTerms.size > 0) lines.push(`- كلمات/أنماط مطابقة: ${[...matchedTerms].join(", ")}`);
+  if (matchedTerms && (matchedTerms.size || matchedTerms.length)) lines.push(`- كلمات/أنماط مطابقة: ${[...matchedTerms].join(", ")}`);
   if (breakdown.base) lines.push(`- وزن الكلمات (أساسي): ${breakdown.base.count.toFixed(3)}, وزن TF-IDF: ${breakdown.base.tfidf.toFixed(3)}, وزن الأنماط: ${breakdown.base.pattern.toFixed(3)}`);
   const bonuses = [];
   if (breakdown.bonuses.emphasis) bonuses.push(`تشديد: ${breakdown.bonuses.emphasis.toFixed(3)}`);
@@ -261,8 +244,20 @@ function buildReasoning(intent, breakdown, matchedTerms, contextSummary) {
   if (bonuses.length) lines.push(`- مكافآت: ${bonuses.join(" | ")}`);
   if (breakdown.context) lines.push(`- سياق/تعلم: سياق سابق: ${breakdown.context.contextBoost.toFixed(3)}, تعلم ذاتي: ${breakdown.context.adaptiveBoost.toFixed(3)}`);
   if (contextSummary) lines.push(`- ملخص السياق: ${contextSummary}`);
+
   lines.push(`النتيجة النهائية: ثقة ${breakdown.final.toFixed(3)}`);
+
   return lines.join("\n");
+}
+
+// ------------------- Adaptive weights persistence -------------------
+function loadAdaptiveWeights() {
+  const aw = safeReadJson(ADAPTIVE_WEIGHTS_FILE);
+  adaptiveWeights = aw && typeof aw === 'object' ? aw : {};
+  if (DEBUG) console.log(`Loaded ${Object.keys(adaptiveWeights).length} adaptive weight rules.`);
+}
+function saveAdaptiveWeights() {
+  safeWriteJson(ADAPTIVE_WEIGHTS_FILE, adaptiveWeights);
 }
 
 // ------------------- Multi-intent detection & scoring -------------------
@@ -292,9 +287,12 @@ function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
     if (regex.test(rawMessage) && !hasNegationNearby(rawMessage, regex.source)) {
       patternMatchScore += 1.0;
       matchedTerms.add(regex.source);
+
       const patternTokens = new Set(tokenize(regex.source));
       const similarity = jaccardSimilarity(new Set(origTokens), patternTokens);
-      if (similarity > bestPatternSimilarity) bestPatternSimilarity = similarity;
+      if (similarity > bestPatternSimilarity) {
+        bestPatternSimilarity = similarity;
+      }
     }
   });
 
@@ -305,6 +303,7 @@ function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
   matchedTerms.forEach(t => {
     if (hasEmphasisNearby(rawMessage, t)) emphasisBoost += 0.05;
   });
+
   const questionBoost = style.isQuestion ? 0.05 : 0;
   const sarcasmPenalty = style.sarcasm ? -0.05 : 0;
 
@@ -385,11 +384,59 @@ export function getTopIntents(rawMessage, options = {}) {
   });
 
   results.sort((a, b) => b.score - a.score);
+
   return results.filter(r => r.score >= minScore).slice(0, topN);
 }
 
 // ------------------- Feedback / Learning hooks -------------------
 export function registerIntentSuccess(userProfile, tag) {
   if (!userProfile) return;
-  userProfile.intent
 
+  userProfile.intentSuccessCount = userProfile.intentSuccessCount || {};
+  userProfile.intentLastSuccess = userProfile.intentLastSuccess || {};
+
+  userProfile.intentSuccessCount[tag] = (userProfile.intentSuccessCount[tag] || 0) + 1;
+  userProfile.intentLastSuccess[tag] = new Date().toISOString();
+
+  adaptiveWeights[tag] = adaptiveWeights[tag] || {};
+  adaptiveWeights[tag].wKeywords = Math.min(0.9, (adaptiveWeights[tag].wKeywords || DEFAULT_WEIGHTS.wKeywords) + 0.02);
+  adaptiveWeights[tag].wTfIdf = Math.max(0.05, (adaptiveWeights[tag].wTfIdf || DEFAULT_WEIGHTS.wTfIdf) - 0.005);
+
+  saveAdaptiveWeights();
+}
+
+// ------------------- Utility exports (optional helpers) -------------------
+export function buildMessageTfVec(message) {
+  const tokens = tokenize(message);
+  const vec = {};
+  const tokenCounts = tokens.reduce((acc, t) => { acc[t] = (acc[t] || 0) + 1; return acc; }, {});
+  const totalTokens = Math.max(1, tokens.length);
+  for (const t in tokenCounts) {
+    const tf = tokenCounts[t] / totalTokens;
+    vec[t] = tf;
+  }
+  const norm = Math.sqrt(Object.values(vec).reduce((sum, val) => sum + val * val, 0)) || 1;
+  return { vec, norm, tokens };
+}
+
+// ------------------- No-op embedding/placeholders for compatibility -------------------
+export async function ensureIntentEmbeddings() {
+  if (DEBUG) console.log("ensureIntentEmbeddings: noop (no external embeddings configured).");
+  return;
+}
+export async function embedMessageIfPossible(msgObj, rawMessage) {
+  // noop placeholder
+  return;
+}
+export async function callTogetherAPI(userText) {
+  throw new Error("TOGETHER API not configured in this build.");
+}
+
+// ------------------- Init loader -------------------
+(function init() {
+  try {
+    buildIndexSync();
+  } catch (e) {
+    if (DEBUG) console.warn("intent_engine init failed:", e.message || e);
+  }
+})();
