@@ -1,5 +1,7 @@
-// intent_engine.js v13.2 - Final Syntax Fix
-// Fully compatible with chat.js v12.1 and fixes the final export issue.
+
+// intent_engine.js v13.3 - Enhanced & Stable
+// Fully compatible with chat.js v12.1
+// Includes adaptive weights load/save + safety fixes + improvements
 
 import fs from "fs";
 import path from "path";
@@ -50,10 +52,22 @@ function safeWriteJson(filePath, obj) {
   try {
     const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(obj, null, 2), "utf8");
+    // atomic write
+    fs.writeFileSync(filePath + ".tmp", JSON.stringify(obj, null, 2), "utf8");
+    fs.renameSync(filePath + ".tmp", filePath);
   } catch (e) {
-    console.error(`❌ SAFE_WRITE_ERROR: Could not write to ${path.basename(filePath)}. Adaptive weights will not be saved. Error: ${e.message}`);
+    console.error(`❌ SAFE_WRITE_ERROR: Could not write to ${path.basename(filePath)}. Error: ${e.message}`);
   }
+}
+
+// ------------------- Adaptive weights persistence -------------------
+function loadAdaptiveWeights() {
+  const aw = safeReadJson(ADAPTIVE_WEIGHTS_FILE);
+  adaptiveWeights = aw && typeof aw === 'object' ? aw : {};
+  if (DEBUG) console.log(`Loaded ${Object.keys(adaptiveWeights).length} adaptive weight rules.`);
+}
+function saveAdaptiveWeights() {
+  safeWriteJson(ADAPTIVE_WEIGHTS_FILE, adaptiveWeights);
 }
 
 // ------------------- Synonym Engine -------------------
@@ -135,7 +149,6 @@ function cosineScore(vecA, vecB, normA = 1, normB = 1) {
   return denom ? (dot / denom) : 0;
 }
 
-
 function autoLinkIntents() {
   let links = 0;
   for (let i = 0; i < intentIndex.length; i++) {
@@ -195,6 +208,10 @@ export function buildIndexSync() {
       }
     }).filter(Boolean);
 
+    if (tagToIdx[it.tag]) {
+      console.warn(`⚠️ Duplicate intent tag detected: ${it.tag}`);
+    }
+
     return {
       tag: it.tag || it.intent || `intent_${idx}`,
       responses: it.responses || [],
@@ -214,7 +231,7 @@ export function buildIndexSync() {
 
   autoLinkIntents();
 
-  if (DEBUG) console.log(`🚀 Engine v13.2 (Final Fix) indexed successfully. Total Intents: ${intentIndex.length}`);
+  if (DEBUG) console.log(`🚀 Engine v13.3 indexed successfully. Total Intents: ${intentIndex.length}`);
 }
 
 // ------------------- Vector & Style helpers -------------------
@@ -226,11 +243,11 @@ function jaccardSimilarity(setA, setB) {
 }
 
 function detectStyleSignals(rawMessage) {
-    const tokens = tokenize(rawMessage);
-    const isQuestion = /[\?؟]$/.test(rawMessage.trim()) || /^\s*(هل|متى|لماذا|أين|كيف|من|ما|كم)\b/.test(rawMessage.trim());
-    const sarcasm = /(بجد\?|عنجد\?|يا سلام\?)/i.test(rawMessage) || /(؟\?){1,}/.test(rawMessage);
-    const hasBasicEmphasis = tokens.some(t => ["جدا","للغاية","كتير","بشدة","أوي","اوي"].includes(t)) || /!{2,}/.test(rawMessage);
-    return { isQuestion, sarcasm, hasBasicEmphasis, tokens };
+  const tokens = tokenize(rawMessage);
+  const isQuestion = /[\?؟]$/.test(rawMessage.trim()) || /^\s*(هل|متى|لماذا|أين|كيف|من|ما|كم)\b/.test(rawMessage.trim());
+  const sarcasm = /(بجد\?|عنجد\?|يا سلام\?)/i.test(rawMessage) || /(؟\?){1,}/.test(rawMessage);
+  const hasBasicEmphasis = tokens.some(t => ["جدا","للغاية","كتير","بشدة","أوي","اوي"].includes(t)) || /!{2,}/.test(rawMessage);
+  return { isQuestion, sarcasm, hasBasicEmphasis, tokens };
 }
 
 // ------------------- Reasoning Layer -------------------
@@ -244,22 +261,8 @@ function buildReasoning(intent, breakdown, matchedTerms, contextSummary) {
   if (bonuses.length) lines.push(`- مكافآت: ${bonuses.join(" | ")}`);
   if (breakdown.context) lines.push(`- سياق/تعلم: سياق سابق: ${breakdown.context.contextBoost.toFixed(3)}, تعلم ذاتي: ${breakdown.context.adaptiveBoost.toFixed(3)}`);
   if (contextSummary) lines.push(`- ملخص السياق: ${contextSummary}`);
-  
-  // ===== الإصلاح هنا =====
   lines.push(`النتيجة النهائية: ثقة ${breakdown.final.toFixed(3)}`);
-  // =====================
-
   return lines.join("\n");
-}
-
-// ------------------- Adaptive weights persistence -------------------
-function loadAdaptiveWeights() {
-  const aw = safeReadJson(ADAPTIVE_WEIGHTS_FILE);
-  adaptiveWeights = aw && typeof aw === 'object' ? aw : {};
-  if (DEBUG) console.log(`Loaded ${Object.keys(adaptiveWeights).length} adaptive weight rules.`);
-}
-function saveAdaptiveWeights() {
-  safeWriteJson(ADAPTIVE_WEIGHTS_FILE, adaptiveWeights);
 }
 
 // ------------------- Multi-intent detection & scoring -------------------
@@ -289,12 +292,9 @@ function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
     if (regex.test(rawMessage) && !hasNegationNearby(rawMessage, regex.source)) {
       patternMatchScore += 1.0;
       matchedTerms.add(regex.source);
-
       const patternTokens = new Set(tokenize(regex.source));
       const similarity = jaccardSimilarity(new Set(origTokens), patternTokens);
-      if (similarity > bestPatternSimilarity) {
-        bestPatternSimilarity = similarity;
-      }
+      if (similarity > bestPatternSimilarity) bestPatternSimilarity = similarity;
     }
   });
 
@@ -303,9 +303,8 @@ function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
   const style = detectStyleSignals(rawMessage);
   let emphasisBoost = style.hasBasicEmphasis ? 0.05 : 0;
   matchedTerms.forEach(t => {
-      if (hasEmphasisNearby(rawMessage, t)) emphasisBoost += 0.05;
+    if (hasEmphasisNearby(rawMessage, t)) emphasisBoost += 0.05;
   });
-  
   const questionBoost = style.isQuestion ? 0.05 : 0;
   const sarcasmPenalty = style.sarcasm ? -0.05 : 0;
 
@@ -341,7 +340,7 @@ function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
   const kwScore = Math.tanh(keywordMatchWeight / 2.0);
   const patScore = Math.tanh(patternMatchScore / 1.5);
   const tfScore = Math.max(0, tfidfSim);
-  
+
   const finalScore = (kwScore * wKeywords) + (tfScore * wTfIdf) + (patScore * wPattern) + (contextBoost * wContext) + emphasisBoost + questionBoost + adaptiveBoost + sarcasmPenalty;
 
   const breakdown = {
@@ -350,7 +349,7 @@ function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
     context: { contextBoost, adaptiveBoost },
     final: Math.min(Math.max(finalScore, 0), 1),
   };
-  
+
   const contextSummary = context?.history?.length ? `سياق (${context.history.length} دور)` : "لا سياق";
   const reasoning = buildReasoning(intent, breakdown, matchedTerms, contextSummary);
 
@@ -368,8 +367,8 @@ export function getTopIntents(rawMessage, options = {}) {
   const tokenCounts = tokens.reduce((acc, t) => { acc[t] = (acc[t] || 0) + 1; return acc; }, {});
   const totalTokens = Math.max(1, tokens.length);
   for (const t in tokenCounts) {
-      const tf = tokenCounts[t] / totalTokens;
-      vec[t] = tf;
+    const tf = tokenCounts[t] / totalTokens;
+    vec[t] = tf;
   }
   const norm = Math.sqrt(Object.values(vec).reduce((sum, val) => sum + val * val, 0)) || 1;
   const msgTf = { vec, norm, tokens };
@@ -386,22 +385,11 @@ export function getTopIntents(rawMessage, options = {}) {
   });
 
   results.sort((a, b) => b.score - a.score);
-
   return results.filter(r => r.score >= minScore).slice(0, topN);
 }
 
 // ------------------- Feedback / Learning hooks -------------------
 export function registerIntentSuccess(userProfile, tag) {
   if (!userProfile) return;
-  
-  userProfile.intentSuccessCount = userProfile.intentSuccessCount || {};
-  userProfile.intentLastSuccess = userProfile.intentLastSuccess || {};
-  userProfile.intentSuccessCount[tag] = (userProfile.intentSuccessCount[tag] || 0) + 1;
-  userProfile.intentLastSuccess[tag] = new Date().toISOString();
+  userProfile.intent
 
-  adaptiveWeights[tag] = adaptiveWeights[tag] || {};
-  adaptiveWeights[tag].wKeywords = Math.min(0.9, (adaptiveWeights[tag].wKeywords || DEFAULT_WEIGHTS.wKeywords) + 0.02);
-  adaptiveWeights[tag].wTfIdf = Math.max(0.05, (adaptiveWeights[tag].wTfIdf || DEFAULT_WEIGHTS.wTfIdf) - 0.005);
-  
-  saveAdaptiveWeights();
-}
