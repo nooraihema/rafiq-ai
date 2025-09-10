@@ -103,7 +103,7 @@ export default async function handler(req, res) {
         intentSuccessCount: {},
         intentLastSuccess: {}
       };
-      if (DEBUG) console.log("Created user", userId);
+      if (DEBUG) console.error("Created user", userId);
     }
     const profile = users[userId];
     profile.lastSeen = new Date().toISOString();
@@ -165,10 +165,10 @@ export default async function handler(req, res) {
     const topCandidates = getTopIntents(rawMessage, { topN: 3, context, userProfile: profile });
 
     if (DEBUG) {
-      console.log("\n--- TOP CANDIDATES ---");
+      console.error("\n--- TOP CANDIDATES ---");
       topCandidates.forEach(c => {
-        console.log(`- ${c.tag}: ${c.score.toFixed ? c.score.toFixed(4) : c.score}`);
-        if (c.reasoning) console.log(`  Reasoning: ${c.reasoning.replace(/\n/g, "\n  ")}`);
+        console.error(`- ${c.tag}: ${c.score.toFixed ? c.score.toFixed(4) : c.score}`);
+        if (c.reasoning) console.error(`  Reasoning: ${c.reasoning.replace(/\n/g, "\n  ")}`);
       });
     }
 
@@ -219,7 +219,7 @@ export default async function handler(req, res) {
       } else {
         // bestCandidate exists but below threshold -> diagnostic fallback path
         if (DEBUG) {
-          console.log(`LOW CONFIDENCE: best ${topCandidates[0].tag} (${topCandidates[0].score.toFixed(3)}) < threshold ${confidenceThreshold.toFixed(3)}`);
+          console.error(`LOW CONFIDENCE: best ${topCandidates[0].tag} (${topCandidates[0].score.toFixed(3)}) < threshold ${confidenceThreshold.toFixed(3)}`);
         }
       }
     }
@@ -245,4 +245,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "Internal Server Error" });
   }
 }
-
