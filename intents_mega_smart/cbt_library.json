@@ -1,7 +1,7 @@
 [
   {
-    "tag": "intent_wlzh75",
-    "core_concept": "intent_wlzh75",
+    "tag": "intent_5wm84b",
+    "core_concept": "intent_5wm84b",
     "nlu": {
       "keywords": [],
       "embedding_vector": [
@@ -89,7 +89,7 @@
     "responses": {
       "templates": [
         "أنا سامعك، فيما يتعلق بـ {CORE_CONCEPT} أقدر شعورك. هل تقدر تحكيلي أكثر عن {LAST_EVENT}?",
-        "مفهوم {CORE_CONCEPT} مهم. ممكن تحكي موقف حصل مؤخراً مرتبط بـ {CORE_CONCEPT}؟",
+        "مفهوم {CORE_CONCEPT} مهم. ممكن تحكي موقف حصل مؤخراً مرتبط بـ {CORE_CONCEPT}?",
         "انت مش لوحدك في الشعور ده. لو حابب، نقدر نجرب مع بعض خطوة بسيطة لحل مؤقت."
       ],
       "rotation": "round_robin",
