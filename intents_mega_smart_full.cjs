@@ -1,7 +1,7 @@
 
-// intents_mega_smart_full.js
+// intents_mega_smart_full.cjs
 // سكربت: تحويل ملفات intents -> نسخة M E G A ذكية كاملة
-// شغله بـ: node intents_mega_smart_full.js
+// شغله بـ: node intents_mega_smart_full.cjs
 // ملاحظات: ضع ملفات JSON الأصلية داخل مجلد ./intents
 
 const fs = require("fs");
