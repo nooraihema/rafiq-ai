@@ -206,12 +206,32 @@ function processIntentFile(filePath) {
       Object.assign(triggers, context.triggers);
     }
 
-    const responses = intent.responses || intent.response_constructor || {};
-    const finalResponses = {
-      templates: (responses.templates && Array.isArray(responses.templates) ? responses.templates : generateResponseTemplates(coreConcept).templates),
-      rotation: responses.rotation || "round_robin",
-      adaptive: true
-    };
+    // === تعديل جزء الردود هنا ===
+    let finalResponses;
+    if (Array.isArray(intent.responses)) {
+      finalResponses = {
+        templates: intent.responses,
+        rotation: "round_robin",
+        adaptive: true
+      };
+    } else if (intent.response_constructor) {
+      const rc = intent.response_constructor;
+      finalResponses = {
+        templates: [
+          ...(rc.openers || []),
+          ...(rc.validations || []),
+          ...(rc.continuers || [])
+        ],
+        rotation: "round_robin",
+        adaptive: true
+      };
+    } else {
+      finalResponses = {
+        templates: generateResponseTemplates(coreConcept).templates,
+        rotation: "round_robin",
+        adaptive: true
+      };
+    }
 
     const metadata = intent.metadata || {
       created_at: new Date().toISOString().split("T")[0],
@@ -269,6 +289,5 @@ function runAll() {
 
 // === نفّذ كل الملفات ===
 runAll();
-
 
 
