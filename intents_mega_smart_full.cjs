@@ -142,8 +142,23 @@ function generateResponseTemplates(intentTag) {
 function processIntentFile(filePath) {
   const raw = fs.readFileSync(filePath, "utf8");
   let intents = [];
-  try { intents = JSON.parse(raw); } catch (e) {
-    console.error("خطأ: لم أتمكن من قراءة JSON من:", filePath);
+
+  try {
+    const parsed = JSON.parse(raw);
+
+    if (Array.isArray(parsed)) {
+      intents = parsed; // لو الملف عبارة عن مصفوفة
+    } else if (parsed && typeof parsed === "object") {
+      if (Array.isArray(parsed.intents)) {
+        intents = parsed.intents; // لو جواه key اسمه intents
+      } else {
+        intents = [parsed]; // كائن واحد
+      }
+    } else {
+      throw new Error("ملف JSON غير مدعوم");
+    }
+  } catch (e) {
+    console.error("خطأ: لم أتمكن من قراءة JSON من:", filePath, e.message);
     return;
   }
 
@@ -206,7 +221,6 @@ function processIntentFile(filePath) {
       Object.assign(triggers, context.triggers);
     }
 
-    // === تعديل جزء الردود هنا ===
     let finalResponses;
     if (Array.isArray(intent.responses)) {
       finalResponses = {
@@ -290,4 +304,4 @@ function runAll() {
 // === نفّذ كل الملفات ===
 runAll();
 
-
+	
