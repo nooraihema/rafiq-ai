@@ -1,4 +1,4 @@
-// intent_engine.js v13.0 - The Harmonized Core (with mandatory logging)
+// intent_engine.js v13.0 - The Harmonized Core (Focused on intents_final)
 // Fully compatible with chat.js v12.1
 
 import fs from "fs";
@@ -13,10 +13,12 @@ import {
 } from './utils.js';
 
 // ------------------- Configuration -------------------
+// ===== بداية التعديل الحاسم =====
 const INTENTS_DIRS = [
-  path.join(process.cwd(), "intents"),
-  path.join(process.cwd(), "api", "intents"),
+  path.join(process.cwd(), "intents_final") // Now reads ONLY from the final, processed directory.
 ];
+// ===== نهاية التعديل الحاسم =====
+
 const ADAPTIVE_WEIGHTS_FILE = path.join(process.cwd(), "data", "adaptive_weights.json");
 const SYNONYMS_FILE = path.join(process.cwd(), "synonyms.json");
 
@@ -223,15 +225,12 @@ export function buildIndexSync() {
 
   autoLinkIntents();
 
-  // ===== بداية التعديل المطلوب =====
   if (DEBUG) {
     console.log(`🚀 Engine v13.0 (Harmonized Core) indexed successfully.`);
-    console.log(`📂 Total intents loaded: ${intentIndex.length}`);
-    // Log first 10 tags to avoid spamming the console if there are many
+    console.log(`📂 Total intents loaded: ${intentIndex.length} from 'intents_final' directory.`);
     const sampleTags = Object.keys(tagToIdx).slice(0, 10);
     console.log(`📌 Sample Tags: [${sampleTags.join(", ")}]...`);
   }
-  // ===== نهاية التعديل المطلوب =====
 }
 
 // ------------------- Vector & Style helpers -------------------
