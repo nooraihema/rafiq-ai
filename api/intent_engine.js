@@ -1,5 +1,5 @@
-// intent_engine.js v13.0 - The Harmonized Core (Focused on intents_final)
-// Fully compatible with chat.js v12.1
+// intent_engine.js v13.1 - The Flexible Mind
+// Merged with your requested buildIndexSync logic to handle complex patterns.
 
 import fs from "fs";
 import path from "path";
@@ -13,11 +13,9 @@ import {
 } from './utils.js';
 
 // ------------------- Configuration -------------------
-// ===== بداية التعديل الحاسم =====
 const INTENTS_DIRS = [
-  path.join(process.cwd(), "intents_final") // Now reads ONLY from the final, processed directory.
+  path.join(process.cwd(), "intents_final") // Focused on the final, processed directory.
 ];
-// ===== نهاية التعديل الحاسم =====
 
 const ADAPTIVE_WEIGHTS_FILE = path.join(process.cwd(), "data", "adaptive_weights.json");
 const SYNONYMS_FILE = path.join(process.cwd(), "synonyms.json");
@@ -127,6 +125,7 @@ function loadIntentsRaw() {
   for (const f of files) {
     const j = safeReadJson(path.join(dir, f));
     if (j) {
+      // Handles both { "intents": [...] } and [...] formats
       const arr = Array.isArray(j.intents) ? j.intents : (Array.isArray(j) ? j : []);
       all = all.concat(arr);
       if (DEBUG) console.log(`- Loaded ${arr.length} intents from ${f}`);
@@ -164,6 +163,7 @@ function autoLinkIntents() {
   if (DEBUG) console.log(`🔗 Auto-linked ${links} related intent pairs.`);
 }
 
+// ===== بداية دمج التعديلات المطلوبة =====
 export function buildIndexSync() {
   loadSynonyms();
   loadAdaptiveWeights();
@@ -176,13 +176,25 @@ export function buildIndexSync() {
     return;
   }
 
-  const docsTokens = raw.map(it => tokenize([...(it.patterns || []), ...(it.keywords || [])].join(" ")));
+  // تجميع جميع النصوص للـ TF-IDF
+  const docsTokens = raw.map(it => {
+    const allText = [
+      ...(it.patterns || []).map(p => typeof p === 'string' ? p : p?.text || ''),
+      ...(it.keywords || []).map(k => typeof k === 'string' ? k : k?.text || '')
+    ].join(' ');
+    return tokenize(allText);
+  });
+
+  // حساب Document Frequency
   const df = {};
-  docsTokens.forEach(tokens => { new Set(tokens).forEach(t => df[t] = (df[t] || 0) + 1); });
+  docsTokens.forEach(tokens => {
+    new Set(tokens).forEach(t => df[t] = (df[t] || 0) + 1);
+  });
   const N = Math.max(1, docsTokens.length);
   const idf = {};
   Object.keys(df).forEach(t => idf[t] = Math.log((N + 1) / (df[t] + 1)) + 1);
 
+  // بناء index
   intentIndex = raw.map((it, idx) => {
     const tokens = docsTokens[idx] || [];
     const counts = tokens.reduce((acc, t) => { acc[t] = (acc[t] || 0) + 1; return acc; }, {});
@@ -196,42 +208,53 @@ export function buildIndexSync() {
       sq += v * v;
     });
 
+    // ===== التعامل مع Patterns المعقدة =====
     const compiled = (it.patterns || []).map(p => {
+      const patternText = typeof p === 'string' ? p : p?.text || null;
+      if (!patternText) return null;
       try {
-        const esc = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const esc = patternText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         return new RegExp(esc, 'i');
       } catch (e) {
-        if (DEBUG) console.warn("Invalid pattern", p, e.message || e);
+        if (DEBUG) console.warn("Invalid pattern", patternText, e.message || e);
         return null;
       }
     }).filter(Boolean);
+
+    // ===== التعامل مع Keywords المعقدة =====
+    const keywords = (it.keywords || [])
+      .flatMap(k => typeof k === 'string' ? [normalizeArabic(k)] : (k?.text ? [normalizeArabic(k.text)] : []));
 
     return {
       tag: it.tag || it.intent || `intent_${idx}`,
       responses: it.responses || [],
       response_constructor: it.response_constructor || null,
       safety: (it.safety_protocol || "").toUpperCase(),
-      keywords: (it.keywords || []).map(normalizeArabic),
+      keywords,
       patterns: compiled,
       follow_up_intents: it.follow_up_intents || [],
       related_intents: Array.isArray(it.related_intents) ? it.related_intents.slice() : [],
       tfidfVector: vec,
       tfidfNorm: Math.sqrt(sq) || 1,
+      // حفظ أي metadata إضافية موجودة
+      metadata: { ...it },
     };
   });
 
+  // بناء map من tag للـ index
   tagToIdx = {};
   intentIndex.forEach((it, i) => tagToIdx[it.tag] = i);
 
   autoLinkIntents();
 
   if (DEBUG) {
-    console.log(`🚀 Engine v13.0 (Harmonized Core) indexed successfully.`);
+    console.log(`🚀 Engine v13.1 (Flexible Mind) indexed successfully.`);
     console.log(`📂 Total intents loaded: ${intentIndex.length} from 'intents_final' directory.`);
     const sampleTags = Object.keys(tagToIdx).slice(0, 10);
     console.log(`📌 Sample Tags: [${sampleTags.join(", ")}]...`);
   }
 }
+// ===== نهاية دمج التعديلات المطلوبة =====
 
 // ------------------- Vector & Style helpers -------------------
 function jaccardSimilarity(setA, setB) {
