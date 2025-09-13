@@ -1,14 +1,24 @@
-
-    {
+{
       "name": "rafiq-ai-server",
       "version": "1.0.0",
       "description": "Rafiq AI Chatbot Server",
       "main": "api/chat.js",
       "type": "module",
       "scripts": {
-        "start": "node api/chat.js"
+            "start": "node api/chat.js"
       },
       "author": "hema",
-      "license": "ISC"
-    }
-    
+      "license": "ISC",
+      "repository": {
+            "type": "git",
+            "url": "git+https://github.com/nooraihema/rafiq-ai.git"
+      },
+      "keywords": [],
+      "bugs": {
+            "url": "https://github.com/nooraihema/rafiq-ai/issues"
+      },
+      "homepage": "https://github.com/nooraihema/rafiq-ai#readme",
+      "dependencies": {
+            "sql.js": "^1.13.0"
+      }
+}
