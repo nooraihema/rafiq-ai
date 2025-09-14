@@ -1,11 +1,59 @@
-// utils.js v14.1 - Precision Sensory Upgrade
-// Replaced unreliable `includes()` with precise whole-word matching for mood and entities.
+// utils.js v15.0 - Semantic Core Integration
+// Now features a powerful semantic expansion engine powered by synonyms.json.
 
+import fs from 'fs';
+import path from 'path';
 import { STOPWORDS, NEGATORS, EMPHASIS, MOOD_KEYWORDS, CRITICAL_KEYWORDS, CONTEXTUAL_KEYWORDS } from './config.js';
+
+// =================================================================
+// START: SEMANTIC KNOWLEDGE BASE LOADER (NEW in v15.0)
+// =================================================================
+
+let SEMANTIC_KNOWLEDGE_BASE = {};
+let REVERSE_SEMANTIC_MAP = {};
+
+function loadSemanticKnowledgeBase() {
+    try {
+        const synonymsPath = path.join(process.cwd(), 'synonyms.json');
+        const raw = fs.readFileSync(synonymsPath, 'utf8');
+        const parsed = JSON.parse(raw);
+
+        SEMANTIC_KNOWLEDGE_BASE = {};
+        REVERSE_SEMANTIC_MAP = {};
+
+        for (const key in parsed) {
+            if (key.startsWith('__')) continue; // Ignore comments
+
+            const normalizedKey = normalizeArabic(key);
+            SEMANTIC_KNOWLEDGE_BASE[normalizedKey] = parsed[key].map(val => normalizeArabic(val));
+
+            // Create the reverse map for fast lookups
+            for (const value of SEMANTIC_KNOWLEDGE_BASE[normalizedKey]) {
+                if (!REVERSE_SEMANTIC_MAP[value]) {
+                    REVERSE_SEMANTIC_MAP[value] = [];
+                }
+                REVERSE_SEMANTIC_MAP[value].push(normalizedKey);
+            }
+        }
+        console.log(`📚 Semantic Knowledge Base loaded with ${Object.keys(SEMANTIC_KNOWLEDGE_BASE).length} concepts.`);
+
+    } catch (e) {
+        console.error("❌ CRITICAL: Failed to load or parse synonyms.json. Semantic features will be disabled.", e);
+        SEMANTIC_KNOWLEDGE_BASE = {};
+        REVERSE_SEMANTIC_MAP = {};
+    }
+}
+
+// Load the knowledge base on startup
+loadSemanticKnowledgeBase();
+
+// =================================================================
+// END: SEMANTIC KNOWLEDGE BASE LOADER
+// =================================================================
+
 
 // ------------ أدوات تطبيع عربي وtokenize ------------
 export function normalizeArabic(text = "") {
-  // ... (No changes here)
   return text.toString().toLowerCase()
     .replace(/[\u0610-\u061A\u064B-\u065F\u06D6-\u06ED]/g, "")
     .replace(/[إأٱآا]/g, "ا").replace(/ى/g, "ي")
@@ -14,15 +62,13 @@ export function normalizeArabic(text = "") {
 }
 
 export function tokenize(text) {
-  // ... (No changes here)
   const t = normalizeArabic(text);
   if (!t) return [];
   return t.split(/\s+/).filter(w => w && !STOPWORDS.has(w));
 }
 
-// ------------ Levenshtein ------------
+// ------------ Levenshtein (No changes) ------------
 export function levenshtein(a, b) {
-  // ... (No changes here)
   if (a === b) return 0;
   const m = a.length, n = b.length;
   if (!m) return n;
@@ -41,8 +87,33 @@ export function levenshtein(a, b) {
 
 
 // =================================================================
-// START: v14.1 PRECISION SENSORY UPGRADE
+// START: SEMANTICALLY-AWARE SENSORS (UPGRADED in v15.0)
 // =================================================================
+
+/**
+ * v15.0 (NEW): Enriches a message with concepts from the semantic knowledge base.
+ * @param {string} rawMessage The user's original message.
+ * @returns {string} The message, enriched with parent concepts.
+ */
+export function expandMessageWithSemantics(rawMessage) {
+    const norm = normalizeArabic(rawMessage);
+    const tokens = new Set(norm.split(/\s+/));
+    const conceptsToAdd = new Set();
+
+    for (const token of tokens) {
+        if (REVERSE_SEMANTIC_MAP[token]) {
+            REVERSE_SEMANTIC_MAP[token].forEach(concept => conceptsToAdd.add(concept));
+        }
+    }
+    
+    // Add the new concepts back to the original message string
+    if (conceptsToAdd.size > 0) {
+        return `${norm} ${[...conceptsToAdd].join(' ')}`;
+    }
+
+    return norm; // Return original normalized message if no expansion
+}
+
 
 const NORMALIZED_MOOD_KEYWORDS = Object.entries(MOOD_KEYWORDS).reduce((acc, [mood, keywords]) => {
     acc[mood] = keywords.map(kw => normalizeArabic(kw));
@@ -50,15 +121,13 @@ const NORMALIZED_MOOD_KEYWORDS = Object.entries(MOOD_KEYWORDS).reduce((acc, [moo
 }, {});
 
 /**
- * v14.1: Detects mood using precise, whole-word matching for superior accuracy.
+ * v15.0: Detects mood using precise, whole-word matching.
+ * NOTE: This function now works on the SEMANTICALLY EXPANDED message passed from chat.js.
  */
-export function detectMood(msg) {
-  const norm = normalizeArabic(msg);
-  const messageTokens = new Set(norm.split(/\s+/)); // Split message into a Set for fast lookups
-
+export function detectMood(semanticallyExpandedMessage) {
+  const messageTokens = new Set(semanticallyExpandedMessage.split(/\s+/));
   for (const mood in NORMALIZED_MOOD_KEYWORDS) {
     for (const kw of NORMALIZED_MOOD_KEYWORDS[mood]) {
-      // Check if the SET of message words HAS the keyword.
       if (messageTokens.has(kw)) {
           return mood;
       }
@@ -68,32 +137,30 @@ export function detectMood(msg) {
 }
 
 /**
- * v14.1: Extracts entities using precise, whole-word matching.
+ * v15.0: Extracts entities using precise, whole-word matching.
+ * NOTE: This function now works on the SEMANTICALLY EXPANDED message passed from chat.js.
  */
-export function extractEntities(rawMessage) {
-    const norm = normalizeArabic(rawMessage);
-    const messageTokens = new Set(norm.split(/\s+/));
+export function extractEntities(semanticallyExpandedMessage) {
+    const messageTokens = new Set(semanticallyExpandedMessage.split(/\s+/));
     const entities = new Set();
     
-    // Search for the broad, important concepts defined in the config
     for (const keyword of CONTEXTUAL_KEYWORDS) {
         const normalizedKeyword = normalizeArabic(keyword);
-        // Check if the SET of message words HAS the keyword.
         if (messageTokens.has(normalizedKeyword)) {
-            entities.add(keyword); // Add the original, human-readable keyword
+            entities.add(keyword);
         }
     }
     return Array.from(entities);
 }
 
 // =================================================================
-// END: v14.1 PRECISION SENSORY UPGRADE
+// END: SEMANTICALLY-AWARE SENSORS
 // =================================================================
 
 
 export function detectCritical(msg) {
   const norm = normalizeArabic(msg);
-  for (const kw of CRITICAL_KEYWORDS) if (norm.includes(normalizeArabic(kw))) return true; // `includes` is OK here for safety phrases
+  for (const kw of CRITICAL_KEYWORDS) if (norm.includes(normalizeArabic(kw))) return true;
   return false;
 }
 
@@ -108,7 +175,7 @@ export function hasNegationNearby(rawMessage, term) {
       for (let j = Math.max(0, i - 2); j < i; j++) if (NEGATORS.has(tokens[j])) return true;
     }
   }
-  if (normalizeArabic(rawMessage).includes("ما " + normalizeArabic(term))) return true;
+  if (normalizeArabic(rawMessage).includes("ma " + normalizeArabic(term))) return true;
   return false;
 }
 export function hasEmphasisNearby(rawMessage, term) {
