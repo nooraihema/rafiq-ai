@@ -1,10 +1,11 @@
-// utils.js v14.0 - Enhanced Sensory Perception
-// Upgraded mood and entity detection for higher accuracy and contextual awareness.
+// utils.js v14.1 - Precision Sensory Upgrade
+// Replaced unreliable `includes()` with precise whole-word matching for mood and entities.
 
 import { STOPWORDS, NEGATORS, EMPHASIS, MOOD_KEYWORDS, CRITICAL_KEYWORDS, CONTEXTUAL_KEYWORDS } from './config.js';
 
 // ------------ أدوات تطبيع عربي وtokenize ------------
 export function normalizeArabic(text = "") {
+  // ... (No changes here)
   return text.toString().toLowerCase()
     .replace(/[\u0610-\u061A\u064B-\u065F\u06D6-\u06ED]/g, "")
     .replace(/[إأٱآا]/g, "ا").replace(/ى/g, "ي")
@@ -13,6 +14,7 @@ export function normalizeArabic(text = "") {
 }
 
 export function tokenize(text) {
+  // ... (No changes here)
   const t = normalizeArabic(text);
   if (!t) return [];
   return t.split(/\s+/).filter(w => w && !STOPWORDS.has(w));
@@ -20,6 +22,7 @@ export function tokenize(text) {
 
 // ------------ Levenshtein ------------
 export function levenshtein(a, b) {
+  // ... (No changes here)
   if (a === b) return 0;
   const m = a.length, n = b.length;
   if (!m) return n;
@@ -38,62 +41,64 @@ export function levenshtein(a, b) {
 
 
 // =================================================================
-// START: v14.0 SENSORY UPGRADE
+// START: v14.1 PRECISION SENSORY UPGRADE
 // =================================================================
 
-// --- Pre-process mood keywords for higher efficiency and accuracy ---
 const NORMALIZED_MOOD_KEYWORDS = Object.entries(MOOD_KEYWORDS).reduce((acc, [mood, keywords]) => {
     acc[mood] = keywords.map(kw => normalizeArabic(kw));
     return acc;
 }, {});
 
 /**
- * v14.0: Detects mood using pre-normalized keywords for better performance.
+ * v14.1: Detects mood using precise, whole-word matching for superior accuracy.
  */
 export function detectMood(msg) {
   const norm = normalizeArabic(msg);
+  const messageTokens = new Set(norm.split(/\s+/)); // Split message into a Set for fast lookups
+
   for (const mood in NORMALIZED_MOOD_KEYWORDS) {
     for (const kw of NORMALIZED_MOOD_KEYWORDS[mood]) {
-      // Use `includes` which is good enough for single-word keywords
-      if (norm.includes(kw)) return mood;
+      // Check if the SET of message words HAS the keyword.
+      if (messageTokens.has(kw)) {
+          return mood;
+      }
     }
   }
   return "محايد";
 }
 
 /**
- * v14.0: Extracts contextual entities using the new CONTEXTUAL_KEYWORDS list from config.
- * This is a major upgrade from the previous basic, rule-based extraction.
+ * v14.1: Extracts entities using precise, whole-word matching.
  */
 export function extractEntities(rawMessage) {
     const norm = normalizeArabic(rawMessage);
+    const messageTokens = new Set(norm.split(/\s+/));
     const entities = new Set();
     
     // Search for the broad, important concepts defined in the config
     for (const keyword of CONTEXTUAL_KEYWORDS) {
-        // We check against the normalized version of the keyword
-        if (norm.includes(normalizeArabic(keyword))) {
-            // But we add the original, human-readable keyword as the entity
-            entities.add(keyword);
+        const normalizedKeyword = normalizeArabic(keyword);
+        // Check if the SET of message words HAS the keyword.
+        if (messageTokens.has(normalizedKeyword)) {
+            entities.add(keyword); // Add the original, human-readable keyword
         }
     }
     return Array.from(entities);
 }
 
 // =================================================================
-// END: v14.0 SENSORY UPGRADE
+// END: v14.1 PRECISION SENSORY UPGRADE
 // =================================================================
 
 
 export function detectCritical(msg) {
   const norm = normalizeArabic(msg);
-  for (const kw of CRITICAL_KEYWORDS) if (norm.includes(normalizeArabic(kw))) return true;
+  for (const kw of CRITICAL_KEYWORDS) if (norm.includes(normalizeArabic(kw))) return true; // `includes` is OK here for safety phrases
   return false;
 }
 
-// ------------ Negation & Emphasis Helpers ------------
+// ------------ The rest of the file has no changes ------------
 function tokensArray(text) { return normalizeArabic(text).split(/\s+/).filter(Boolean); }
-
 export function hasNegationNearby(rawMessage, term) {
   const tokens = tokensArray(rawMessage);
   const termTokens = tokensArray(term);
@@ -106,7 +111,6 @@ export function hasNegationNearby(rawMessage, term) {
   if (normalizeArabic(rawMessage).includes("ما " + normalizeArabic(term))) return true;
   return false;
 }
-
 export function hasEmphasisNearby(rawMessage, term) {
   const tokens = tokensArray(rawMessage);
   const termTokens = tokensArray(term);
@@ -117,8 +121,6 @@ export function hasEmphasisNearby(rawMessage, term) {
   }
   return false;
 }
-
-// --- Advanced Style Sensor (No changes needed in this version) ---
 export function detectStyleSignals(rawMessage) {
     const norm = normalizeArabic(rawMessage);
     const tokens = tokenize(rawMessage);
@@ -136,9 +138,6 @@ export function detectStyleSignals(rawMessage) {
         tokens 
     };
 }
-
-
-// ------------ Root cause (No changes needed in this version) ----------
 export function extractRootCause(rawMessage) {
   const markers = ["بسبب", "لأن", "علشان", "على خاطر", "بعد ما", "عشان"];
   const norm = rawMessage;
@@ -151,8 +150,6 @@ export function extractRootCause(rawMessage) {
   }
   return null;
 }
-
-// ------------ Helpers متفرقات (No changes needed in this version) ------------
 export function cairoGreetingPrefix() {
   const now = new Date();
   const cairoHour = (now.getUTCHours() + 2) % 24;
@@ -160,7 +157,6 @@ export function cairoGreetingPrefix() {
   if (cairoHour >= 12 && cairoHour < 17) return "مساء الخير";
   return "مساء النور";
 }
-
 export function adaptReplyBase(reply, userProfile, mood) {
   const tone = (userProfile && userProfile.preferredTone) || "warm";
   let prefix = "", suffix = "";
@@ -172,7 +168,6 @@ export function adaptReplyBase(reply, userProfile, mood) {
   else if (mood === "فرح") prefix = "يا سلام! ";
   return `${prefix}${reply}${suffix}`.trim();
 }
-
 export function criticalSafetyReply() {
   return "كلامك مهم جدًا وأنا آخذه على محمل الجد. لو عندك أفكار لإيذاء نفسك أو فقدت الأمان، مهم جدًا تكلم حد موثوق فورًا أو تواصل مع جهة مختصة قريبة منك. لو تقدر، كلّمني أكتر دلوقتي عن اللي بيمرّ عليك وأنا معاك خطوة بخطوة 💙";
 }
