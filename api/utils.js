@@ -1,6 +1,7 @@
-// utils.js v13.0 - The Harmonized Core compatible version
+// utils.js v14.0 - Enhanced Sensory Perception
+// Upgraded mood and entity detection for higher accuracy and contextual awareness.
 
-import { STOPWORDS, NEGATORS, EMPHASIS, MOOD_KEYWORDS, CRITICAL_KEYWORDS } from './config.js';
+import { STOPWORDS, NEGATORS, EMPHASIS, MOOD_KEYWORDS, CRITICAL_KEYWORDS, CONTEXTUAL_KEYWORDS } from './config.js';
 
 // ------------ أدوات تطبيع عربي وtokenize ------------
 export function normalizeArabic(text = "") {
@@ -35,16 +36,54 @@ export function levenshtein(a, b) {
   return dp[m][n];
 }
 
-// ------------ Mood & Safety detection ------------
+
+// =================================================================
+// START: v14.0 SENSORY UPGRADE
+// =================================================================
+
+// --- Pre-process mood keywords for higher efficiency and accuracy ---
+const NORMALIZED_MOOD_KEYWORDS = Object.entries(MOOD_KEYWORDS).reduce((acc, [mood, keywords]) => {
+    acc[mood] = keywords.map(kw => normalizeArabic(kw));
+    return acc;
+}, {});
+
+/**
+ * v14.0: Detects mood using pre-normalized keywords for better performance.
+ */
 export function detectMood(msg) {
   const norm = normalizeArabic(msg);
-  for (const mood in MOOD_KEYWORDS) {
-    for (const kw of MOOD_KEYWORDS[mood]) {
-      if (norm.includes(normalizeArabic(kw))) return mood;
+  for (const mood in NORMALIZED_MOOD_KEYWORDS) {
+    for (const kw of NORMALIZED_MOOD_KEYWORDS[mood]) {
+      // Use `includes` which is good enough for single-word keywords
+      if (norm.includes(kw)) return mood;
     }
   }
   return "محايد";
 }
+
+/**
+ * v14.0: Extracts contextual entities using the new CONTEXTUAL_KEYWORDS list from config.
+ * This is a major upgrade from the previous basic, rule-based extraction.
+ */
+export function extractEntities(rawMessage) {
+    const norm = normalizeArabic(rawMessage);
+    const entities = new Set();
+    
+    // Search for the broad, important concepts defined in the config
+    for (const keyword of CONTEXTUAL_KEYWORDS) {
+        // We check against the normalized version of the keyword
+        if (norm.includes(normalizeArabic(keyword))) {
+            // But we add the original, human-readable keyword as the entity
+            entities.add(keyword);
+        }
+    }
+    return Array.from(entities);
+}
+
+// =================================================================
+// END: v14.0 SENSORY UPGRADE
+// =================================================================
+
 
 export function detectCritical(msg) {
   const norm = normalizeArabic(msg);
@@ -79,26 +118,16 @@ export function hasEmphasisNearby(rawMessage, term) {
   return false;
 }
 
-// ===== بداية الترقية الجديدة v13.0 =====
-/**
- * Advanced Style Sensor v13.0
- * Detects not just keywords, but the *style* of the message, including intensity.
- */
+// --- Advanced Style Sensor (No changes needed in this version) ---
 export function detectStyleSignals(rawMessage) {
     const norm = normalizeArabic(rawMessage);
     const tokens = tokenize(rawMessage);
-    
     const isQuestion = /[\?؟]$/.test(rawMessage.trim()) || /^\s*(هل|متى|لماذا|أين|كيف|من|ما|كم)\b/.test(rawMessage.trim());
     const sarcasm = /(بجد\?|عنجد\?|يا سلام\?)/i.test(rawMessage) || /(؟\?){1,}/.test(rawMessage);
-    
-    // Check for general emphasis words from the config
     const hasBasicEmphasis = tokens.some(t => EMPHASIS.has(t)) || /[!！]{2,}/.test(rawMessage);
-    
-    // Check for emotional intensity through character repetition and emojis
     let emotionalIntensity = 1.0;
-    if (/(.)\1{2,}/.test(norm)) emotionalIntensity += 0.2; // Repeated characters
-    if (/[😭😢😡😠😥😫😩🔥💥]/.test(rawMessage)) emotionalIntensity += 0.3; // Intensity emojis
-
+    if (/(.)\1{2,}/.test(norm)) emotionalIntensity += 0.2;
+    if (/[😭😢😡😠😥😫😩🔥💥]/.test(rawMessage)) emotionalIntensity += 0.3;
     return { 
         isQuestion, 
         sarcasm, 
@@ -107,25 +136,9 @@ export function detectStyleSignals(rawMessage) {
         tokens 
     };
 }
-// ===== نهاية الترقية الجديدة v13.0 =====
 
 
-// ------------ Entity extraction & root cause ----------
-export function extractEntities(rawMessage) {
-  const norm = normalizeArabic(rawMessage);
-  const tokens = norm.split(/\s+/).filter(Boolean);
-  const entities = new Set();
-  const peopleMarkers = ["صديقي","صديقتي","اخي","اختي","أمي","امي","أبوي","ابوي","زوجي","زوجتي","ابني","بنتي","مديري","معلمي"];
-  for (let i = 0; i < tokens.length; i++) {
-    if (peopleMarkers.includes(tokens[i])) {
-      if (tokens[i+1] && !STOPWORDS.has(tokens[i+1])) entities.add(tokens[i+1]);
-    }
-  }
-  const topics = ["العمل","الدراسة","الجامعة","البيت","العائلة","الزواج","المال","الفلوس","الصحة","الدوام","الموظفين","الامتحان","المدرسة"];
-  for (const t of topics) if (norm.includes(t)) entities.add(t);
-  return Array.from(entities);
-}
-
+// ------------ Root cause (No changes needed in this version) ----------
 export function extractRootCause(rawMessage) {
   const markers = ["بسبب", "لأن", "علشان", "على خاطر", "بعد ما", "عشان"];
   const norm = rawMessage;
@@ -139,7 +152,7 @@ export function extractRootCause(rawMessage) {
   return null;
 }
 
-// ------------ Helpers متفرقات ------------
+// ------------ Helpers متفرقات (No changes needed in this version) ------------
 export function cairoGreetingPrefix() {
   const now = new Date();
   const cairoHour = (now.getUTCHours() + 2) % 24;
@@ -154,11 +167,9 @@ export function adaptReplyBase(reply, userProfile, mood) {
   if (tone === "warm") { prefix = ""; suffix = " 💜"; }
   else if (tone === "clinical") { prefix = ""; suffix = ""; }
   else if (tone === "playful") { prefix = ""; suffix = " 😉"; }
-
   if (mood === "حزن") prefix = "أنا معااك دلوقتي، ";
   else if (mood === "قلق") prefix = "خد نفس عميق، ";
   else if (mood === "فرح") prefix = "يا سلام! ";
-
   return `${prefix}${reply}${suffix}`.trim();
 }
 
