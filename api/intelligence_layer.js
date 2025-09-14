@@ -1,5 +1,5 @@
-// intelligence_layer.js v13.0 - Integrated Wisdom Layer
-// Now fully integrated with the main chat handler and featuring periodic insights.
+// intelligence_layer.js v14.0 - Focused Wisdom Layer
+// Deprecated compositional response logic to focus solely on long-term memory and insights.
 
 // =================================================================
 // START: ADVANCED MEMORY & PATTERN RECOGNITION FUNCTIONS
@@ -126,8 +126,10 @@ export function getPeriodicInsight(profile) {
 // =================================================================
 
 
-// --- Compositional Intelligence Function (For structured intents) ---
-// This function remains for intents that have a "response_constructor" field.
+// --- DEPRECATED: Compositional Intelligence Function (For structured intents) ---
+// This function is no longer needed as the new `response_constructor.js`
+// will handle the complex logic from the new intent structure.
+/*
 export function composeResponse(constructor, context) {
   if (!constructor) return null;
 
