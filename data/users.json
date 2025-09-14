@@ -1,0 +1,29 @@
+{
+  "595a71fddf97d5cc": {
+    "id": "595a71fddf97d5cc",
+    "createdAt": "2025-09-13T21:54:15.880Z",
+    "shortMemory": [
+      {
+        "message": "أنا حزين ومضايق النهاردة",
+        "reply": "لم أفهم قصدك تمامًا، هل يمكنك التوضيح بجملة مختلفة؟ أحيانًا يساعدني ذلك على فهمك بشكل أفضل. أنا هنا لأسمعك.",
+        "mood": "حزن",
+        "age": 0,
+        "entities": []
+      }
+    ],
+    "intentSuccessCount": {},
+    "intentLastSuccess": {},
+    "lastSeen": "2025-09-13T21:54:15.904Z",
+    "longTermProfile": {
+      "recurring_themes": {},
+      "mentioned_entities": {},
+      "communication_style": "neutral"
+    },
+    "moodHistory": [
+      {
+        "mood": "حزن",
+        "ts": "2025-09-13T21:54:15.908Z"
+      }
+    ]
+  }
+}

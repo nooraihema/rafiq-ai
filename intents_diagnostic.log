@@ -1,0 +1,851 @@
+🛠️ Starting Intent Fix & Diagnostic...
+📂 Processing intents_final/cbt_library.json...
+🔹 Checking intent: cbt_introduction_what_is_it
+⚠️ No responses found for cbt_introduction_what_is_it, adding placeholder.
+⚠️ No keywords for cbt_introduction_what_is_it, adding synonyms as keywords.
+🔹 Checking intent: cbt_identify_negative_thoughts
+⚠️ No responses found for cbt_identify_negative_thoughts, adding placeholder.
+⚠️ No keywords for cbt_identify_negative_thoughts, adding synonyms as keywords.
+🔹 Checking intent: cbt_challenge_catastrophizing
+⚠️ No responses found for cbt_challenge_catastrophizing, adding placeholder.
+⚠️ No keywords for cbt_challenge_catastrophizing, adding synonyms as keywords.
+🔹 Checking intent: cbt_challenge_black_and_white_thinking
+⚠️ No responses found for cbt_challenge_black_and_white_thinking, adding placeholder.
+⚠️ No keywords for cbt_challenge_black_and_white_thinking, adding synonyms as keywords.
+🔹 Checking intent: cbt_what_is_thought_record
+⚠️ No responses found for cbt_what_is_thought_record, adding placeholder.
+⚠️ No keywords for cbt_what_is_thought_record, adding synonyms as keywords.
+🔹 Checking intent: cbt_challenge_overgeneralization
+⚠️ No responses found for cbt_challenge_overgeneralization, adding placeholder.
+⚠️ No keywords for cbt_challenge_overgeneralization, adding synonyms as keywords.
+🔹 Checking intent: cbt_challenge_mind_reading
+⚠️ No responses found for cbt_challenge_mind_reading, adding placeholder.
+⚠️ No keywords for cbt_challenge_mind_reading, adding synonyms as keywords.
+🔹 Checking intent: cbt_challenge_personalization
+⚠️ No responses found for cbt_challenge_personalization, adding placeholder.
+⚠️ No keywords for cbt_challenge_personalization, adding synonyms as keywords.
+🔹 Checking intent: cbt_behavioral_activation_intro
+⚠️ No responses found for cbt_behavioral_activation_intro, adding placeholder.
+⚠️ No keywords for cbt_behavioral_activation_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_scheduling_activities
+⚠️ No responses found for cbt_scheduling_activities, adding placeholder.
+⚠️ No keywords for cbt_scheduling_activities, adding synonyms as keywords.
+🔹 Checking intent: cbt_challenge_emotional_reasoning
+⚠️ No responses found for cbt_challenge_emotional_reasoning, adding placeholder.
+⚠️ No keywords for cbt_challenge_emotional_reasoning, adding synonyms as keywords.
+🔹 Checking intent: cbt_challenge_should_statements
+⚠️ No responses found for cbt_challenge_should_statements, adding placeholder.
+⚠️ No keywords for cbt_challenge_should_statements, adding synonyms as keywords.
+🔹 Checking intent: cbt_socratic_questioning_intro
+⚠️ No responses found for cbt_socratic_questioning_intro, adding placeholder.
+⚠️ No keywords for cbt_socratic_questioning_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_behavioral_experiment_intro
+⚠️ No responses found for cbt_behavioral_experiment_intro, adding placeholder.
+⚠️ No keywords for cbt_behavioral_experiment_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_exposure_therapy_intro
+⚠️ No responses found for cbt_exposure_therapy_intro, adding placeholder.
+⚠️ No keywords for cbt_exposure_therapy_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_mindfulness_and_acceptance_intro
+⚠️ No responses found for cbt_mindfulness_and_acceptance_intro, adding placeholder.
+⚠️ No keywords for cbt_mindfulness_and_acceptance_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_core_beliefs_intro
+⚠️ No responses found for cbt_core_beliefs_intro, adding placeholder.
+⚠️ No keywords for cbt_core_beliefs_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_problem_solving_intro
+⚠️ No responses found for cbt_problem_solving_intro, adding placeholder.
+⚠️ No keywords for cbt_problem_solving_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_goal_setting_smart
+⚠️ No responses found for cbt_goal_setting_smart, adding placeholder.
+⚠️ No keywords for cbt_goal_setting_smart, adding synonyms as keywords.
+🔹 Checking intent: cbt_relaxation_deep_breathing
+⚠️ No responses found for cbt_relaxation_deep_breathing, adding placeholder.
+⚠️ No keywords for cbt_relaxation_deep_breathing, adding synonyms as keywords.
+🔹 Checking intent: cbt_relaxation_progressive_muscle_relaxation
+⚠️ No responses found for cbt_relaxation_progressive_muscle_relaxation, adding placeholder.
+⚠️ No keywords for cbt_relaxation_progressive_muscle_relaxation, adding synonyms as keywords.
+🔹 Checking intent: cbt_procrastination_5_minute_rule
+⚠️ No responses found for cbt_procrastination_5_minute_rule, adding placeholder.
+⚠️ No keywords for cbt_procrastination_5_minute_rule, adding synonyms as keywords.
+🔹 Checking intent: cbt_self_compassion_intro
+⚠️ No responses found for cbt_self_compassion_intro, adding placeholder.
+⚠️ No keywords for cbt_self_compassion_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_downward_arrow_technique
+⚠️ No responses found for cbt_downward_arrow_technique, adding placeholder.
+⚠️ No keywords for cbt_downward_arrow_technique, adding synonyms as keywords.
+🔹 Checking intent: cbt_identify_assumptions_and_rules
+⚠️ No responses found for cbt_identify_assumptions_and_rules, adding placeholder.
+⚠️ No keywords for cbt_identify_assumptions_and_rules, adding synonyms as keywords.
+🔹 Checking intent: cbt_building_resilience_intro
+⚠️ No responses found for cbt_building_resilience_intro, adding placeholder.
+⚠️ No keywords for cbt_building_resilience_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_social_anxiety_safety_behaviors
+⚠️ No responses found for cbt_social_anxiety_safety_behaviors, adding placeholder.
+⚠️ No keywords for cbt_social_anxiety_safety_behaviors, adding synonyms as keywords.
+🔹 Checking intent: cbt_pie_chart_technique
+⚠️ No responses found for cbt_pie_chart_technique, adding placeholder.
+⚠️ No keywords for cbt_pie_chart_technique, adding synonyms as keywords.
+🔹 Checking intent: cbt_cost_benefit_analysis
+⚠️ No responses found for cbt_cost_benefit_analysis, adding placeholder.
+⚠️ No keywords for cbt_cost_benefit_analysis, adding synonyms as keywords.
+🔹 Checking intent: cbt_intolerance_of_uncertainty
+⚠️ No responses found for cbt_intolerance_of_uncertainty, adding placeholder.
+⚠️ No keywords for cbt_intolerance_of_uncertainty, adding synonyms as keywords.
+🔹 Checking intent: cbt_metacognitive_therapy_intro
+⚠️ No responses found for cbt_metacognitive_therapy_intro, adding placeholder.
+⚠️ No keywords for cbt_metacognitive_therapy_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_anger_management_intro
+⚠️ No responses found for cbt_anger_management_intro, adding placeholder.
+⚠️ No keywords for cbt_anger_management_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_for_insomnia_intro
+⚠️ No responses found for cbt_for_insomnia_intro, adding placeholder.
+⚠️ No keywords for cbt_for_insomnia_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_gratitude_journal_intro
+⚠️ No responses found for cbt_gratitude_journal_intro, adding placeholder.
+⚠️ No keywords for cbt_gratitude_journal_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_dealing_with_criticism
+⚠️ No responses found for cbt_dealing_with_criticism, adding placeholder.
+⚠️ No keywords for cbt_dealing_with_criticism, adding synonyms as keywords.
+🔹 Checking intent: cbt_opposite_action_technique
+⚠️ No responses found for cbt_opposite_action_technique, adding placeholder.
+⚠️ No keywords for cbt_opposite_action_technique, adding synonyms as keywords.
+🔹 Checking intent: cbt_building_self_esteem_intro
+⚠️ No responses found for cbt_building_self_esteem_intro, adding placeholder.
+⚠️ No keywords for cbt_building_self_esteem_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_assertiveness_training_intro
+⚠️ No responses found for cbt_assertiveness_training_intro, adding placeholder.
+⚠️ No keywords for cbt_assertiveness_training_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_chronic_procrastination_deep_dive
+⚠️ No responses found for cbt_chronic_procrastination_deep_dive, adding placeholder.
+⚠️ No keywords for cbt_chronic_procrastination_deep_dive, adding synonyms as keywords.
+🔹 Checking intent: cbt_grounding_techniques_intro
+⚠️ No responses found for cbt_grounding_techniques_intro, adding placeholder.
+⚠️ No keywords for cbt_grounding_techniques_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_challenge_mental_filter
+⚠️ No responses found for cbt_challenge_mental_filter, adding placeholder.
+⚠️ No keywords for cbt_challenge_mental_filter, adding synonyms as keywords.
+🔹 Checking intent: cbt_dealing_with_regret
+⚠️ No responses found for cbt_dealing_with_regret, adding placeholder.
+⚠️ No keywords for cbt_dealing_with_regret, adding synonyms as keywords.
+🔹 Checking intent: cbt_act_introduction
+⚠️ No responses found for cbt_act_introduction, adding placeholder.
+⚠️ No keywords for cbt_act_introduction, adding synonyms as keywords.
+🔹 Checking intent: cbt_internal_critic_dialogue
+⚠️ No responses found for cbt_internal_critic_dialogue, adding placeholder.
+⚠️ No keywords for cbt_internal_critic_dialogue, adding synonyms as keywords.
+🔹 Checking intent: cbt_building_self_motivation
+⚠️ No responses found for cbt_building_self_motivation, adding placeholder.
+⚠️ No keywords for cbt_building_self_motivation, adding synonyms as keywords.
+🔹 Checking intent: cbt_conflict_resolution_skills
+⚠️ No responses found for cbt_conflict_resolution_skills, adding placeholder.
+⚠️ No keywords for cbt_conflict_resolution_skills, adding synonyms as keywords.
+🔹 Checking intent: cbt_challenge_logical_fallacies
+⚠️ No responses found for cbt_challenge_logical_fallacies, adding placeholder.
+⚠️ No keywords for cbt_challenge_logical_fallacies, adding synonyms as keywords.
+🔹 Checking intent: cbt_dealing_with_emptiness
+⚠️ No responses found for cbt_dealing_with_emptiness, adding placeholder.
+⚠️ No keywords for cbt_dealing_with_emptiness, adding synonyms as keywords.
+🔹 Checking intent: cbt_building_healthy_routines
+⚠️ No responses found for cbt_building_healthy_routines, adding placeholder.
+⚠️ No keywords for cbt_building_healthy_routines, adding synonyms as keywords.
+🔹 Checking intent: cbt_dbt_introduction
+⚠️ No responses found for cbt_dbt_introduction, adding placeholder.
+⚠️ No keywords for cbt_dbt_introduction, adding synonyms as keywords.
+🔹 Checking intent: cbt_cognitive_reframing
+⚠️ No responses found for cbt_cognitive_reframing, adding placeholder.
+⚠️ No keywords for cbt_cognitive_reframing, adding synonyms as keywords.
+🔹 Checking intent: cbt_perfectionism_intro
+⚠️ No responses found for cbt_perfectionism_intro, adding placeholder.
+⚠️ No keywords for cbt_perfectionism_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_rumination_vs_problem_solving
+⚠️ No responses found for cbt_rumination_vs_problem_solving, adding placeholder.
+⚠️ No keywords for cbt_rumination_vs_problem_solving, adding synonyms as keywords.
+🔹 Checking intent: cbt_worry_postponement
+⚠️ No responses found for cbt_worry_postponement, adding placeholder.
+⚠️ No keywords for cbt_worry_postponement, adding synonyms as keywords.
+🔹 Checking intent: cbt_values_clarification_exercise
+⚠️ No responses found for cbt_values_clarification_exercise, adding placeholder.
+⚠️ No keywords for cbt_values_clarification_exercise, adding synonyms as keywords.
+🔹 Checking intent: cbt_self_sabotage_cycle
+⚠️ No responses found for cbt_self_sabotage_cycle, adding placeholder.
+⚠️ No keywords for cbt_self_sabotage_cycle, adding synonyms as keywords.
+🔹 Checking intent: cbt_failure_reframing
+⚠️ No responses found for cbt_failure_reframing, adding placeholder.
+⚠️ No keywords for cbt_failure_reframing, adding synonyms as keywords.
+🔹 Checking intent: cbt_boundary_setting_practical
+⚠️ No responses found for cbt_boundary_setting_practical, adding placeholder.
+⚠️ No keywords for cbt_boundary_setting_practical, adding synonyms as keywords.
+🔹 Checking intent: cbt_relapse_prevention_plan
+⚠️ No responses found for cbt_relapse_prevention_plan, adding placeholder.
+⚠️ No keywords for cbt_relapse_prevention_plan, adding synonyms as keywords.
+🔹 Checking intent: cbt_schema_therapy_intro
+⚠️ No responses found for cbt_schema_therapy_intro, adding placeholder.
+⚠️ No keywords for cbt_schema_therapy_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_impostor_syndrome_intro
+⚠️ No responses found for cbt_impostor_syndrome_intro, adding placeholder.
+⚠️ No keywords for cbt_impostor_syndrome_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_act_defusion_leaves_on_stream
+⚠️ No responses found for cbt_act_defusion_leaves_on_stream, adding placeholder.
+⚠️ No keywords for cbt_act_defusion_leaves_on_stream, adding synonyms as keywords.
+🔹 Checking intent: cbt_dbt_behavioral_chain_analysis
+⚠️ No responses found for cbt_dbt_behavioral_chain_analysis, adding placeholder.
+⚠️ No keywords for cbt_dbt_behavioral_chain_analysis, adding synonyms as keywords.
+🔹 Checking intent: cbt_grief_and_loss_stages
+⚠️ No responses found for cbt_grief_and_loss_stages, adding placeholder.
+⚠️ No keywords for cbt_grief_and_loss_stages, adding synonyms as keywords.
+🔹 Checking intent: cbt_forgiveness_of_others
+⚠️ No responses found for cbt_forgiveness_of_others, adding placeholder.
+⚠️ No keywords for cbt_forgiveness_of_others, adding synonyms as keywords.
+🔹 Checking intent: cbt_body_image_neutrality
+⚠️ No responses found for cbt_body_image_neutrality, adding placeholder.
+⚠️ No keywords for cbt_body_image_neutrality, adding synonyms as keywords.
+🔹 Checking intent: cbt_externalizing_the_problem
+⚠️ No responses found for cbt_externalizing_the_problem, adding placeholder.
+⚠️ No keywords for cbt_externalizing_the_problem, adding synonyms as keywords.
+🔹 Checking intent: cbt_hope_kit_creation
+⚠️ No responses found for cbt_hope_kit_creation, adding placeholder.
+⚠️ No keywords for cbt_hope_kit_creation, adding synonyms as keywords.
+🔹 Checking intent: cbt_dealing_with_burnout
+⚠️ No responses found for cbt_dealing_with_burnout, adding placeholder.
+⚠️ No keywords for cbt_dealing_with_burnout, adding synonyms as keywords.
+🔹 Checking intent: cbt_growth_mindset_intro
+⚠️ No responses found for cbt_growth_mindset_intro, adding placeholder.
+⚠️ No keywords for cbt_growth_mindset_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_best_possible_self_exercise
+⚠️ No responses found for cbt_best_possible_self_exercise, adding placeholder.
+⚠️ No keywords for cbt_best_possible_self_exercise, adding synonyms as keywords.
+🔹 Checking intent: cbt_fobo_fear_of_better_options
+⚠️ No responses found for cbt_fobo_fear_of_better_options, adding placeholder.
+⚠️ No keywords for cbt_fobo_fear_of_better_options, adding synonyms as keywords.
+🔹 Checking intent: cbt_dbt_dialectical_thinking
+⚠️ No responses found for cbt_dbt_dialectical_thinking, adding placeholder.
+⚠️ No keywords for cbt_dbt_dialectical_thinking, adding synonyms as keywords.
+🔹 Checking intent: cbt_dbt_radical_acceptance
+⚠️ No responses found for cbt_dbt_radical_acceptance, adding placeholder.
+⚠️ No keywords for cbt_dbt_radical_acceptance, adding synonyms as keywords.
+🔹 Checking intent: cbt_circle_of_influence_vs_concern
+⚠️ No responses found for cbt_circle_of_influence_vs_concern, adding placeholder.
+⚠️ No keywords for cbt_circle_of_influence_vs_concern, adding synonyms as keywords.
+🔹 Checking intent: cbt_existential_boredom
+⚠️ No responses found for cbt_existential_boredom, adding placeholder.
+⚠️ No keywords for cbt_existential_boredom, adding synonyms as keywords.
+🔹 Checking intent: cbt_advanced_emotion_regulation
+⚠️ No responses found for cbt_advanced_emotion_regulation, adding placeholder.
+⚠️ No keywords for cbt_advanced_emotion_regulation, adding synonyms as keywords.
+🔹 Checking intent: cbt_cognitive_biases_intro
+⚠️ No responses found for cbt_cognitive_biases_intro, adding placeholder.
+⚠️ No keywords for cbt_cognitive_biases_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_decision_fatigue
+⚠️ No responses found for cbt_decision_fatigue, adding placeholder.
+⚠️ No keywords for cbt_decision_fatigue, adding synonyms as keywords.
+🔹 Checking intent: cbt_therapeutic_letter_writing
+⚠️ No responses found for cbt_therapeutic_letter_writing, adding placeholder.
+⚠️ No keywords for cbt_therapeutic_letter_writing, adding synonyms as keywords.
+🔹 Checking intent: cbt_inner_child_intro
+⚠️ No responses found for cbt_inner_child_intro, adding placeholder.
+⚠️ No keywords for cbt_inner_child_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_attachment_styles_intro
+⚠️ No responses found for cbt_attachment_styles_intro, adding placeholder.
+⚠️ No keywords for cbt_attachment_styles_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_window_of_tolerance
+⚠️ No responses found for cbt_window_of_tolerance, adding placeholder.
+⚠️ No keywords for cbt_window_of_tolerance, adding synonyms as keywords.
+🔹 Checking intent: cbt_savoring_the_moment
+⚠️ No responses found for cbt_savoring_the_moment, adding placeholder.
+⚠️ No keywords for cbt_savoring_the_moment, adding synonyms as keywords.
+🔹 Checking intent: cbt_courtroom_technique_for_thoughts
+⚠️ No responses found for cbt_courtroom_technique_for_thoughts, adding placeholder.
+⚠️ No keywords for cbt_courtroom_technique_for_thoughts, adding synonyms as keywords.
+🔹 Checking intent: cbt_dealing_with_shame
+⚠️ No responses found for cbt_dealing_with_shame, adding placeholder.
+⚠️ No keywords for cbt_dealing_with_shame, adding synonyms as keywords.
+🔹 Checking intent: cbt_compassionate_goal_setting
+⚠️ No responses found for cbt_compassionate_goal_setting, adding placeholder.
+⚠️ No keywords for cbt_compassionate_goal_setting, adding synonyms as keywords.
+🔹 Checking intent: cbt_narrative_story_reframing
+⚠️ No responses found for cbt_narrative_story_reframing, adding placeholder.
+⚠️ No keywords for cbt_narrative_story_reframing, adding synonyms as keywords.
+🔹 Checking intent: cbt_five_senses_grounding_exercise
+⚠️ No responses found for cbt_five_senses_grounding_exercise, adding placeholder.
+⚠️ No keywords for cbt_five_senses_grounding_exercise, adding synonyms as keywords.
+🔹 Checking intent: cbt_boundaries_with_difficult_people
+⚠️ No responses found for cbt_boundaries_with_difficult_people, adding placeholder.
+⚠️ No keywords for cbt_boundaries_with_difficult_people, adding synonyms as keywords.
+🔹 Checking intent: cbt_self_therapy_session_structure
+⚠️ No responses found for cbt_self_therapy_session_structure, adding placeholder.
+⚠️ No keywords for cbt_self_therapy_session_structure, adding synonyms as keywords.
+🔹 Checking intent: cbt_values_card_sort_exercise
+⚠️ No responses found for cbt_values_card_sort_exercise, adding placeholder.
+⚠️ No keywords for cbt_values_card_sort_exercise, adding synonyms as keywords.
+🔹 Checking intent: cbt_inner_council_of_sages
+⚠️ No responses found for cbt_inner_council_of_sages, adding placeholder.
+⚠️ No keywords for cbt_inner_council_of_sages, adding synonyms as keywords.
+🔹 Checking intent: cbt_resistance_to_change
+⚠️ No responses found for cbt_resistance_to_change, adding placeholder.
+⚠️ No keywords for cbt_resistance_to_change, adding synonyms as keywords.
+🔹 Checking intent: cbt_rewriting_rules_and_beliefs_practical
+⚠️ No responses found for cbt_rewriting_rules_and_beliefs_practical, adding placeholder.
+⚠️ No keywords for cbt_rewriting_rules_and_beliefs_practical, adding synonyms as keywords.
+🔹 Checking intent: cbt_empty_chair_technique_intro
+⚠️ No responses found for cbt_empty_chair_technique_intro, adding placeholder.
+⚠️ No keywords for cbt_empty_chair_technique_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_act_matrix_intro
+⚠️ No responses found for cbt_act_matrix_intro, adding placeholder.
+⚠️ No keywords for cbt_act_matrix_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_self_care_plan_creation
+⚠️ No responses found for cbt_self_care_plan_creation, adding placeholder.
+⚠️ No keywords for cbt_self_care_plan_creation, adding synonyms as keywords.
+🔹 Checking intent: cbt_dealing_with_stagnation
+⚠️ No responses found for cbt_dealing_with_stagnation, adding placeholder.
+⚠️ No keywords for cbt_dealing_with_stagnation, adding synonyms as keywords.
+🔹 Checking intent: cbt_emotional_energy_management
+⚠️ No responses found for cbt_emotional_energy_management, adding placeholder.
+⚠️ No keywords for cbt_emotional_energy_management, adding synonyms as keywords.
+🔹 Checking intent: cbt_positive_psych_ikigai
+⚠️ No responses found for cbt_positive_psych_ikigai, adding placeholder.
+⚠️ No keywords for cbt_positive_psych_ikigai, adding synonyms as keywords.
+🔹 Checking intent: cbt_positive_psych_strengths
+⚠️ No responses found for cbt_positive_psych_strengths, adding placeholder.
+⚠️ No keywords for cbt_positive_psych_strengths, adding synonyms as keywords.
+🔹 Checking intent: cbt_positive_psych_awe_walk
+⚠️ No responses found for cbt_positive_psych_awe_walk, adding placeholder.
+⚠️ No keywords for cbt_positive_psych_awe_walk, adding synonyms as keywords.
+🔹 Checking intent: cbt_positive_psych_gratitude_letter
+⚠️ No responses found for cbt_positive_psych_gratitude_letter, adding placeholder.
+⚠️ No keywords for cbt_positive_psych_gratitude_letter, adding synonyms as keywords.
+🔹 Checking intent: cbt_self_compassion_break
+⚠️ No responses found for cbt_self_compassion_break, adding placeholder.
+⚠️ No keywords for cbt_self_compassion_break, adding synonyms as keywords.
+🔹 Checking intent: cbt_ideal_week_exercise
+⚠️ No responses found for cbt_ideal_week_exercise, adding placeholder.
+⚠️ No keywords for cbt_ideal_week_exercise, adding synonyms as keywords.
+🔹 Checking intent: cbt_existential_anxieties_intro
+⚠️ No responses found for cbt_existential_anxieties_intro, adding placeholder.
+⚠️ No keywords for cbt_existential_anxieties_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_act_choice_point
+⚠️ No responses found for cbt_act_choice_point, adding placeholder.
+⚠️ No keywords for cbt_act_choice_point, adding synonyms as keywords.
+🔹 Checking intent: cbt_jungian_shadow_work_intro
+⚠️ No responses found for cbt_jungian_shadow_work_intro, adding placeholder.
+⚠️ No keywords for cbt_jungian_shadow_work_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_second_brain_for_mental_health
+⚠️ No responses found for cbt_second_brain_for_mental_health, adding placeholder.
+⚠️ No keywords for cbt_second_brain_for_mental_health, adding synonyms as keywords.
+🔹 Checking intent: cbt_advanced_personal_philosophy
+⚠️ No responses found for cbt_advanced_personal_philosophy, adding placeholder.
+⚠️ No keywords for cbt_advanced_personal_philosophy, adding synonyms as keywords.
+🔹 Checking intent: cbt_antifragility_concept_intro
+⚠️ No responses found for cbt_antifragility_concept_intro, adding placeholder.
+⚠️ No keywords for cbt_antifragility_concept_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_authentic_living_practical
+⚠️ No responses found for cbt_authentic_living_practical, adding placeholder.
+⚠️ No keywords for cbt_authentic_living_practical, adding synonyms as keywords.
+🔹 Checking intent: cbt_emotions_as_data_and_wisdom
+⚠️ No responses found for cbt_emotions_as_data_and_wisdom, adding placeholder.
+⚠️ No keywords for cbt_emotions_as_data_and_wisdom, adding synonyms as keywords.
+🔹 Checking intent: cbt_reparenting_inner_child_practical_actions
+⚠️ No responses found for cbt_reparenting_inner_child_practical_actions, adding placeholder.
+⚠️ No keywords for cbt_reparenting_inner_child_practical_actions, adding synonyms as keywords.
+🔹 Checking intent: cbt_power_of_vulnerability_practice
+⚠️ No responses found for cbt_power_of_vulnerability_practice, adding placeholder.
+⚠️ No keywords for cbt_power_of_vulnerability_practice, adding synonyms as keywords.
+🔹 Checking intent: cbt_environment_design_for_success
+⚠️ No responses found for cbt_environment_design_for_success, adding placeholder.
+⚠️ No keywords for cbt_environment_design_for_success, adding synonyms as keywords.
+🔹 Checking intent: cbt_life_chapters_review_exercise
+⚠️ No responses found for cbt_life_chapters_review_exercise, adding placeholder.
+⚠️ No keywords for cbt_life_chapters_review_exercise, adding synonyms as keywords.
+🔹 Checking intent: cbt_adult_play_importance
+⚠️ No responses found for cbt_adult_play_importance, adding placeholder.
+⚠️ No keywords for cbt_adult_play_importance, adding synonyms as keywords.
+🔹 Checking intent: cbt_somatic_awareness_practice
+⚠️ No responses found for cbt_somatic_awareness_practice, adding placeholder.
+⚠️ No keywords for cbt_somatic_awareness_practice, adding synonyms as keywords.
+🔹 Checking intent: cbt_advanced_personal_philosophy
+⚠️ No responses found for cbt_advanced_personal_philosophy, adding placeholder.
+⚠️ No keywords for cbt_advanced_personal_philosophy, adding synonyms as keywords.
+🔹 Checking intent: cbt_antifragility_concept_intro
+⚠️ No responses found for cbt_antifragility_concept_intro, adding placeholder.
+⚠️ No keywords for cbt_antifragility_concept_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_authentic_living_practical
+⚠️ No responses found for cbt_authentic_living_practical, adding placeholder.
+⚠️ No keywords for cbt_authentic_living_practical, adding synonyms as keywords.
+🔹 Checking intent: cbt_emotions_as_data_and_wisdom
+⚠️ No responses found for cbt_emotions_as_data_and_wisdom, adding placeholder.
+⚠️ No keywords for cbt_emotions_as_data_and_wisdom, adding synonyms as keywords.
+🔹 Checking intent: cbt_reparenting_inner_child_practical_actions
+⚠️ No responses found for cbt_reparenting_inner_child_practical_actions, adding placeholder.
+⚠️ No keywords for cbt_reparenting_inner_child_practical_actions, adding synonyms as keywords.
+🔹 Checking intent: cbt_power_of_vulnerability_practice
+⚠️ No responses found for cbt_power_of_vulnerability_practice, adding placeholder.
+⚠️ No keywords for cbt_power_of_vulnerability_practice, adding synonyms as keywords.
+🔹 Checking intent: cbt_environment_design_for_success
+⚠️ No responses found for cbt_environment_design_for_success, adding placeholder.
+⚠️ No keywords for cbt_environment_design_for_success, adding synonyms as keywords.
+🔹 Checking intent: cbt_life_chapters_review_exercise
+⚠️ No responses found for cbt_life_chapters_review_exercise, adding placeholder.
+⚠️ No keywords for cbt_life_chapters_review_exercise, adding synonyms as keywords.
+🔹 Checking intent: cbt_adult_play_importance
+⚠️ No responses found for cbt_adult_play_importance, adding placeholder.
+⚠️ No keywords for cbt_adult_play_importance, adding synonyms as keywords.
+🔹 Checking intent: cbt_somatic_awareness_practice
+⚠️ No responses found for cbt_somatic_awareness_practice, adding placeholder.
+⚠️ No keywords for cbt_somatic_awareness_practice, adding synonyms as keywords.
+🔹 Checking intent: cbt_deep_self_forgiveness_letter
+⚠️ No responses found for cbt_deep_self_forgiveness_letter, adding placeholder.
+⚠️ No keywords for cbt_deep_self_forgiveness_letter, adding synonyms as keywords.
+🔹 Checking intent: cbt_narrative_identity_authoring
+⚠️ No responses found for cbt_narrative_identity_authoring, adding placeholder.
+⚠️ No keywords for cbt_narrative_identity_authoring, adding synonyms as keywords.
+🔹 Checking intent: cbt_anxiety_protocol_psychoeducation
+⚠️ No responses found for cbt_anxiety_protocol_psychoeducation, adding placeholder.
+⚠️ No keywords for cbt_anxiety_protocol_psychoeducation, adding synonyms as keywords.
+🔹 Checking intent: cbt_anxiety_protocol_self_monitoring
+⚠️ No responses found for cbt_anxiety_protocol_self_monitoring, adding placeholder.
+⚠️ No keywords for cbt_anxiety_protocol_self_monitoring, adding synonyms as keywords.
+🔹 Checking intent: cbt_anxiety_protocol_relaxation_skills
+⚠️ No responses found for cbt_anxiety_protocol_relaxation_skills, adding placeholder.
+⚠️ No keywords for cbt_anxiety_protocol_relaxation_skills, adding synonyms as keywords.
+🔹 Checking intent: cbt_anxiety_protocol_cognitive_restructuring
+⚠️ No responses found for cbt_anxiety_protocol_cognitive_restructuring, adding placeholder.
+⚠️ No keywords for cbt_anxiety_protocol_cognitive_restructuring, adding synonyms as keywords.
+🔹 Checking intent: cbt_panic_protocol_interoceptive_exposure
+⚠️ No responses found for cbt_panic_protocol_interoceptive_exposure, adding placeholder.
+⚠️ No keywords for cbt_panic_protocol_interoceptive_exposure, adding synonyms as keywords.
+🔹 Checking intent: cbt_anxiety_protocol_imaginal_exposure
+⚠️ No responses found for cbt_anxiety_protocol_imaginal_exposure, adding placeholder.
+⚠️ No keywords for cbt_anxiety_protocol_imaginal_exposure, adding synonyms as keywords.
+🔹 Checking intent: cbt_anxiety_protocol_in_vivo_exposure
+⚠️ No responses found for cbt_anxiety_protocol_in_vivo_exposure, adding placeholder.
+⚠️ No keywords for cbt_anxiety_protocol_in_vivo_exposure, adding synonyms as keywords.
+🔹 Checking intent: cbt_anxiety_protocol_relapse_prevention
+⚠️ No responses found for cbt_anxiety_protocol_relapse_prevention, adding placeholder.
+⚠️ No keywords for cbt_anxiety_protocol_relapse_prevention, adding synonyms as keywords.
+🔹 Checking intent: cbt_depression_protocol_psychoeducation
+⚠️ No responses found for cbt_depression_protocol_psychoeducation, adding placeholder.
+⚠️ No keywords for cbt_depression_protocol_psychoeducation, adding synonyms as keywords.
+🔹 Checking intent: cbt_depression_protocol_behavioral_activation
+⚠️ No responses found for cbt_depression_protocol_behavioral_activation, adding placeholder.
+⚠️ No keywords for cbt_depression_protocol_behavioral_activation, adding synonyms as keywords.
+🔹 Checking intent: cbt_depression_protocol_activity_scheduling_up_down
+⚠️ No responses found for cbt_depression_protocol_activity_scheduling_up_down, adding placeholder.
+⚠️ No keywords for cbt_depression_protocol_activity_scheduling_up_down, adding synonyms as keywords.
+🔹 Checking intent: cbt_depression_protocol_cognitive_restructuring_triad
+⚠️ No responses found for cbt_depression_protocol_cognitive_restructuring_triad, adding placeholder.
+⚠️ No keywords for cbt_depression_protocol_cognitive_restructuring_triad, adding synonyms as keywords.
+🔹 Checking intent: cbt_depression_protocol_mastery_pleasure_log
+⚠️ No responses found for cbt_depression_protocol_mastery_pleasure_log, adding placeholder.
+⚠️ No keywords for cbt_depression_protocol_mastery_pleasure_log, adding synonyms as keywords.
+🔹 Checking intent: cbt_depression_protocol_problem_solving_when_stuck
+⚠️ No responses found for cbt_depression_protocol_problem_solving_when_stuck, adding placeholder.
+⚠️ No keywords for cbt_depression_protocol_problem_solving_when_stuck, adding synonyms as keywords.
+🔹 Checking intent: cbt_depression_protocol_reconnecting_with_values
+⚠️ No responses found for cbt_depression_protocol_reconnecting_with_values, adding placeholder.
+⚠️ No keywords for cbt_depression_protocol_reconnecting_with_values, adding synonyms as keywords.
+🔹 Checking intent: cbt_depression_protocol_relapse_prevention
+⚠️ No responses found for cbt_depression_protocol_relapse_prevention, adding placeholder.
+⚠️ No keywords for cbt_depression_protocol_relapse_prevention, adding synonyms as keywords.
+🔹 Checking intent: cbt_social_anxiety_protocol_psychoeducation
+⚠️ No responses found for cbt_social_anxiety_protocol_psychoeducation, adding placeholder.
+⚠️ No keywords for cbt_social_anxiety_protocol_psychoeducation, adding synonyms as keywords.
+🔹 Checking intent: cbt_social_anxiety_protocol_cognitive_restructuring
+⚠️ No responses found for cbt_social_anxiety_protocol_cognitive_restructuring, adding placeholder.
+⚠️ No keywords for cbt_social_anxiety_protocol_cognitive_restructuring, adding synonyms as keywords.
+🔹 Checking intent: cbt_social_anxiety_protocol_attention_training
+⚠️ No responses found for cbt_social_anxiety_protocol_attention_training, adding placeholder.
+⚠️ No keywords for cbt_social_anxiety_protocol_attention_training, adding synonyms as keywords.
+🔹 Checking intent: cbt_social_anxiety_protocol_safety_behaviors
+⚠️ No responses found for cbt_social_anxiety_protocol_safety_behaviors, adding placeholder.
+⚠️ No keywords for cbt_social_anxiety_protocol_safety_behaviors, adding synonyms as keywords.
+🔹 Checking intent: cbt_social_anxiety_protocol_hierarchy_building
+⚠️ No responses found for cbt_social_anxiety_protocol_hierarchy_building, adding placeholder.
+⚠️ No keywords for cbt_social_anxiety_protocol_hierarchy_building, adding synonyms as keywords.
+🔹 Checking intent: cbt_social_anxiety_protocol_exposure_prep
+⚠️ No responses found for cbt_social_anxiety_protocol_exposure_prep, adding placeholder.
+⚠️ No keywords for cbt_social_anxiety_protocol_exposure_prep, adding synonyms as keywords.
+🔹 Checking intent: cbt_social_anxiety_protocol_post_exposure_processing
+⚠️ No responses found for cbt_social_anxiety_protocol_post_exposure_processing, adding placeholder.
+⚠️ No keywords for cbt_social_anxiety_protocol_post_exposure_processing, adding synonyms as keywords.
+🔹 Checking intent: cbt_social_anxiety_protocol_core_belief_work
+⚠️ No responses found for cbt_social_anxiety_protocol_core_belief_work, adding placeholder.
+⚠️ No keywords for cbt_social_anxiety_protocol_core_belief_work, adding synonyms as keywords.
+🔹 Checking intent: cbt_social_anxiety_protocol_relapse_prevention
+⚠️ No responses found for cbt_social_anxiety_protocol_relapse_prevention, adding placeholder.
+⚠️ No keywords for cbt_social_anxiety_protocol_relapse_prevention, adding synonyms as keywords.
+🔹 Checking intent: cbt_identity_narrative_authoring
+⚠️ No responses found for cbt_identity_narrative_authoring, adding placeholder.
+⚠️ No keywords for cbt_identity_narrative_authoring, adding synonyms as keywords.
+🔹 Checking intent: cbt_identity_self_complexity
+⚠️ No responses found for cbt_identity_self_complexity, adding placeholder.
+⚠️ No keywords for cbt_identity_self_complexity, adding synonyms as keywords.
+🔹 Checking intent: cbt_identity_values_compass_for_decisions
+⚠️ No responses found for cbt_identity_values_compass_for_decisions, adding placeholder.
+⚠️ No keywords for cbt_identity_values_compass_for_decisions, adding synonyms as keywords.
+🔹 Checking intent: cbt_identity_meaning_making
+⚠️ No responses found for cbt_identity_meaning_making, adding placeholder.
+⚠️ No keywords for cbt_identity_meaning_making, adding synonyms as keywords.
+🔹 Checking intent: cbt_identity_funeral_visualization
+⚠️ No responses found for cbt_identity_funeral_visualization, adding placeholder.
+⚠️ No keywords for cbt_identity_funeral_visualization, adding synonyms as keywords.
+🔹 Checking intent: cbt_identity_neuroplasticity_in_action
+⚠️ No responses found for cbt_identity_neuroplasticity_in_action, adding placeholder.
+⚠️ No keywords for cbt_identity_neuroplasticity_in_action, adding synonyms as keywords.
+🔹 Checking intent: cbt_identity_abundance_vs_scarcity_mindset
+⚠️ No responses found for cbt_identity_abundance_vs_scarcity_mindset, adding placeholder.
+⚠️ No keywords for cbt_identity_abundance_vs_scarcity_mindset, adding synonyms as keywords.
+🔹 Checking intent: cbt_identity_transformative_gratitude
+⚠️ No responses found for cbt_identity_transformative_gratitude, adding placeholder.
+⚠️ No keywords for cbt_identity_transformative_gratitude, adding synonyms as keywords.
+🔹 Checking intent: cbt_identity_radical_forgiveness_of_reality
+⚠️ No responses found for cbt_identity_radical_forgiveness_of_reality, adding placeholder.
+⚠️ No keywords for cbt_identity_radical_forgiveness_of_reality, adding synonyms as keywords.
+🔹 Checking intent: cbt_identity_minimum_viable_action
+⚠️ No responses found for cbt_identity_minimum_viable_action, adding placeholder.
+⚠️ No keywords for cbt_identity_minimum_viable_action, adding synonyms as keywords.
+🔹 Checking intent: cbt_advanced_responding_vs_reacting
+⚠️ No responses found for cbt_advanced_responding_vs_reacting, adding placeholder.
+⚠️ No keywords for cbt_advanced_responding_vs_reacting, adding synonyms as keywords.
+🔹 Checking intent: cbt_advanced_circle_of_compassion
+⚠️ No responses found for cbt_advanced_circle_of_compassion, adding placeholder.
+⚠️ No keywords for cbt_advanced_circle_of_compassion, adding synonyms as keywords.
+🔹 Checking intent: cbt_advanced_kaizen_philosophy
+⚠️ No responses found for cbt_advanced_kaizen_philosophy, adding placeholder.
+⚠️ No keywords for cbt_advanced_kaizen_philosophy, adding synonyms as keywords.
+🔹 Checking intent: cbt_advanced_conscious_rest
+⚠️ No responses found for cbt_advanced_conscious_rest, adding placeholder.
+⚠️ No keywords for cbt_advanced_conscious_rest, adding synonyms as keywords.
+🔹 Checking intent: cbt_advanced_skill_of_letting_go
+⚠️ No responses found for cbt_advanced_skill_of_letting_go, adding placeholder.
+⚠️ No keywords for cbt_advanced_skill_of_letting_go, adding synonyms as keywords.
+🔹 Checking intent: cbt_advanced_beginners_mind
+⚠️ No responses found for cbt_advanced_beginners_mind, adding placeholder.
+⚠️ No keywords for cbt_advanced_beginners_mind, adding synonyms as keywords.
+🔹 Checking intent: cbt_advanced_deep_listening
+⚠️ No responses found for cbt_advanced_deep_listening, adding placeholder.
+⚠️ No keywords for cbt_advanced_deep_listening, adding synonyms as keywords.
+🔹 Checking intent: cbt_advanced_time_sufficiency
+⚠️ No responses found for cbt_advanced_time_sufficiency, adding placeholder.
+⚠️ No keywords for cbt_advanced_time_sufficiency, adding synonyms as keywords.
+🔹 Checking intent: cbt_advanced_somatic_gratitude
+⚠️ No responses found for cbt_advanced_somatic_gratitude, adding placeholder.
+⚠️ No keywords for cbt_advanced_somatic_gratitude, adding synonyms as keywords.
+🔹 Checking intent: cbt_advanced_celebrating_endings
+⚠️ No responses found for cbt_advanced_celebrating_endings, adding placeholder.
+⚠️ No keywords for cbt_advanced_celebrating_endings, adding synonyms as keywords.
+🔹 Checking intent: cbt_advanced_living_eulogy
+⚠️ No responses found for cbt_advanced_living_eulogy, adding placeholder.
+⚠️ No keywords for cbt_advanced_living_eulogy, adding synonyms as keywords.
+🔹 Checking intent: cbt_advanced_the_beautiful_question
+⚠️ No responses found for cbt_advanced_the_beautiful_question, adding placeholder.
+⚠️ No keywords for cbt_advanced_the_beautiful_question, adding synonyms as keywords.
+🔹 Checking intent: cbt_synthesis_integrated_self
+⚠️ No responses found for cbt_synthesis_integrated_self, adding placeholder.
+⚠️ No keywords for cbt_synthesis_integrated_self, adding synonyms as keywords.
+🔹 Checking intent: cbt_synthesis_emotional_granularity
+⚠️ No responses found for cbt_synthesis_emotional_granularity, adding placeholder.
+⚠️ No keywords for cbt_synthesis_emotional_granularity, adding synonyms as keywords.
+🔹 Checking intent: cbt_synthesis_designing_insight_moments
+⚠️ No responses found for cbt_synthesis_designing_insight_moments, adding placeholder.
+⚠️ No keywords for cbt_synthesis_designing_insight_moments, adding synonyms as keywords.
+🔹 Checking intent: cbt_synthesis_immunity_to_change_map
+⚠️ No responses found for cbt_synthesis_immunity_to_change_map, adding placeholder.
+⚠️ No keywords for cbt_synthesis_immunity_to_change_map, adding synonyms as keywords.
+🔹 Checking intent: cbt_synthesis_art_of_the_wise_question
+⚠️ No responses found for cbt_synthesis_art_of_the_wise_question, adding placeholder.
+⚠️ No keywords for cbt_synthesis_art_of_the_wise_question, adding synonyms as keywords.
+🔹 Checking intent: cbt_synthesis_somatic_storytelling
+⚠️ No responses found for cbt_synthesis_somatic_storytelling, adding placeholder.
+⚠️ No keywords for cbt_synthesis_somatic_storytelling, adding synonyms as keywords.
+🔹 Checking intent: cbt_synthesis_legacy_project
+⚠️ No responses found for cbt_synthesis_legacy_project, adding placeholder.
+⚠️ No keywords for cbt_synthesis_legacy_project, adding synonyms as keywords.
+🔹 Checking intent: cbt_synthesis_ethical_framework
+⚠️ No responses found for cbt_synthesis_ethical_framework, adding placeholder.
+⚠️ No keywords for cbt_synthesis_ethical_framework, adding synonyms as keywords.
+🔹 Checking intent: cbt_synthesis_joy_of_maintenance
+⚠️ No responses found for cbt_synthesis_joy_of_maintenance, adding placeholder.
+⚠️ No keywords for cbt_synthesis_joy_of_maintenance, adding synonyms as keywords.
+🔹 Checking intent: cbt_synthesis_the_daily_practice
+⚠️ No responses found for cbt_synthesis_the_daily_practice, adding placeholder.
+⚠️ No keywords for cbt_synthesis_the_daily_practice, adding synonyms as keywords.
+🔹 Checking intent: cbt_ocd_protocol_psychoeducation
+⚠️ No responses found for cbt_ocd_protocol_psychoeducation, adding placeholder.
+⚠️ No keywords for cbt_ocd_protocol_psychoeducation, adding synonyms as keywords.
+🔹 Checking intent: cbt_ocd_protocol_externalizing
+⚠️ No responses found for cbt_ocd_protocol_externalizing, adding placeholder.
+⚠️ No keywords for cbt_ocd_protocol_externalizing, adding synonyms as keywords.
+🔹 Checking intent: cbt_ocd_protocol_erp_introduction
+⚠️ No responses found for cbt_ocd_protocol_erp_introduction, adding placeholder.
+⚠️ No keywords for cbt_ocd_protocol_erp_introduction, adding synonyms as keywords.
+🔹 Checking intent: cbt_ocd_protocol_hierarchy_building
+⚠️ No responses found for cbt_ocd_protocol_hierarchy_building, adding placeholder.
+⚠️ No keywords for cbt_ocd_protocol_hierarchy_building, adding synonyms as keywords.
+🔹 Checking intent: cbt_ocd_protocol_pure_o_strategies
+⚠️ No responses found for cbt_ocd_protocol_pure_o_strategies, adding placeholder.
+⚠️ No keywords for cbt_ocd_protocol_pure_o_strategies, adding synonyms as keywords.
+🔹 Checking intent: cbt_ocd_protocol_mindfulness_and_acceptance
+⚠️ No responses found for cbt_ocd_protocol_mindfulness_and_acceptance, adding placeholder.
+⚠️ No keywords for cbt_ocd_protocol_mindfulness_and_acceptance, adding synonyms as keywords.
+🔹 Checking intent: cbt_ocd_protocol_relapse_prevention
+⚠️ No responses found for cbt_ocd_protocol_relapse_prevention, adding placeholder.
+⚠️ No keywords for cbt_ocd_protocol_relapse_prevention, adding synonyms as keywords.
+🔹 Checking intent: cbt_ptsd_protocol_psychoeducation
+⚠️ No responses found for cbt_ptsd_protocol_psychoeducation, adding placeholder.
+⚠️ No keywords for cbt_ptsd_protocol_psychoeducation, adding synonyms as keywords.
+🔹 Checking intent: cbt_ptsd_protocol_grounding_and_stabilization
+⚠️ No responses found for cbt_ptsd_protocol_grounding_and_stabilization, adding placeholder.
+⚠️ No keywords for cbt_ptsd_protocol_grounding_and_stabilization, adding synonyms as keywords.
+🔹 Checking intent: cbt_ptsd_protocol_stuck_points_identification
+⚠️ No responses found for cbt_ptsd_protocol_stuck_points_identification, adding placeholder.
+⚠️ No keywords for cbt_ptsd_protocol_stuck_points_identification, adding synonyms as keywords.
+🔹 Checking intent: cbt_ptsd_protocol_challenging_stuck_points
+⚠️ No responses found for cbt_ptsd_protocol_challenging_stuck_points, adding placeholder.
+⚠️ No keywords for cbt_ptsd_protocol_challenging_stuck_points, adding synonyms as keywords.
+🔹 Checking intent: cbt_ptsd_protocol_narrative_exposure_intro
+⚠️ No responses found for cbt_ptsd_protocol_narrative_exposure_intro, adding placeholder.
+⚠️ No keywords for cbt_ptsd_protocol_narrative_exposure_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_ptsd_protocol_survivor_guilt_and_shame
+⚠️ No responses found for cbt_ptsd_protocol_survivor_guilt_and_shame, adding placeholder.
+⚠️ No keywords for cbt_ptsd_protocol_survivor_guilt_and_shame, adding synonyms as keywords.
+🔹 Checking intent: cbt_ptsd_protocol_rebuilding_safety_trust_control
+⚠️ No responses found for cbt_ptsd_protocol_rebuilding_safety_trust_control, adding placeholder.
+⚠️ No keywords for cbt_ptsd_protocol_rebuilding_safety_trust_control, adding synonyms as keywords.
+🔹 Checking intent: cbt_ptsd_protocol_reclaiming_life
+⚠️ No responses found for cbt_ptsd_protocol_reclaiming_life, adding placeholder.
+⚠️ No keywords for cbt_ptsd_protocol_reclaiming_life, adding synonyms as keywords.
+🔹 Checking intent: cbt_emotion_atlas_function_of_emotions
+⚠️ No responses found for cbt_emotion_atlas_function_of_emotions, adding placeholder.
+⚠️ No keywords for cbt_emotion_atlas_function_of_emotions, adding synonyms as keywords.
+🔹 Checking intent: cbt_dbt_emotion_regulation_skills_detailed
+⚠️ No responses found for cbt_dbt_emotion_regulation_skills_detailed, adding placeholder.
+⚠️ No keywords for cbt_dbt_emotion_regulation_skills_detailed, adding synonyms as keywords.
+🔹 Checking intent: cbt_relationships_five_love_languages
+⚠️ No responses found for cbt_relationships_five_love_languages, adding placeholder.
+⚠️ No keywords for cbt_relationships_five_love_languages, adding synonyms as keywords.
+🔹 Checking intent: cbt_relationships_drama_triangle
+⚠️ No responses found for cbt_relationships_drama_triangle, adding placeholder.
+⚠️ No keywords for cbt_relationships_drama_triangle, adding synonyms as keywords.
+🔹 Checking intent: cbt_relationships_effective_apology
+⚠️ No responses found for cbt_relationships_effective_apology, adding placeholder.
+⚠️ No keywords for cbt_relationships_effective_apology, adding synonyms as keywords.
+🔹 Checking intent: cbt_relationships_building_trust
+⚠️ No responses found for cbt_relationships_building_trust, adding placeholder.
+⚠️ No keywords for cbt_relationships_building_trust, adding synonyms as keywords.
+🔹 Checking intent: cbt_relationships_nonviolent_communication_nvc
+⚠️ No responses found for cbt_relationships_nonviolent_communication_nvc, adding placeholder.
+⚠️ No keywords for cbt_relationships_nonviolent_communication_nvc, adding synonyms as keywords.
+🔹 Checking intent: cbt_relationships_healing_from_betrayal
+⚠️ No responses found for cbt_relationships_healing_from_betrayal, adding placeholder.
+⚠️ No keywords for cbt_relationships_healing_from_betrayal, adding synonyms as keywords.
+🔹 Checking intent: cbt_relationships_chronic_loneliness
+⚠️ No responses found for cbt_relationships_chronic_loneliness, adding placeholder.
+⚠️ No keywords for cbt_relationships_chronic_loneliness, adding synonyms as keywords.
+🔹 Checking intent: cbt_relationships_recovering_from_toxic_relationship
+⚠️ No responses found for cbt_relationships_recovering_from_toxic_relationship, adding placeholder.
+⚠️ No keywords for cbt_relationships_recovering_from_toxic_relationship, adding synonyms as keywords.
+🔹 Checking intent: cbt_relationships_maintaining_friendships
+⚠️ No responses found for cbt_relationships_maintaining_friendships, adding placeholder.
+⚠️ No keywords for cbt_relationships_maintaining_friendships, adding synonyms as keywords.
+🔹 Checking intent: cbt_philosophy_memento_mori
+⚠️ No responses found for cbt_philosophy_memento_mori, adding placeholder.
+⚠️ No keywords for cbt_philosophy_memento_mori, adding synonyms as keywords.
+🔹 Checking intent: cbt_advanced_stress_inoculation_training
+⚠️ No responses found for cbt_advanced_stress_inoculation_training, adding placeholder.
+⚠️ No keywords for cbt_advanced_stress_inoculation_training, adding synonyms as keywords.
+🔹 Checking intent: cbt_positive_psych_flow_state
+⚠️ No responses found for cbt_positive_psych_flow_state, adding placeholder.
+⚠️ No keywords for cbt_positive_psych_flow_state, adding synonyms as keywords.
+🔹 Checking intent: cbt_advanced_radical_honesty
+⚠️ No responses found for cbt_advanced_radical_honesty, adding placeholder.
+⚠️ No keywords for cbt_advanced_radical_honesty, adding synonyms as keywords.
+🔹 Checking intent: cbt_advanced_internal_locus_of_control
+⚠️ No responses found for cbt_advanced_internal_locus_of_control, adding placeholder.
+⚠️ No keywords for cbt_advanced_internal_locus_of_control, adding synonyms as keywords.
+🔹 Checking intent: cbt_advanced_tetris_effect
+⚠️ No responses found for cbt_advanced_tetris_effect, adding placeholder.
+⚠️ No keywords for cbt_advanced_tetris_effect, adding synonyms as keywords.
+🔹 Checking intent: cbt_advanced_second_order_thinking
+⚠️ No responses found for cbt_advanced_second_order_thinking, adding placeholder.
+⚠️ No keywords for cbt_advanced_second_order_thinking, adding synonyms as keywords.
+🔹 Checking intent: cbt_advanced_positive_solitude
+⚠️ No responses found for cbt_advanced_positive_solitude, adding placeholder.
+⚠️ No keywords for cbt_advanced_positive_solitude, adding synonyms as keywords.
+🔹 Checking intent: cbt_advanced_essentialism
+⚠️ No responses found for cbt_advanced_essentialism, adding placeholder.
+⚠️ No keywords for cbt_advanced_essentialism, adding synonyms as keywords.
+🔹 Checking intent: cbt_advanced_cognitive_agility
+⚠️ No responses found for cbt_advanced_cognitive_agility, adding placeholder.
+⚠️ No keywords for cbt_advanced_cognitive_agility, adding synonyms as keywords.
+🔹 Checking intent: cbt_advanced_conscious_parenting_intro
+⚠️ No responses found for cbt_advanced_conscious_parenting_intro, adding placeholder.
+⚠️ No keywords for cbt_advanced_conscious_parenting_intro, adding synonyms as keywords.
+🔹 Checking intent: cbt_advanced_the_living_legacy
+⚠️ No responses found for cbt_advanced_the_living_legacy, adding placeholder.
+⚠️ No keywords for cbt_advanced_the_living_legacy, adding synonyms as keywords.
+🔹 Checking intent: cbt_synthesis_problem_diagnosis_tree
+⚠️ No responses found for cbt_synthesis_problem_diagnosis_tree, adding placeholder.
+⚠️ No keywords for cbt_synthesis_problem_diagnosis_tree, adding synonyms as keywords.
+🔹 Checking intent: cbt_synthesis_skills_pharmacy
+⚠️ No responses found for cbt_synthesis_skills_pharmacy, adding placeholder.
+⚠️ No keywords for cbt_synthesis_skills_pharmacy, adding synonyms as keywords.
+🔹 Checking intent: cbt_synthesis_rain_protocol_for_difficult_emotions
+⚠️ No responses found for cbt_synthesis_rain_protocol_for_difficult_emotions, adding placeholder.
+⚠️ No keywords for cbt_synthesis_rain_protocol_for_difficult_emotions, adding synonyms as keywords.
+🔹 Checking intent: cbt_synthesis_daily_integration
+⚠️ No responses found for cbt_synthesis_daily_integration, adding placeholder.
+⚠️ No keywords for cbt_synthesis_daily_integration, adding synonyms as keywords.
+🔹 Checking intent: cbt_synthesis_integrative_internal_dialogue
+⚠️ No responses found for cbt_synthesis_integrative_internal_dialogue, adding placeholder.
+⚠️ No keywords for cbt_synthesis_integrative_internal_dialogue, adding synonyms as keywords.
+🔹 Checking intent: cbt_synthesis_quarterly_growth_review
+⚠️ No responses found for cbt_synthesis_quarterly_growth_review, adding placeholder.
+⚠️ No keywords for cbt_synthesis_quarterly_growth_review, adding synonyms as keywords.
+🔹 Checking intent: cbt_synthesis_relapse_as_data
+⚠️ No responses found for cbt_synthesis_relapse_as_data, adding placeholder.
+⚠️ No keywords for cbt_synthesis_relapse_as_data, adding synonyms as keywords.
+🔹 Checking intent: cbt_synthesis_personal_ethical_compass
+⚠️ No responses found for cbt_synthesis_personal_ethical_compass, adding placeholder.
+⚠️ No keywords for cbt_synthesis_personal_ethical_compass, adding synonyms as keywords.
+🔹 Checking intent: cbt_synthesis_art_of_celebrating_progress
+⚠️ No responses found for cbt_synthesis_art_of_celebrating_progress, adding placeholder.
+⚠️ No keywords for cbt_synthesis_art_of_celebrating_progress, adding synonyms as keywords.
+🔹 Checking intent: cbt_synthesis_personal_growth_roadmap
+⚠️ No responses found for cbt_synthesis_personal_growth_roadmap, adding placeholder.
+⚠️ No keywords for cbt_synthesis_personal_growth_roadmap, adding synonyms as keywords.
+🔹 Checking intent: rafiq_philosophy_you_are_not_broken
+⚠️ No responses found for rafiq_philosophy_you_are_not_broken, adding placeholder.
+⚠️ No keywords for rafiq_philosophy_you_are_not_broken, adding synonyms as keywords.
+🔹 Checking intent: rafiq_philosophy_progress_not_perfection
+⚠️ No responses found for rafiq_philosophy_progress_not_perfection, adding placeholder.
+⚠️ No keywords for rafiq_philosophy_progress_not_perfection, adding synonyms as keywords.
+🔹 Checking intent: rafiq_philosophy_compassion_is_strength
+⚠️ No responses found for rafiq_philosophy_compassion_is_strength, adding placeholder.
+⚠️ No keywords for rafiq_philosophy_compassion_is_strength, adding synonyms as keywords.
+🔹 Checking intent: rafiq_philosophy_you_are_the_author
+⚠️ No responses found for rafiq_philosophy_you_are_the_author, adding placeholder.
+⚠️ No keywords for rafiq_philosophy_you_are_the_author, adding synonyms as keywords.
+🔹 Checking intent: rafiq_philosophy_the_journey_continues
+⚠️ No responses found for rafiq_philosophy_the_journey_continues, adding placeholder.
+⚠️ No keywords for rafiq_philosophy_the_journey_continues, adding synonyms as keywords.
+🔹 Checking intent: rafiq_final_call_to_adventure
+⚠️ No responses found for rafiq_final_call_to_adventure, adding placeholder.
+⚠️ No keywords for rafiq_final_call_to_adventure, adding synonyms as keywords.
+🔹 Checking intent: rafiq_final_building_your_community
+⚠️ No responses found for rafiq_final_building_your_community, adding placeholder.
+⚠️ No keywords for rafiq_final_building_your_community, adding synonyms as keywords.
+🔹 Checking intent: rafiq_final_farewell_and_empowerment
+⚠️ No responses found for rafiq_final_farewell_and_empowerment, adding placeholder.
+⚠️ No keywords for rafiq_final_farewell_and_empowerment, adding synonyms as keywords.
+✅ Updated cbt_library.json
+📂 Processing intents_final/feelings.json...
+🔹 Checking intent: guilt
+⚠️ No responses found for guilt, adding placeholder.
+⚠️ No keywords for guilt, adding synonyms as keywords.
+🔹 Checking intent: lost_passion
+⚠️ No responses found for lost_passion, adding placeholder.
+⚠️ No keywords for lost_passion, adding synonyms as keywords.
+🔹 Checking intent: jealousy
+⚠️ No responses found for jealousy, adding placeholder.
+⚠️ No keywords for jealousy, adding synonyms as keywords.
+🔹 Checking intent: gratitude
+⚠️ No responses found for gratitude, adding placeholder.
+⚠️ No keywords for gratitude, adding synonyms as keywords.
+🔹 Checking intent: confusion
+⚠️ No responses found for confusion, adding placeholder.
+⚠️ No keywords for confusion, adding synonyms as keywords.
+🔹 Checking intent: exhaustion
+⚠️ No responses found for exhaustion, adding placeholder.
+⚠️ No keywords for exhaustion, adding synonyms as keywords.
+🔹 Checking intent: hope
+⚠️ No responses found for hope, adding placeholder.
+⚠️ No keywords for hope, adding synonyms as keywords.
+🔹 Checking intent: frustration
+⚠️ No responses found for frustration, adding placeholder.
+⚠️ No keywords for frustration, adding synonyms as keywords.
+🔹 Checking intent: regret
+⚠️ No responses found for regret, adding placeholder.
+⚠️ No keywords for regret, adding synonyms as keywords.
+🔹 Checking intent: pride
+⚠️ No responses found for pride, adding placeholder.
+⚠️ No keywords for pride, adding synonyms as keywords.
+🔹 Checking intent: guilt
+⚠️ No responses found for guilt, adding placeholder.
+⚠️ No keywords for guilt, adding synonyms as keywords.
+🔹 Checking intent: loss_of_passion
+⚠️ No responses found for loss_of_passion, adding placeholder.
+⚠️ No keywords for loss_of_passion, adding synonyms as keywords.
+🔹 Checking intent: envy
+⚠️ No responses found for envy, adding placeholder.
+⚠️ No keywords for envy, adding synonyms as keywords.
+🔹 Checking intent: guilt
+⚠️ No responses found for guilt, adding placeholder.
+⚠️ No keywords for guilt, adding synonyms as keywords.
+🔹 Checking intent: loss_of_passion
+⚠️ No responses found for loss_of_passion, adding placeholder.
+⚠️ No keywords for loss_of_passion, adding synonyms as keywords.
+🔹 Checking intent: envy
+⚠️ No responses found for envy, adding placeholder.
+⚠️ No keywords for envy, adding synonyms as keywords.
+🔹 Checking intent: gratitude
+⚠️ No responses found for gratitude, adding placeholder.
+⚠️ No keywords for gratitude, adding synonyms as keywords.
+🔹 Checking intent: confusion
+⚠️ No responses found for confusion, adding placeholder.
+⚠️ No keywords for confusion, adding synonyms as keywords.
+🔹 Checking intent: exhaustion
+⚠️ No responses found for exhaustion, adding placeholder.
+⚠️ No keywords for exhaustion, adding synonyms as keywords.
+🔹 Checking intent: hope
+⚠️ No responses found for hope, adding placeholder.
+⚠️ No keywords for hope, adding synonyms as keywords.
+🔹 Checking intent: regret
+⚠️ No responses found for regret, adding placeholder.
+⚠️ No keywords for regret, adding synonyms as keywords.
+🔹 Checking intent: pride
+⚠️ No responses found for pride, adding placeholder.
+⚠️ No keywords for pride, adding synonyms as keywords.
+🔹 Checking intent: jealousy
+⚠️ No responses found for jealousy, adding placeholder.
+⚠️ No keywords for jealousy, adding synonyms as keywords.
+🔹 Checking intent: loss_of_passion
+⚠️ No responses found for loss_of_passion, adding placeholder.
+⚠️ No keywords for loss_of_passion, adding synonyms as keywords.
+🔹 Checking intent: guilt
+⚠️ No responses found for guilt, adding placeholder.
+⚠️ No keywords for guilt, adding synonyms as keywords.
+🔹 Checking intent: anxiety
+⚠️ No responses found for anxiety, adding placeholder.
+⚠️ No keywords for anxiety, adding synonyms as keywords.
+🔹 Checking intent: loneliness
+⚠️ No responses found for loneliness, adding placeholder.
+⚠️ No keywords for loneliness, adding synonyms as keywords.
+🔹 Checking intent: stress
+⚠️ No responses found for stress, adding placeholder.
+⚠️ No keywords for stress, adding synonyms as keywords.
+🔹 Checking intent: sadness
+⚠️ No responses found for sadness, adding placeholder.
+⚠️ No keywords for sadness, adding synonyms as keywords.
+🔹 Checking intent: self_love
+⚠️ No responses found for self_love, adding placeholder.
+⚠️ No keywords for self_love, adding synonyms as keywords.
+🔹 Checking intent: rejection
+⚠️ No responses found for rejection, adding placeholder.
+⚠️ No keywords for rejection, adding synonyms as keywords.
+🔹 Checking intent: optimism
+⚠️ No responses found for optimism, adding placeholder.
+⚠️ No keywords for optimism, adding synonyms as keywords.
+🔹 Checking intent: pride
+⚠️ No responses found for pride, adding placeholder.
+⚠️ No keywords for pride, adding synonyms as keywords.
+🔹 Checking intent: regret
+⚠️ No responses found for regret, adding placeholder.
+⚠️ No keywords for regret, adding synonyms as keywords.
+🔹 Checking intent: gratitude
+⚠️ No responses found for gratitude, adding placeholder.
+⚠️ No keywords for gratitude, adding synonyms as keywords.
+🔹 Checking intent: confusion
+⚠️ No responses found for confusion, adding placeholder.
+⚠️ No keywords for confusion, adding synonyms as keywords.
+✅ Updated feelings.json
+📂 Processing intents_final/learned_examples.json...
+✅ No changes needed for learned_examples.json
+✅ All intents processed. Diagnostic log saved to ./intents_diagnostic.log
