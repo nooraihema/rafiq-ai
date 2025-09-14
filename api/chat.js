@@ -1,5 +1,5 @@
-// chat.js v17.0 - The Dynamic Core Conductor
-// Now aware of the full rich intent structure from the Enhanced Mind Engine.
+// chat.js v18.0 - The Hyper-Aware Conductor
+// Fusion engine now uses deep intent structure for hyper-aware, contextual boosting.
 
 import { DEBUG, SHORT_MEMORY_LIMIT, LONG_TERM_LIMIT } from './config.js';
 import {
@@ -29,7 +29,6 @@ import {
   getTopIntents,
   registerIntentSuccess
 } from './intent_engine.js';
-// الجديد: استيراد وحدة بناء الاستجابات الديناميكية
 import { constructDynamicResponse } from './response_constructor.js';
 
 // --- Initialization ---
@@ -37,19 +36,20 @@ buildIndexSync();
 
 // --- Configuration for The Fusion Engine ---
 const FUSION_WEIGHTS = {
-  baseScore: 0.60,
-  moodMatch: 0.18,
-  entityMatch: 0.12,
+  baseScore: 0.60,      // سنحتفظ بهذا كما هو، لأننا سنرفع النتيجة عبر Boosts
+  moodMatch: 0.20,      // زيادة طفيفة لأهمية تطابق المشاعر
+  entityMatch: 0.15,    // زيادة طفيفة لأهمية تطابق السياق
   contextMatch: 0.06,
-  userAdaptive: 0.04
+  userAdaptive: 0.05,
+  profileMatch: 0.18    // إضافة وزن للـ Boost الجديد الخاص بملف المستخدم
 };
-const MAX_FUSION_BOOST = 0.40;
+const MAX_FUSION_BOOST = 0.45; // زيادة الحد الأقصى للسماح بتأثير الـ Boosts الجديدة
 const CONFIDENCE_BASE_THRESHOLD = 0.40;
 const AMBIGUITY_MARGIN = 0.10;
 const MULTI_INTENT_THRESHOLD = 0.55;
 const CLARIFICATION_VALID_CHOICES = /^[1-9][0-9]*$/;
 const DIAGNOSTIC_MIN_SCORE = 0.05;
-const DIAGNOSTIC_VISIBLE_TO_USER = true; // 🔄 خليها false في الإنتاج
+const DIAGNOSTIC_VISIBLE_TO_USER = true;
 
 // --- Internal State for Meta-Learning ---
 let INTENT_THRESHOLDS = {};
@@ -73,7 +73,6 @@ function getThresholdForTag(tag) {
     ? INTENT_THRESHOLDS[tag]
     : CONFIDENCE_BASE_THRESHOLD;
 }
-
 async function adjustThresholdOnSuccess(tag) {
   if (!tag) return;
   const current = getThresholdForTag(tag);
@@ -82,7 +81,6 @@ async function adjustThresholdOnSuccess(tag) {
   await saveIntentThresholds(INTENT_THRESHOLDS);
   if (DEBUG) console.log(`💡 Meta-Learn: Adjusted threshold for ${tag}: ${current} -> ${INTENT_THRESHOLDS[tag]}`);
 }
-
 async function incrementOccurrence(tag) {
   if (!tag) return;
   OCCURRENCE_COUNTERS[tag] = (OCCURRENCE_COUNTERS[tag] || 0) + 1;
@@ -96,46 +94,89 @@ async function incrementOccurrence(tag) {
   await saveOccurrenceCounters(OCCURRENCE_COUNTERS);
 }
 
-// ===== بداية التعديلات الرئيسية في Fusion Engine =====
+
+// =================================================================
+// START: HYPER-AWARE FUSION BOOST FUNCTIONS v18.0
+// =================================================================
+
+/**
+ * v18.0: Deeply analyzes the intent's emotional footprint against the user's current mood.
+ */
 function moodMatchBoost(intent, detectedMood) {
-  // التعديل: البحث في بيانات المشاعر داخل الـ intent
-  if (!detectedMood || !intent?.full_intent?.emotion || detectedMood === 'محايد') return 0;
-  const moodStr = detectedMood.toString().toLowerCase();
-  
-  const emotionsDetected = intent.full_intent.emotion.emotions_detected || [];
-  if (emotionsDetected.some(e => e.type.toLowerCase().includes(moodStr))) {
-      return 1.0;
-  }
+    if (!detectedMood || !intent?.full_intent?.emotion || detectedMood === 'محايد') return 0;
+    
+    const intentEmotionProfile = intent.full_intent.emotion;
+    const moodStr = detectedMood.toString().toLowerCase();
 
-  // البحث في الكلمات المفتاحية كخيار احتياطي
-  const keywords = (intent.keywords || []).map(k => (k.text || '').toLowerCase());
-  if (keywords.some(k => k.includes(moodStr))) return 0.7; // نعطيها وزن أقل من المطابقة الصريحة
+    // Check against the primary detected emotions in the intent
+    const matchedEmotion = (intentEmotionProfile.emotions_detected || []).find(e => e.type.toLowerCase().includes(moodStr));
 
-  return 0;
+    if (matchedEmotion) {
+        // Boost is higher if the intent is designed for high-intensity emotions
+        // and the user's emotion is strong (not implemented yet, but the structure is here).
+        const intensityFactor = (matchedEmotion.intensity > 0.6) ? 1.0 : 0.8;
+        return intensityFactor;
+    }
+
+    // Fallback check in keywords
+    const keywords = (intent.keywords || []).map(k => (k.text || '').toLowerCase());
+    if (keywords.some(k => k.includes(moodStr))) return 0.5; // Lower score for keyword match
+
+    return 0;
 }
 
+/**
+ * v18.0: Matches message entities against the intent's core concepts and context tags.
+ */
 function entityMatchBoost(intent, entities = []) {
-  if (!entities || entities.length === 0 || !intent?.full_intent) return 0;
-  
-  // التعديل: البحث في سياقات الـ intent
-  const contextTags = intent.full_intent.context_tags || {};
-  const allContextWords = Object.values(contextTags).flat();
-  const keywords = new Set((intent.keywords || []).map(k => (k.text || '').toLowerCase()));
-  
-  for (const entity of entities) {
-    const entityStr = (entity || '').toLowerCase();
-    if (keywords.has(entityStr) || allContextWords.includes(entityStr)) return 1.0;
-  }
-  return 0;
+    if (!entities || entities.length === 0 || !intent?.full_intent) return 0;
+    
+    const intentCoreConcept = normalizeArabic(intent.full_intent.core_concept || '');
+    const contextTags = new Set(Object.values(intent.full_intent.context_tags || {}).flat().map(normalizeArabic));
+    
+    for (const entity of entities) {
+        const entityStr = normalizeArabic(entity);
+        // Boost if the entity matches the core concept (e.g., entity "القرار" matches core concept "نقطة الاختيار")
+        if (intentCoreConcept.includes(entityStr)) {
+            return 1.0;
+        }
+        // Boost if the entity is part of the defined contexts (e.g., entity "العمل" matches context "موقف_صعب")
+        if (contextTags.has(entityStr)) {
+            return 0.8;
+        }
+    }
+    return 0;
 }
-// ===== نهاية التعديلات الرئيسية في Fusion Engine =====
+
+/**
+ * v18.0 (NEW): Boosts intents that address a user's known recurring challenges.
+ */
+function profileMatchBoost(intent, profile) {
+    if (!profile?.longTermProfile?.recurring_themes || !intent?.full_intent?.core_concept) return 0;
+
+    const recurringThemes = profile.longTermProfile.recurring_themes;
+    const intentConcept = normalizeArabic(intent.full_intent.core_concept);
+
+    // Check if the intent's core concept is a known recurring theme for the user
+    for (const theme in recurringThemes) {
+        // Example: if a user struggles with "indecisiveness" (a recurring theme)
+        // and the intent's concept is "choice point", we find a match.
+        if (recurringThemes[theme] > 3 && intentConcept.includes(normalizeArabic(theme))) {
+            return 1.0;
+        }
+    }
+    return 0;
+}
+
+// =================================================================
+// END: HYPER-AWARE FUSION BOOST FUNCTIONS
+// =================================================================
 
 function contextMatchBoost(intent, context) {
   if (!context || !Array.isArray(context.history) || !intent) return 0;
   for (const historyItem of context.history) {
     if (!historyItem || !historyItem.tag) continue;
     if (historyItem.tag === intent.tag) return 1.0; 
-    // ملاحظة: related_intents يتم حسابها الآن في intent_engine
     const lastIntentObj = intentIndex.find(i => i.tag === historyItem.tag);
     if (lastIntentObj && (lastIntentObj.related_intents || []).includes(intent.tag)) return 1.0;
   }
@@ -151,21 +192,27 @@ function userAdaptiveBoostForIntent(profile, intent) {
 function computeFusedScore(candidate, intentObj, detectedMood, entities, context, profile) {
   const base = Math.max(0, Math.min(1, candidate.score || 0));
 
+  // --- Calling the new and improved boost functions ---
   const moodBoost = FUSION_WEIGHTS.moodMatch * moodMatchBoost(intentObj, detectedMood);
   const entityBoost = FUSION_WEIGHTS.entityMatch * entityMatchBoost(intentObj, entities);
   const contextBoost = FUSION_WEIGHTS.contextMatch * contextMatchBoost(intentObj, context);
   const userBoost = FUSION_WEIGHTS.userAdaptive * userAdaptiveBoostForIntent(profile, intentObj);
+  const profMatchBoost = FUSION_WEIGHTS.profileMatch * profileMatchBoost(intentObj, profile); // Calling the new function
 
-  let totalBoost = moodBoost + entityBoost + contextBoost + userBoost;
+  let totalBoost = moodBoost + entityBoost + contextBoost + userBoost + profMatchBoost;
   if (totalBoost > MAX_FUSION_BOOST) totalBoost = MAX_FUSION_BOOST;
 
   const fusedScore = (base * FUSION_WEIGHTS.baseScore) + totalBoost;
+  
+  if(DEBUG && totalBoost > 0) {
+      console.log(`🧠 FUSION BOOST for [${intentObj.tag}]: mood=${moodBoost.toFixed(2)}, entity=${entityBoost.toFixed(2)}, profile=${profMatchBoost.toFixed(2)} | Total Boost=${totalBoost.toFixed(2)}`);
+  }
+  
   return Math.min(1, Math.max(0, fusedScore));
 }
 
 // --- Diagnostic Builders ---
 function buildClarificationPrompt(options) {
-  // الجديد: استخدام نصوص الطبقات L1 كخيارات توضيحية إن وجدت
   let question = "لم أكن متأكدًا تمامًا مما تقصده. هل يمكنك توضيح ما إذا كنت تقصد أحد هذه المواضيع؟\n";
   const lines = options.map((opt, i) => {
       const intentObj = intentIndex.find(it => it.tag === opt.tag);
@@ -178,7 +225,7 @@ function buildClarificationPrompt(options) {
 
 function buildConciseDiagnosticForUser(topCandidates) {
   if (!DIAGNOSTIC_VISIBLE_TO_USER || !topCandidates || topCandidates.length === 0) return null;
-  const visible = topCandidates.filter(c => (c.score || 0) >= DIAGNOSTIC_MIN_SCORE).slice(0, 2);
+  const visible = topCandidates.filter(c => (c.fusedScore || 0) >= DIAGNOSTIC_MIN_SCORE).slice(0, 2);
   if (visible.length === 0) return null;
   const lines = visible.map(c => `• ${c.tag.replace(/_/g, ' ')} (ثقة: ${(c.fusedScore * 100).toFixed(0)}%)`);
   return `احتمالات قريبة:\n${lines.join("\n")}\nإذا كانت غير مقصودة، حاول توضيح جملتك.`;
@@ -202,7 +249,6 @@ export default async function handler(req, res) {
     const profile = users[userId];
     profile.lastSeen = new Date().toISOString();
 
-    // --- Critical check ---
     if (detectCritical(rawMessage)) {
       profile.flags = profile.flags || {};
       profile.flags.critical = true;
@@ -220,7 +266,6 @@ export default async function handler(req, res) {
     profile.shortMemory = profile.shortMemory || [];
     profile.shortMemory.forEach(item => { item.age = (item.age || 0) + 1; });
 
-    // --- Handle Clarification Response ---
     if (profile.expectingFollowUp?.isClarification) {
       const trimmed = rawMessage.trim();
       if (CLARIFICATION_VALID_CHOICES.test(trimmed)) {
@@ -232,7 +277,6 @@ export default async function handler(req, res) {
           await adjustThresholdOnSuccess(chosen.tag);
           
           const intent = intentIndex.find(i => i.tag === chosen.tag);
-          // الجديد: استدعاء وحدة بناء الاستجابات الديناميكية
           const responsePayload = await constructDynamicResponse(intent.full_intent, profile, mood, rawMessage);
           
           profile.shortMemory.push({ message: rawMessage, reply: responsePayload.reply, mood, tag: chosen.tag, age: 0, entities });
@@ -243,16 +287,13 @@ export default async function handler(req, res) {
       profile.expectingFollowUp = null;
     }
 
-    // --- Intent Recognition Pipeline ---
     const context = { history: profile.shortMemory.slice(-3) };
-    // getTopIntents الآن يعيد full_intent تلقائيًا
     const coreCandidates = getTopIntents(rawMessage, { topN: 5, context, userProfile: profile });
     
-    // ملاحظة: intentObj أصبح الآن هو full_intent
     const fusedCandidates = coreCandidates.map(c => {
       const intentObj = intentIndex.find(i => i.tag === c.tag);
       const fusedScore = intentObj ? computeFusedScore(c, intentObj, mood, entities, context, profile) : c.score;
-      return { ...c, fusedScore, intentObj: c.full_intent }; // نستخدم full_intent مباشرة
+      return { ...c, fusedScore, intentObj: c.full_intent };
     }).sort((a, b) => (b.fusedScore || 0) - (a.fusedScore || 0));
 
     if (DEBUG) {
@@ -260,7 +301,6 @@ export default async function handler(req, res) {
       fusedCandidates.forEach(c => console.log(`- ${c.tag}: base=${(c.score).toFixed(4)} fused=${(c.fusedScore || 0).toFixed(4)}`));
     }
 
-    // --- Decision Logic ---
     const best = fusedCandidates[0];
     if (best) {
       let threshold = getThresholdForTag(best.tag);
@@ -272,27 +312,20 @@ export default async function handler(req, res) {
       if (best.fusedScore >= threshold) {
         const second = fusedCandidates[1];
 
-        // --- Ambiguity Handling ---
         if (second && (best.fusedScore - second.fusedScore < AMBIGUITY_MARGIN)) {
-          const options = [best, second].map(c => ({
-            tag: c.tag,
-            // prompt يتم بناؤه ديناميكيًا في buildClarificationPrompt
-          }));
+          const options = [best, second].map(c => ({ tag: c.tag }));
           profile.expectingFollowUp = { isClarification: true, options, expiresTs: Date.now() + (5 * 60 * 1000) };
           await saveUsers(users);
           return res.status(200).json({ reply: buildClarificationPrompt(options), source: "clarification", userId });
         }
 
-        // --- No Ambiguity: Proceed with best intent ---
         registerIntentSuccess(profile, best.tag);
         await adjustThresholdOnSuccess(best.tag);
         await incrementOccurrence(best.tag);
         recordRecurringTheme(profile, best.tag, mood);
 
-        // ===== التعديل الأهم: بناء الاستجابة الديناميكية =====
         const responsePayload = await constructDynamicResponse(best.intentObj, profile, mood, rawMessage);
         let finalReply = responsePayload.reply;
-        // =======================================================
         
         const secondary = fusedCandidates.find(c => c.tag !== best.tag && (c.fusedScore || 0) >= MULTI_INTENT_THRESHOLD);
         if (secondary) {
@@ -306,13 +339,12 @@ export default async function handler(req, res) {
       }
     }
 
-    // --- Fallback Logic ---
     if (best) await incrementOccurrence(best.tag);
     if (DEBUG) console.log(`LOW CONFIDENCE: Best candidate [${best?.tag}] with fused score ${best?.fusedScore?.toFixed(3)} did not meet its threshold.`);
     
     await appendLearningQueue({ message: rawMessage, userId, topCandidate: best?.tag, score: best?.fusedScore });
     
-    const conciseDiag = buildConciseDiagnosticForUser(fusedCandidates); // تم تمرير القائمة المدمجة
+    const conciseDiag = buildConciseDiagnosticForUser(fusedCandidates);
     const generalFallback = "لم أفهم قصدك تمامًا، هل يمكنك التوضيح بجملة مختلفة؟ أحيانًا يساعدني ذلك على فهمك بشكل أفضل. أنا هنا لأسمعك.";
     const fallback = conciseDiag ? `${conciseDiag}\n\n${generalFallback}` : generalFallback;
     
