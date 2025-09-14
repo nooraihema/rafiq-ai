@@ -14,7 +14,7 @@ import {
 
 // ------------------- Configuration -------------------
 const INTENTS_DIRS = [
-  path.join(process.cwd(), "intents_final") // Focused on the final, processed directory.
+  path.join(process.cwd(), "split_intents") // Focused on the final, processed directory.
 ];
 
 const ADAPTIVE_WEIGHTS_FILE = path.join(process.cwd(), "data", "adaptive_weights.json");
