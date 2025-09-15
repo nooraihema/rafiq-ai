@@ -1,11 +1,10 @@
 
-
-// chat.js v19.1 - The Semantic Core Conductor (Integrated with fingerprint + composition + context tracker)
-// Updated to integrate: fingerprint_engine.js, composition_engine.js, context_tracker.js, knowledge_base.js
-// Keeps original fusion, thresholds, meta-learning, and dynamic constructor as fallbacks.
+// chat.js v19.2 - The Semantic Core Conductor (Integrated, stable + safety guards)
+// Integrates: fingerprint_engine.js, composition_engine.js, context_tracker.js, knowledge_base.js
+// Preserves original fusion, thresholds, meta-learning, and dynamic constructor as robust fallback.
 
 import { DEBUG, SHORT_MEMORY_LIMIT, LONG_TERM_LIMIT } from './config.js';
-// ===== بداية الترقية النهائية =====
+// ===== Semantic utilities (existing) =====
 import {
   expandMessageWithSemantics,
   normalizeArabic,
@@ -17,7 +16,7 @@ import {
   criticalSafetyReply,
   tokenize
 } from './utils.js';
-// ===== نهاية الترقية النهائية =====
+// ===== end semantic utilities =====
 
 import {
   loadUsers,
@@ -51,7 +50,7 @@ buildIndexSync();
 // --- ContextTrackers per runtime (not persisted as class instances) ---
 const CONTEXT_TRACKERS = new Map(); // userId -> ContextTracker instance
 
-// --- Configuration for The Fusion Engine (unchanged) ---
+// --- Fusion / thresholds / constants (unchanged logic) ---
 const FUSION_WEIGHTS = {
   baseScore: 0.60,
   moodMatch: 0.20,
@@ -83,7 +82,7 @@ let OCCURRENCE_COUNTERS = {};
   }
 })();
 
-// --- Meta-Learning Helpers (No changes) ---
+// --- Meta-Learning Helpers ---
 function getThresholdForTag(tag) {
   if (!tag) return CONFIDENCE_BASE_THRESHOLD;
   return (typeof INTENT_THRESHOLDS[tag] === 'number')
@@ -111,7 +110,7 @@ async function incrementOccurrence(tag) {
   await saveOccurrenceCounters(OCCURRENCE_COUNTERS);
 }
 
-// --- Hyper-Aware Fusion Boost Functions (No changes) ---
+// --- Fusion boost helpers (unchanged) ---
 function moodMatchBoost(intent, detectedMood) {
     if (!detectedMood || !intent?.full_intent?.emotion || detectedMood === 'محايد') return 0;
     const intentEmotionProfile = intent.full_intent.emotion;
@@ -183,7 +182,7 @@ function computeFusedScore(candidate, intentObj, detectedMood, entities, context
   return Math.min(1, Math.max(0, fusedScore));
 }
 
-// --- Diagnostic Builders (No changes) ---
+// --- Diagnostic Builders (unchanged) ---
 function buildClarificationPrompt(options) {
   let question = "لم أكن متأكدًا تمامًا مما تقصده. هل يمكنك توضيح ما إذا كنت تقصد أحد هذه المواضيع؟\n";
   const lines = options.map((opt, i) => {
@@ -217,10 +216,18 @@ export default async function handler(req, res) {
     const profile = users[userId];
     profile.lastSeen = new Date().toISOString();
     
-    // ensure ContextTracker exists for this runtime
+    // ensure ContextTracker exists for this runtime and restore serialized history if present
     let tracker = CONTEXT_TRACKERS.get(userId);
     if (!tracker) {
       tracker = new ContextTracker(profile);
+      // If profile.shortMemory exists (serialized), restore into tracker to keep continuity
+      if (Array.isArray(profile.shortMemory) && profile.shortMemory.length > 0 && typeof tracker.restoreFromSerialized === 'function') {
+        try {
+          tracker.restoreFromSerialized(profile.shortMemory);
+        } catch (err) {
+          if (DEBUG) console.warn("Failed to restore tracker from serialized shortMemory:", err);
+        }
+      }
       CONTEXT_TRACKERS.set(userId, tracker);
     }
 
@@ -232,53 +239,50 @@ export default async function handler(req, res) {
     }
 
     // =================================================================
-    // START: SEMANTIC CORE INTEGRATION (THE FINAL UPGRADE)
+    // SEMANTIC CORE INTEGRATION
     // =================================================================
-    
-    // Step 1: Enrich the user's message with semantic concepts.
     const semanticallyExpandedMessage = expandMessageWithSemantics(rawMessage);
     if (DEBUG) console.log(`🔎 Semantically Expanded Message: "${semanticallyExpandedMessage}"`);
 
-    // Step 2: Use the enriched message for sensory functions.
     const mood = detectMood(semanticallyExpandedMessage);
     const entities = extractEntities(semanticallyExpandedMessage);
 
-    // Build a short context summary from tracker
+    // Build contextState from tracker analysis to pass into fingerprint
     const contextState = tracker.analyzeState();
 
-    // Build fingerprint (uses knowledge_base internally)
+    // Build fingerprint (unchanged generator usage)
     const fingerprint = generateFingerprint(rawMessage, {
       ...contextState,
       user_name: profile.name || '',
-      last_need: contextState.recent_needs ? [...contextState.recent_needs].slice(-1)[0] : null,
+      last_need: contextState.dominantNeeds ? contextState.dominantNeeds[0] : (contextState.last_turn_info?.last_need || null),
       last_emotion: profile.moodHistory?.slice(-1)[0]?.mood || ''
     });
 
-    // Attach computed mood/entities to fingerprint for downstream use
+    // Attach computed mood/entities to fingerprint for downstream use (non-destructive)
     fingerprint.detectedMood = mood;
     fingerprint.entities = entities;
 
     if (DEBUG) console.log('🧾 Fingerprint:', fingerprint);
 
     // =================================================================
-    // END: SEMANTIC CORE INTEGRATION
+    // persist/update profile context and short memory bookkeeping
     // =================================================================
-
     updateProfileWithEntities(profile, entities, mood, null);
     profile.moodHistory = (profile.moodHistory || []).slice(-LONG_TERM_LIMIT + 1);
     profile.moodHistory.push({ mood, ts: new Date().toISOString() });
     profile.shortMemory = profile.shortMemory || [];
+    // age increments (keep compatibility)
     profile.shortMemory.forEach(item => { item.age = (item.age || 0) + 1; });
     
     if (profile.expectingFollowUp?.isClarification) {
-        // ... (No changes in this block)
+        // existing logic unmodified
     }
 
-    // Step 3: Pass the ORIGINAL message to the intent engine.
+    // Step 3: Intent engine (works on ORIGINAL rawMessage)
     const contextForIntent = { history: profile.shortMemory.slice(-3) };
     const coreCandidates = getTopIntents(rawMessage, { topN: 5, context: contextForIntent, userProfile: profile });
-    
-    // The rest of the pipeline uses the ACCURATE mood and entities.
+
+    // Compute fused scores using accurate mood/entities and intent objects
     const fusedCandidates = coreCandidates.map(c => {
       const intentObj = intentIndex.find(i => i.tag === c.tag);
       const fusedScore = intentObj ? computeFusedScore(c, intentObj, mood, entities, contextForIntent, profile) : c.score;
@@ -322,9 +326,10 @@ export default async function handler(req, res) {
         // Persona selection: prefer user's chosen persona if set, else default 'the_listener'
         const personaKey = profile.preferred_persona || profile.persona || 'the_listener';
 
-        // Ask composition engine to craft reply
-        let compositionPayload;
+        // Ask composition engine to craft reply (safe call)
+        let compositionPayload = null;
         try {
+          // composition may be sync or async depending on implementation; await to be safe
           compositionPayload = await composeInferentialResponse(fingerprint, topForComposition, personaKey);
         } catch (err) {
           if (DEBUG) console.error("Composition engine error:", err);
@@ -334,20 +339,23 @@ export default async function handler(req, res) {
         let finalReply = null;
         let compositionUsed = false;
 
-        if (compositionPayload && compositionPayload.reply) {
-          // Use composition if evaluation acceptable OR (keep as primary)
-          const evalScore = compositionPayload.eval ?? 1.0;
-          if (evalScore >= 0.45) { // threshold to accept composition; tuned low because we have fallback
+        if (compositionPayload && typeof compositionPayload.reply === 'string') {
+          // normalize eval score (default to 1.0 if undefined)
+          const evalScore = (typeof compositionPayload.eval === 'number') ? compositionPayload.eval : 1.0;
+          // accept if eval passes low threshold (we have robust fallback)
+          if (evalScore >= 0.45) {
             finalReply = compositionPayload.reply;
             compositionUsed = true;
+          } else {
+            if (DEBUG) console.log(`Composition returned low eval (${evalScore}), falling back to dynamic constructor.`);
           }
         }
 
-        // If composition not used or low-quality, fallback to existing constructor (preserve old logic)
+        // Fallback to existing constructor (preserve old logic) if composition not used
         if (!finalReply) {
           try {
             const dynamicPayload = await constructDynamicResponse(best.intentObj || best.intentObj, profile, mood, rawMessage);
-            finalReply = dynamicPayload.reply;
+            finalReply = dynamicPayload.reply || dynamicPayload;
           } catch (err) {
             if (DEBUG) console.error("constructDynamicResponse error:", err);
             finalReply = "أنا أسمعك، لكن لم أستطع تجهيز رد جيد الآن. هل يمكنك التوضيح أكثر؟";
@@ -361,16 +369,24 @@ export default async function handler(req, res) {
           profile.expectingFollowUp = { isSuggestion: true, next_tag: secondary.tag, expiresTs: Date.now() + (5 * 60 * 1000) };
         }
 
-        // Push to short memory via tracker
-        tracker.addTurn(fingerprint, { reply: finalReply, source: compositionUsed ? compositionPayload.source : "dynamic_constructor" });
-        // Persist shortMemory in profile (serialize)
-        profile.shortMemory = tracker.serialize();
+        // Push to short memory via tracker (store composed reply and source)
+        tracker.addTurn(fingerprint, { reply: finalReply, source: compositionUsed ? (compositionPayload.source || 'composition') : "dynamic_constructor" });
+
+        // Persist shortMemory in profile (serialize from tracker)
+        try {
+          profile.shortMemory = tracker.serialize();
+        } catch (err) {
+          if (DEBUG) console.warn("Failed to serialize tracker history into profile.shortMemory:", err);
+          // fallback: push minimal record
+          profile.shortMemory = profile.shortMemory || [];
+          profile.shortMemory.push({ message: rawMessage, reply: finalReply, mood, tag: best.tag, age: 0, entities });
+        }
 
         // Save and return
         await saveUsers(users);
         return res.status(200).json({
           reply: finalReply,
-          source: compositionUsed ? compositionPayload.source : "intent_dynamic",
+          source: compositionUsed ? (compositionPayload.source || 'composition') : "intent_dynamic",
           tag: best.tag,
           score: Number(best.fusedScore.toFixed(3)),
           userId,
@@ -379,6 +395,7 @@ export default async function handler(req, res) {
       }
     }
 
+    // low confidence path
     if (best) await incrementOccurrence(best.tag);
     if (DEBUG) console.log(`LOW CONFIDENCE: Best candidate [${best?.tag}] with fused score ${best?.fusedScore?.toFixed(3)} did not meet its threshold.`);
     await appendLearningQueue({ message: rawMessage, userId, topCandidate: best?.tag, score: best?.fusedScore });
@@ -387,9 +404,13 @@ export default async function handler(req, res) {
     const generalFallback = "لم أفهم قصدك تمامًا، هل يمكنك التوضيح بجملة مختلفة؟ أحيانًا يساعدني ذلك على فهمك بشكل أفضل. أنا هنا لأسمعك.";
     const fallback = conciseDiag ? `${conciseDiag}\n\n${generalFallback}` : generalFallback;
 
-    // Save fallback in short memory via tracker
+    // Save fallback in short memory via tracker (so context remains consistent)
     tracker.addTurn(fingerprint, { reply: fallback, source: "fallback_diagnostic" });
-    profile.shortMemory = tracker.serialize();
+    try {
+      profile.shortMemory = tracker.serialize();
+    } catch (err) {
+      if (DEBUG) console.warn("Failed to serialize tracker history into profile.shortMemory on fallback:", err);
+    }
 
     await saveUsers(users);
     return res.status(200).json({ reply: fallback, source: "fallback_diagnostic", userId });
