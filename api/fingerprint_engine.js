@@ -1,21 +1,26 @@
-
 // fingerprint_engine_v2.js - The Perceptual Lobe (Enhanced v2)
 // Purpose: Generate a rich psychological fingerprint with weighted blending,
 // multi-need inference, trend detection, diagnostic flags, and mini-learning hints.
 
 import { DEBUG } from './config.js';
-import { normalizeArabic, tokenizeArabic, levenshteinDistance } from './utils.js';
+// ===== بداية الإصلاح =====
+import {
+  normalizeArabic,
+  tokenize as tokenizeArabic, // Use alias to match function name used in this file
+  levenshtein as levenshteinDistance // Use alias to match function name used in this file
+} from './utils.js';
+// ===== نهاية الإصلاح =====
 // utils.js should export:
 // - normalizeArabic(text): canonical normalization
-// - tokenizeArabic(text): returns array of tokens (normalized)
-// - levenshteinDistance(a,b): optional small function for fuzzy matching (or implement below)
+// - tokenize(text): returns array of tokens (normalized)
+// - levenshtein(a,b): optional small function for fuzzy matching (or implement below)
 
 import {
   CONCEPTS_MAP,
   INTENSITY_MODIFIERS,
   MOTIVATIONAL_MAP,
   // optionally others
-} from './knowledge_base.js';
+} from './knowledge_base.js'; // NOTE: Make sure this path is correct for your project structure
 
 /* ---------------------------
    Configurable thresholds
