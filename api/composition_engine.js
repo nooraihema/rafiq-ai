@@ -13,7 +13,7 @@ import {
   RECOVERY_STRATEGIES
   // All other necessary functions and constants are exported from knowledge_base_vΩ1.js
   // and will be used as needed.
-} from './knowledge_base_vΩ1.js'; // Ensure the file name is correct
+} from './knowledge_base.js'; // Ensure the file name is correct
 // ===== نهاية الإصلاح =====
 
 // NOTE: Since your knowledge_base_vΩ1.js also exports functions like applyPersonaStyle,
