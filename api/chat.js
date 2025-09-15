@@ -1,4 +1,3 @@
-
 // chat.js v19.2 - The Semantic Core Conductor (Integrated, stable + safety guards)
 // Integrates: fingerprint_engine.js, composition_engine.js, context_tracker.js, knowledge_base.js
 // Preserves original fusion, thresholds, meta-learning, and dynamic constructor as robust fallback.
@@ -38,7 +37,9 @@ import {
 } from './intent_engine.js';
 
 // New integrations
-import { generateFingerprint } from './fingerprint_engine.js';
+// ===== بداية الإصلاح =====
+import { generateFingerprintV2 as generateFingerprint } from './fingerprint_engine.js'; // <-- تم استخدام Alias لحل المشكلة
+// ===== نهاية الإصلاح =====
 import { composeInferentialResponse } from './composition_engine.js';
 import { ContextTracker } from './context_tracker.js';
 
@@ -154,7 +155,7 @@ function contextMatchBoost(intent, context) {
   if (!context || !Array.isArray(context.history) || !intent) return 0;
   for (const historyItem of context.history) {
     if (!historyItem || !historyItem.tag) continue;
-    if (historyItem.tag === intent.tag) return 1.0; 
+    if (historyItem.tag === intent.tag) return 1.0;
     const lastIntentObj = intentIndex.find(i => i.tag === historyItem.tag);
     if (lastIntentObj && (lastIntentObj.related_intents || []).includes(intent.tag)) return 1.0;
   }
@@ -215,7 +216,7 @@ export default async function handler(req, res) {
     }
     const profile = users[userId];
     profile.lastSeen = new Date().toISOString();
-    
+
     // ensure ContextTracker exists for this runtime and restore serialized history if present
     let tracker = CONTEXT_TRACKERS.get(userId);
     if (!tracker) {
@@ -273,7 +274,7 @@ export default async function handler(req, res) {
     profile.shortMemory = profile.shortMemory || [];
     // age increments (keep compatibility)
     profile.shortMemory.forEach(item => { item.age = (item.age || 0) + 1; });
-    
+
     if (profile.expectingFollowUp?.isClarification) {
         // existing logic unmodified
     }
@@ -414,7 +415,8 @@ export default async function handler(req, res) {
 
     await saveUsers(users);
     return res.status(200).json({ reply: fallback, source: "fallback_diagnostic", userId });
-  } catch (err) {
+  } catch (err)
+ {
     console.error("API error:", err);
     return res.status(500).json({ error: "Internal Server Error" });
   }
