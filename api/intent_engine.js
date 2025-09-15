@@ -1,5 +1,5 @@
-// intent_engine.js v14.0 - The Enhanced Mind
-// Updated to support complex, weighted NLU structures and rich intent metadata.
+// intent_engine.js v15.0 - The Integrated Mind
+// Now harmonized with the new semantic knowledge base and aware of psychological fingerprints.
 
 import fs from "fs";
 import path from "path";
@@ -17,7 +17,9 @@ const INTENTS_DIRS = [
   path.join(process.cwd(), "intents_new") // Focused on the final, processed directory.
 ];
 
-const ADAPTIVE_WEIGHTS_FILE = path.join(process.cwd(), "data", "adaptive_weights.json");
+// Compatibility Fix: Use DATA_DIR for adaptive weights to work on Vercel
+const DATA_DIR = process.env.VERCEL_ENV ? path.join("/tmp", "data") : path.join(process.cwd(), "data");
+const ADAPTIVE_WEIGHTS_FILE = path.join(DATA_DIR, "adaptive_weights.json");
 const SYNONYMS_FILE = path.join(process.cwd(), "synonyms.json");
 
 const DEFAULT_WEIGHTS = {
@@ -27,7 +29,10 @@ const DEFAULT_WEIGHTS = {
   wContext: 0.25,
 };
 const DEFAULT_TOP_N = 3;
-const PRIORITY_BOOST_FACTOR = 0.08; // معامل لتعزيز أولوية الـ intent
+const PRIORITY_BOOST_FACTOR = 0.08;
+// ===== بداية التعديل رقم 2 =====
+const FINGERPRINT_BOOST_FACTOR = 0.35; // The weight of the fingerprint's opinion
+// ===== نهاية التعديل رقم 2 =====
 
 // ------------------- Internal State -------------------
 export let intentIndex = [];
@@ -68,6 +73,11 @@ function saveAdaptiveWeights() {
 }
 
 // ------------------- Synonym Engine -------------------
+// ===== بداية التعديل رقم 1 =====
+/**
+ * v15.0: This loader is now smart enough to read the new hierarchical synonym file.
+ * It specifically ignores keys that are not simple synonym lists.
+ */
 function loadSynonyms() {
   synonymData = { map: {}, weights: {} };
   const parsed = safeReadJson(SYNONYMS_FILE);
@@ -76,9 +86,15 @@ function loadSynonyms() {
     return;
   }
   try {
+    let loadedCount = 0;
     for (const key in parsed) {
+      // THE FIX: Ignore conceptual keys, comments, and non-array values.
+      if (key.startsWith('__') || key.startsWith('مفهوم_') || !Array.isArray(parsed[key])) {
+          continue; 
+      }
+
       const normalKey = normalizeArabic(key);
-      const vals = (parsed[key] || []).map(v => normalizeArabic(v));
+      const vals = parsed[key].map(v => normalizeArabic(String(v))); // Ensure values are strings
       const group = [normalKey, ...vals];
       group.forEach((w) => {
         synonymData.map[w] = group;
@@ -86,12 +102,14 @@ function loadSynonyms() {
         const base = (w === normalKey) ? 1.0 : Math.max(0.75, 1 - (distance / Math.max(3, normalKey.length)));
         synonymData.weights[w] = parseFloat(base.toFixed(2));
       });
+      loadedCount++;
     }
-    if (DEBUG) console.log(`📚 Loaded ${Object.keys(parsed).length} synonym groups.`);
+    if (DEBUG) console.log(`📚 Engine Synonym Loader: Loaded ${loadedCount} synonym groups.`);
   } catch (e) {
-    console.error("❌ Error processing synonym data:", e.message);
+    console.error("❌ Error processing synonym data in Intent Engine:", e.message);
   }
 }
+// ===== نهاية التعديل رقم 1 =====
 
 function expandTokensWithSynonyms(tokens) {
   const out = new Set(tokens);
@@ -126,7 +144,6 @@ function loadIntentsRaw() {
   for (const f of files) {
     const j = safeReadJson(path.join(dir, f));
     if (j) {
-      // Handles both a single intent object or an array of intents in one file
       const arr = Array.isArray(j) ? j : [j];
       all = all.concat(arr);
       if (DEBUG) console.log(`- Loaded ${arr.length} intents from ${f}`);
@@ -136,7 +153,6 @@ function loadIntentsRaw() {
   }
   return all;
 }
-
 
 function cosineScore(vecA, vecB, normA = 1, normB = 1) {
   if (!vecA || !vecB) return 0;
@@ -165,7 +181,6 @@ function autoLinkIntents() {
   if (DEBUG) console.log(`🔗 Auto-linked ${links} related intent pairs.`);
 }
 
-// ===== بداية التعديلات الرئيسية (بناء الفهرس) =====
 export function buildIndexSync() {
   loadSynonyms();
   loadAdaptiveWeights();
@@ -178,16 +193,13 @@ export function buildIndexSync() {
     return;
   }
 
-  // تجميع جميع النصوص للـ TF-IDF
   const docsTokens = raw.map(it => {
-    //  الجديد: استخلاص الكلمات من البنية الجديدة للكلمات المفتاحية والأنماط
     const keywordsText = (it.nlu?.keywords || []).map(k => k.word || '').join(' ');
     const patternsText = (it.patterns || []).join(' ');
     const allText = `${keywordsText} ${patternsText}`;
     return tokenize(allText);
   });
 
-  // حساب Document Frequency
   const df = {};
   docsTokens.forEach(tokens => {
     new Set(tokens).forEach(t => df[t] = (df[t] || 0) + 1);
@@ -196,7 +208,6 @@ export function buildIndexSync() {
   const idf = {};
   Object.keys(df).forEach(t => idf[t] = Math.log((N + 1) / (df[t] + 1)) + 1);
 
-  // بناء index
   intentIndex = raw.map((it, idx) => {
     const tokens = docsTokens[idx] || [];
     const counts = tokens.reduce((acc, t) => { acc[t] = (acc[t] || 0) + 1; return acc; }, {});
@@ -210,7 +221,6 @@ export function buildIndexSync() {
       sq += v * v;
     });
 
-    // الجديد: تحويل الأنماط إلى RegExp
     const compiledPatterns = (it.patterns || []).map(p => {
       if (!p) return null;
       try {
@@ -222,7 +232,6 @@ export function buildIndexSync() {
       }
     }).filter(Boolean);
 
-    // الجديد: معالجة الكلمات المفتاحية الموزونة وتطبيعها
     const processedKeywords = (it.nlu?.keywords || []).map(k => ({
         text: normalizeArabic(k.word),
         weight: k.weight || 1.0
@@ -230,35 +239,28 @@ export function buildIndexSync() {
 
     return {
       tag: it.tag || `intent_${idx}`,
-      // الجديد: تمرير كل بيانات الـ intent الأصلية لتكون متاحة لاحقاً
       full_intent: it,
-      
-      // بيانات معالجة للوصول السريع
       keywords: processedKeywords,
       patterns: compiledPatterns,
       priority_score: it.priority_score || 0,
-      related_intents: [], // سيتم ملؤها بواسطة autoLinkIntents
-      
-      // بيانات الـ TF-IDF
+      related_intents: [],
       tfidfVector: vec,
       tfidfNorm: Math.sqrt(sq) || 1,
     };
   });
 
-  // بناء map من tag للـ index
   tagToIdx = {};
   intentIndex.forEach((it, i) => tagToIdx[it.tag] = i);
 
   autoLinkIntents();
 
   if (DEBUG) {
-    console.log(`🚀 Engine v14.0 (Enhanced Mind) indexed successfully.`);
+    console.log(`🚀 Engine v15.0 (Integrated Mind) indexed successfully.`);
     console.log(`📂 Total intents loaded: ${intentIndex.length}.`);
     const sampleTags = Object.keys(tagToIdx).slice(0, 10);
     console.log(`📌 Sample Tags: [${sampleTags.join(", ")}]...`);
   }
 }
-// ===== نهاية التعديلات الرئيسية (بناء الفهرس) =====
 
 // ------------------- Vector & Style helpers -------------------
 function jaccardSimilarity(setA, setB) {
@@ -280,11 +282,14 @@ function detectStyleSignals(rawMessage) {
 function buildReasoning(intent, breakdown, matchedTerms, contextSummary) {
   const lines = [`لأنّي وجدت دلائل على النية "${intent.tag}":`];
   if (matchedTerms && matchedTerms.size > 0) lines.push(`- كلمات/أنماط مطابقة: ${[...matchedTerms].join(", ")}`);
-  if (breakdown.base) lines.push(`- وزن الكلمات (أساسي): ${breakdown.base.count.toFixed(3)}, وزن TF-IDF: ${breakdown.base.tfidf.toFixed(3)}, وزن الأنماط: ${breakdown.base.pattern.toFixed(3)}`);
+  if (breakdown.base) lines.push(`- وزن الكلمات: ${breakdown.base.count.toFixed(3)}, وزن TF-IDF: ${breakdown.base.tfidf.toFixed(3)}, وزن الأنماط: ${breakdown.base.pattern.toFixed(3)}`);
   const bonuses = [];
   if (breakdown.bonuses.emphasis) bonuses.push(`تشديد: ${breakdown.bonuses.emphasis.toFixed(3)}`);
   if (breakdown.bonuses.question) bonuses.push(`سؤال: ${breakdown.bonuses.question.toFixed(3)}`);
   if (breakdown.bonuses.priority) bonuses.push(`أولوية: ${breakdown.bonuses.priority.toFixed(3)}`);
+  // ===== بداية التعديل رقم 2 =====
+  if (breakdown.bonuses.fingerprint) bonuses.push(`بصمة نفسية: ${breakdown.bonuses.fingerprint.toFixed(3)}`);
+  // ===== نهاية التعديل رقم 2 =====
   if (bonuses.length) lines.push(`- مكافآت: ${bonuses.join(" | ")}`);
   if (breakdown.context) lines.push(`- سياق/تعلم: سياق سابق: ${breakdown.context.contextBoost.toFixed(3)}, تعلم ذاتي: ${breakdown.context.adaptiveBoost.toFixed(3)}`);
   if (contextSummary) lines.push(`- ملخص السياق: ${contextSummary}`);
@@ -293,9 +298,10 @@ function buildReasoning(intent, breakdown, matchedTerms, contextSummary) {
 }
 
 // ------------------- Multi-intent detection & scoring -------------------
-// ===== بداية التعديلات الرئيسية (حساب النقاط) =====
+// ===== بداية التعديل رقم 2 =====
 function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
-  const { context = null, userProfile = null, weightsOverrides = {} } = options;
+  // New: Accept fingerprint in options
+  const { context = null, userProfile = null, weightsOverrides = {}, fingerprint = null } = options;
   const normMsg = normalizeArabic(rawMessage);
   const origTokens = msgTf.tokens || [];
   const expandedUserTokens = expandTokensWithSynonyms(origTokens);
@@ -303,16 +309,13 @@ function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
   let keywordMatchWeight = 0;
   const matchedTerms = new Set();
   
-  // الجديد: استخدام بنية الكلمات المفتاحية الموزونة
   (intent.keywords || []).forEach(kw => {
-    // kw هو الآن {text: 'كلمة', weight: 1.0}
     const expandedKwTokens = expandTokensWithSynonyms(tokenize(kw.text));
     const matched = [...expandedKwTokens].some(t => expandedUserTokens.has(t) || normMsg.includes(t));
     
     if (matched && !hasNegationNearby(rawMessage, kw.text)) {
       const matchingToken = origTokens.find(t => expandedKwTokens.has(t));
       const synonymWeight = matchingToken ? getSynonymWeight(matchingToken) : 0.9;
-      // نستخدم وزن الكلمة من ملف الـ intent مضروبًا في وزن المرادف
       keywordMatchWeight += (kw.weight * synonymWeight);
       matchedTerms.add(kw.text);
     }
@@ -342,17 +345,25 @@ function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
   const sarcasmPenalty = style.sarcasm ? -0.05 : 0;
 
   let contextBoost = 0;
-  // (منطق السياق لم يتغير)
   if (context && Array.isArray(context.history)) {
     for (const item of context.history) {
-        // ... (نفس الكود السابق)
+        // ... (existing context logic)
     }
   }
   
   let adaptiveBoost = 0;
-  // (منطق التعلم الذاتي لم يتغير)
   if (userProfile?.intentSuccessCount?.[intent.tag]) {
-      // ... (نفس الكود السابق)
+      // ... (existing adaptive logic)
+  }
+
+  // New: Calculate fingerprint boost
+  let fingerprintBoost = 0;
+  if (fingerprint && fingerprint.chosenPrimaryNeed && intent.full_intent?.context_tags) {
+      const intentNeeds = Object.values(intent.full_intent.context_tags).flat();
+      if(intentNeeds.includes(fingerprint.chosenPrimaryNeed)) {
+          // Strong boost if the primary need matches the intent's context tags
+          fingerprintBoost = FINGERPRINT_BOOST_FACTOR;
+      }
   }
 
   const baseWeights = { ...DEFAULT_WEIGHTS, ...weightsOverrides };
@@ -366,14 +377,13 @@ function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
   const patScore = Math.tanh(patternMatchScore / 1.5);
   const tfScore = Math.max(0, tfidfSim);
 
-  // الجديد: إضافة تعزيز للأولوية
   const priorityBoost = (intent.priority_score || 0) * PRIORITY_BOOST_FACTOR;
 
-  const finalScore = (kwScore * wKeywords) + (tfScore * wTfIdf) + (patScore * wPattern) + (contextBoost * wContext) + emphasisBoost + questionBoost + adaptiveBoost + sarcasmPenalty + priorityBoost;
+  const finalScore = (kwScore * wKeywords) + (tfScore * wTfIdf) + (patScore * wPattern) + (contextBoost * wContext) + emphasisBoost + questionBoost + adaptiveBoost + sarcasmPenalty + priorityBoost + fingerprintBoost;
 
   const breakdown = {
     base: { count: kwScore * wKeywords, tfidf: tfScore * wTfIdf, pattern: patScore * wPattern },
-    bonuses: { emphasis: emphasisBoost, question: questionBoost, sarcasm: sarcasmPenalty, priority: priorityBoost },
+    bonuses: { emphasis: emphasisBoost, question: questionBoost, sarcasm: sarcasmPenalty, priority: priorityBoost, fingerprint: fingerprintBoost },
     context: { contextBoost, adaptiveBoost },
     final: Math.min(Math.max(finalScore, 0), 1),
   };
@@ -383,14 +393,14 @@ function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
 
   return { breakdown, matchedTerms: [...matchedTerms], reasoning, score: breakdown.final };
 }
-// ===== نهاية التعديلات الرئيسية (حساب النقاط) =====
-
 
 export function getTopIntents(rawMessage, options = {}) {
   const topN = options.topN || DEFAULT_TOP_N;
   const context = options.context || null;
   const userProfile = options.userProfile || null;
   const minScore = typeof options.minScore === 'number' ? options.minScore : 0.08;
+  // New: Accept fingerprint in options to pass it down
+  const fingerprint = options.fingerprint || null;
 
   const tokens = tokenize(rawMessage);
   const vec = {};
@@ -404,11 +414,11 @@ export function getTopIntents(rawMessage, options = {}) {
   const msgTf = { vec, norm, tokens };
 
   const results = intentIndex.map(intent => {
-    const det = scoreIntentDetailed(rawMessage, msgTf, intent, { context, userProfile });
+    // Pass the fingerprint to the detailed scoring function
+    const det = scoreIntentDetailed(rawMessage, msgTf, intent, { context, userProfile, fingerprint });
     return {
       tag: intent.tag,
       score: det.score,
-      // الجديد: إرجاع الـ intent الكامل مع النتائج
       full_intent: intent.full_intent,
       breakdown: det.breakdown,
       matchedTerms: det.matchedTerms,
@@ -420,6 +430,7 @@ export function getTopIntents(rawMessage, options = {}) {
 
   return results.filter(r => r.score >= minScore).slice(0, topN);
 }
+// ===== نهاية التعديل رقم 2 =====
 
 // ------------------- Feedback / Learning hooks -------------------
 export function registerIntentSuccess(userProfile, tag) {
