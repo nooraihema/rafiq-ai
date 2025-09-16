@@ -3,24 +3,24 @@
 // multi-need inference, trend detection, diagnostic flags, and mini-learning hints.
 
 import { DEBUG } from './config.js';
-// ===== بداية الإصلاح =====
 import {
   normalizeArabic,
   tokenize as tokenizeArabic, // Use alias to match function name used in this file
   levenshtein as levenshteinDistance // Use alias to match function name used in this file
 } from './utils.js';
-// ===== نهاية الإصلاح =====
 // utils.js should export:
 // - normalizeArabic(text): canonical normalization
 // - tokenize(text): returns array of tokens (normalized)
 // - levenshtein(a,b): optional small function for fuzzy matching (or implement below)
 
+// ===== بداية الإصلاح =====
 import {
   CONCEPTS_MAP,
   INTENSITY_MODIFIERS,
-  MOTIVATIONAL_MAP,
-  // optionally others
+  MOTIVATIONAL_MAP
+  // The trailing comma after the comment was removed.
 } from './knowledge_base.js'; // NOTE: Make sure this path is correct for your project structure
+// ===== نهاية الإصلاح =====
 
 /* ---------------------------
    Configurable thresholds
@@ -70,7 +70,6 @@ function similarityScore(a, b) {
    1) Map message tokens to concepts with weights
    returns Map concept -> score (0..1)
    --------------------------- */
-// ===== بداية الإصلاح =====
 function mapMessageToConceptsWeighted(normalizedMessage) {
   const tokens = tokenizeArabic(normalizedMessage); // array of normalized tokens
   const conceptScores = new Map();
@@ -112,7 +111,6 @@ function mapMessageToConceptsWeighted(normalizedMessage) {
     unknownTokens: Array.from(unknownTokens)
   };
 }
-// ===== نهاية الإصلاح =====
 
 /* ---------------------------
    2) Calculate emotional intensity (weighted blending)
