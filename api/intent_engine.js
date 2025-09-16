@@ -422,7 +422,7 @@ export function registerIntentSuccess(userProfile, tag) {
   if (!userProfile) return;
 
   userProfile.intentSuccessCount = userProfile.intentSuccessCount || {};
-  userProfile.intentLastSuccess = user.intentLastSuccess || {};
+  userProfile.intentLastSuccess = userProfile.intentLastSuccess || {};
   userProfile.intentSuccessCount[tag] = (userProfile.intentSuccessCount[tag] || 0) + 1;
   userProfile.intentLastSuccess[tag] = new Date().toISOString();
 
