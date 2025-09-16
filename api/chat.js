@@ -1,7 +1,5 @@
-// chat.js vΩ - The Integrated Mind Conductor
-// This is the final orchestrator that integrates all advanced engines:
-// Context Tracker, Fingerprint Engine, Intent Engine, and Composition Engine,
-// while preserving the battle-tested safety and fallback mechanisms.
+// chat.js vΩ.1 - The Integrated Mind Conductor (Final Fix)
+// Implements the full cognitive architecture and fixes the critical syntax error in getThresholdForTag.
 
 import { DEBUG, SHORT_MEMORY_LIMIT, LONG_TERM_LIMIT } from './config.js';
 // ===== Essential utilities only =====
@@ -9,7 +7,7 @@ import {
   detectCritical,
   criticalSafetyReply,
   tokenize,
-  normalizeArabic // Keep normalizeArabic for entityMatchBoost compatibility
+  normalizeArabic
 } from './utils.js';
 // ===== End essential utilities =====
 
@@ -18,7 +16,7 @@ import {
   saveUsers,
   makeUserId,
   appendLearningQueue,
-  updateProfileWithEntities, // We'll adapt this
+  updateProfileWithEntities,
   recordRecurringTheme,
   loadIntentThresholds,
   saveIntentThresholds,
@@ -73,13 +71,18 @@ let OCCURRENCE_COUNTERS = {};
 })();
 
 // --- Meta-Learning Helpers (Preserved) ---
+// ===== بداية الإصلاح الحاسم =====
+/**
+ * vΩ.1: Fixed the faulty nested ternary operator that was causing a SyntaxError.
+ */
 function getThresholdForTag(tag) {
   if (!tag) return CONFIDENCE_BASE_THRESHOLD;
-  return (typeof INTENT_THRESHOLDS[tag] === 'number')
-    ? INTENT_THRESHOLDS[tag]
-    ? INTENT_THRESHOLDS[tag]
-    : CONFIDENCE_BASE_THRESHOLD;
+  const val = INTENT_THRESHOLDS[tag];
+  // Use the safer, more readable version you suggested.
+  return (typeof val === 'number' && !Number.isNaN(val)) ? val : CONFIDENCE_BASE_THRESHOLD;
 }
+// ===== نهاية الإصلاح الحاسم =====
+
 async function adjustThresholdOnSuccess(tag) {
   if (!tag) return;
   const current = getThresholdForTag(tag);
@@ -113,7 +116,6 @@ function buildClarificationPrompt(options) {
 }
 function buildConciseDiagnosticForUser(topCandidates) {
   if (!DIAGNOSTIC_VISIBLE_TO_USER || !topCandidates || topCandidates.length === 0) return null;
-  // Use score from intent engine, not fusedScore which is deprecated
   const visible = topCandidates.filter(c => (c.score || 0) >= DIAGNOSTIC_MIN_SCORE).slice(0, 2);
   if (visible.length === 0) return null;
   const lines = visible.map(c => `• ${c.tag.replace(/_/g, ' ')} (ثقة: ${(c.score * 100).toFixed(0)}%)`);
@@ -162,7 +164,7 @@ export default async function handler(req, res) {
     const topIntents = getTopIntents(rawMessage, { 
         topN: 3, 
         userProfile: profile, 
-        fingerprint // Pass the rich fingerprint to the upgraded intent engine
+        fingerprint
     });
 
     // Step 5: Decision - Check for confidence and ambiguity
@@ -176,7 +178,6 @@ export default async function handler(req, res) {
       if (bestIntent.score >= threshold) {
         const secondIntent = topIntents[1];
         if (secondIntent && (bestIntent.score - secondIntent.score < AMBIGUITY_MARGIN)) {
-          // Ambiguity detected, ask for clarification (Preserved Logic)
           const options = [bestIntent, secondIntent].map(c => ({ tag: c.tag }));
           profile.expectingFollowUp = { isClarification: true, options, expiresTs: Date.now() + (5 * 60 * 1000) };
           await saveUsers(users);
@@ -199,7 +200,6 @@ export default async function handler(req, res) {
           finalReply = responsePayload.reply;
         } catch (err) {
           if (DEBUG) console.error("Composition engine crashed:", err);
-          // Fallback to the old reliable constructor
           try {
               const fallbackPayload = await constructDynamicResponse(bestIntent.full_intent, profile, fingerprint.primaryEmotion.type, rawMessage);
               finalReply = fallbackPayload.reply;
@@ -211,7 +211,6 @@ export default async function handler(req, res) {
           }
         }
 
-        // Multi-Intent Suggestion (Preserved Logic)
         const secondary = topIntents.find(c => c.tag !== bestIntent.tag && c.score >= MULTI_INTENT_THRESHOLD);
         if (secondary) {
           finalReply += `\n\nبالمناسبة، لاحظت أنك قد تكون تتحدث أيضًا عن "${secondary.tag.replace(/_/g, ' ')}". هل ننتقل لهذا الموضوع بعد ذلك؟`;
@@ -220,7 +219,6 @@ export default async function handler(req, res) {
         // Step 7: Memory Update
         tracker.addTurn(fingerprint, { reply: finalReply, ...responsePayload });
         profile.shortMemory = tracker.serialize();
-        // Update long-term profile with rich data from fingerprint
         updateProfileWithEntities(profile, fingerprint.concepts.map(c => c.concept), fingerprint.primaryEmotion.type, null);
         
         await saveUsers(users);
