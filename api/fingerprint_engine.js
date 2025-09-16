@@ -5,22 +5,23 @@
 import { DEBUG } from './config.js';
 import {
   normalizeArabic,
-  tokenize as tokenizeArabic, // Use alias to match function name used in this file
-  levenshtein as levenshteinDistance // Use alias to match function name used in this file
+  tokenize as tokenizeArabic,
+  levenshtein as levenshteinDistance
 } from './utils.js';
 // utils.js should export:
 // - normalizeArabic(text): canonical normalization
 // - tokenize(text): returns array of tokens (normalized)
-// - levenshtein(a,b): optional small function for fuzzy matching (or implement below)
+// - levenshtein(a,b): optional small function for fuzzy matching
 
-// ===== بداية الإصلاح =====
+// ===== بداية الإصلاح النهائي =====
+// NOTE: These constants must be exported from the specified knowledge_base.js file.
+// The comment has been moved outside the import block to prevent parsing errors on Vercel.
 import {
   CONCEPTS_MAP,
   INTENSITY_MODIFIERS,
   MOTIVATIONAL_MAP
-  // The trailing comma after the comment was removed.
-} from './knowledge_base.js'; // NOTE: Make sure this path is correct for your project structure
-// ===== نهاية الإصلاح =====
+} from './knowledge_base.js';
+// ===== نهاية الإصلاح النهائي =====
 
 /* ---------------------------
    Configurable thresholds
@@ -78,7 +79,7 @@ function mapMessageToConceptsWeighted(normalizedMessage) {
   // pre-lowercase/normalize tokens (normalizeArabic assumed to handle)
   for (const [concept, conceptData] of Object.entries(CONCEPTS_MAP)) {
     // conceptData may be object {words:[], intensity:0.7} or array in older versions
-    const words = Array.isArray(conceptData) ? conceptData : (conceptData.words || []);
+    const words = Array.isArray(conceptData.words) ? conceptData.words : (Array.isArray(conceptData) ? conceptData : []);
     const normalizedWords = words.map(w => normalizeArabic(w)); // Normalize words from KB
 
     for (const token of tokens) {
