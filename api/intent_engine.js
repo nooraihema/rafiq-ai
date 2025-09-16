@@ -332,15 +332,9 @@ function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
   const sarcasmPenalty = style.sarcasm ? -0.05 : 0;
 
   // ===== بداية الإصلاح =====
-  // This old context logic is now superseded by ContextTracker and fingerprint,
-  // but we keep it for now as a fallback. Let's make it a simple, non-empty loop.
+  // This old context logic is now superseded by ContextTracker and fingerprint.
+  // This block is now removed to prevent syntax errors from empty loops.
   let contextBoost = 0;
-  if (context && Array.isArray(context.history) && context.history.length > 0) {
-      const lastItem = context.history[context.history.length - 1];
-      if(lastItem && intent.tag === lastItem.tag) {
-          contextBoost = 0.05; // Small boost for repeating the same intent
-      }
-  }
   
   let adaptiveBoost = 0;
   if (userProfile?.intentSuccessCount?.[intent.tag]) {
@@ -352,11 +346,11 @@ function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
   let fingerprintBoost = 0;
   if (fingerprint && fingerprint.chosenPrimaryNeed && intent.full_intent?.context_tags) {
       const intentNeeds = Object.values(intent.full_intent.context_tags).flat();
-      // A more robust check: check for any intersection between concepts and needs
       const fingerprintConcepts = fingerprint.concepts?.map(c => c.concept) || [];
       const hasMatch = intentNeeds.some(need => fingerprintConcepts.includes(need) || need === fingerprint.chosenPrimaryNeed);
       if (hasMatch) {
-          fingerprintBoost = FINGERPRINT_BOOST_FACTOR;
+          // Boost is now also weighted by the fingerprint's overall intensity
+          fingerprintBoost = FINGERPRINT_BOOST_FACTOR * (fingerprint.intensity || 1.0);
       }
   }
 
@@ -428,7 +422,7 @@ export function registerIntentSuccess(userProfile, tag) {
   if (!userProfile) return;
 
   userProfile.intentSuccessCount = userProfile.intentSuccessCount || {};
-  userProfile.intentLastSuccess = userProfile.intentLastSuccess || {};
+  userProfile.intentLastSuccess = user.intentLastSuccess || {};
   userProfile.intentSuccessCount[tag] = (userProfile.intentSuccessCount[tag] || 0) + 1;
   userProfile.intentLastSuccess[tag] = new Date().toISOString();
 
