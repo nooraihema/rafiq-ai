@@ -76,11 +76,15 @@ function mapMessageToConceptsWeighted(normalizedMessage) {
   const conceptScores = new Map();
   const unknownTokens = new Set(tokens); // Assume all tokens are unknown initially
 
-  // pre-lowercase/normalize tokens (normalizeArabic assumed to handle)
+  // Loop over concepts from KB
   for (const [concept, conceptData] of Object.entries(CONCEPTS_MAP)) {
     // conceptData may be object {words:[], intensity:0.7} or array in older versions
-    const words = Array.isArray(conceptData.words) ? conceptData.words : (Array.isArray(conceptData) ? conceptData : []);
-    const normalizedWords = words.map(w => normalizeArabic(w)); // Normalize words from KB
+    const words = Array.isArray(conceptData.words)
+      ? conceptData.words
+      : (Array.isArray(conceptData) ? conceptData : []);
+
+    // ✅ التطبيع الجديد: نطبّع الكلمات من قاعدة المعرفة قبل الاستخدام
+    const normalizedWords = words.map(w => normalizeArabic(w));
 
     for (const token of tokens) {
       // exact match quick path
