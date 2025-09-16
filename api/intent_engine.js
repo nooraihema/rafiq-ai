@@ -1,5 +1,6 @@
-// intent_engine.js v15.0 - The Integrated Mind
+// intent_engine.js v15.1 - The Integrated Mind (Final Fix)
 // Now harmonized with the new semantic knowledge base and aware of psychological fingerprints.
+// Fixed an empty loop block causing a cryptic syntax error.
 
 import fs from "fs";
 import path from "path";
@@ -30,9 +31,7 @@ const DEFAULT_WEIGHTS = {
 };
 const DEFAULT_TOP_N = 3;
 const PRIORITY_BOOST_FACTOR = 0.08;
-// ===== بداية التعديل رقم 2 =====
 const FINGERPRINT_BOOST_FACTOR = 0.35; // The weight of the fingerprint's opinion
-// ===== نهاية التعديل رقم 2 =====
 
 // ------------------- Internal State -------------------
 export let intentIndex = [];
@@ -73,11 +72,6 @@ function saveAdaptiveWeights() {
 }
 
 // ------------------- Synonym Engine -------------------
-// ===== بداية التعديل رقم 1 =====
-/**
- * v15.0: This loader is now smart enough to read the new hierarchical synonym file.
- * It specifically ignores keys that are not simple synonym lists.
- */
 function loadSynonyms() {
   synonymData = { map: {}, weights: {} };
   const parsed = safeReadJson(SYNONYMS_FILE);
@@ -88,13 +82,11 @@ function loadSynonyms() {
   try {
     let loadedCount = 0;
     for (const key in parsed) {
-      // THE FIX: Ignore conceptual keys, comments, and non-array values.
       if (key.startsWith('__') || key.startsWith('مفهوم_') || !Array.isArray(parsed[key])) {
           continue; 
       }
-
       const normalKey = normalizeArabic(key);
-      const vals = parsed[key].map(v => normalizeArabic(String(v))); // Ensure values are strings
+      const vals = parsed[key].map(v => normalizeArabic(String(v)));
       const group = [normalKey, ...vals];
       group.forEach((w) => {
         synonymData.map[w] = group;
@@ -109,7 +101,6 @@ function loadSynonyms() {
     console.error("❌ Error processing synonym data in Intent Engine:", e.message);
   }
 }
-// ===== نهاية التعديل رقم 1 =====
 
 function expandTokensWithSynonyms(tokens) {
   const out = new Set(tokens);
@@ -255,7 +246,7 @@ export function buildIndexSync() {
   autoLinkIntents();
 
   if (DEBUG) {
-    console.log(`🚀 Engine v15.0 (Integrated Mind) indexed successfully.`);
+    console.log(`🚀 Engine v15.1 (Integrated Mind - Fixed) indexed successfully.`);
     console.log(`📂 Total intents loaded: ${intentIndex.length}.`);
     const sampleTags = Object.keys(tagToIdx).slice(0, 10);
     console.log(`📌 Sample Tags: [${sampleTags.join(", ")}]...`);
@@ -287,9 +278,7 @@ function buildReasoning(intent, breakdown, matchedTerms, contextSummary) {
   if (breakdown.bonuses.emphasis) bonuses.push(`تشديد: ${breakdown.bonuses.emphasis.toFixed(3)}`);
   if (breakdown.bonuses.question) bonuses.push(`سؤال: ${breakdown.bonuses.question.toFixed(3)}`);
   if (breakdown.bonuses.priority) bonuses.push(`أولوية: ${breakdown.bonuses.priority.toFixed(3)}`);
-  // ===== بداية التعديل رقم 2 =====
   if (breakdown.bonuses.fingerprint) bonuses.push(`بصمة نفسية: ${breakdown.bonuses.fingerprint.toFixed(3)}`);
-  // ===== نهاية التعديل رقم 2 =====
   if (bonuses.length) lines.push(`- مكافآت: ${bonuses.join(" | ")}`);
   if (breakdown.context) lines.push(`- سياق/تعلم: سياق سابق: ${breakdown.context.contextBoost.toFixed(3)}, تعلم ذاتي: ${breakdown.context.adaptiveBoost.toFixed(3)}`);
   if (contextSummary) lines.push(`- ملخص السياق: ${contextSummary}`);
@@ -298,9 +287,7 @@ function buildReasoning(intent, breakdown, matchedTerms, contextSummary) {
 }
 
 // ------------------- Multi-intent detection & scoring -------------------
-// ===== بداية التعديل رقم 2 =====
 function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
-  // New: Accept fingerprint in options
   const { context = null, userProfile = null, weightsOverrides = {}, fingerprint = null } = options;
   const normMsg = normalizeArabic(rawMessage);
   const origTokens = msgTf.tokens || [];
@@ -344,24 +331,31 @@ function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
   const questionBoost = style.isQuestion ? 0.05 : 0;
   const sarcasmPenalty = style.sarcasm ? -0.05 : 0;
 
+  // ===== بداية الإصلاح =====
+  // This old context logic is now superseded by ContextTracker and fingerprint,
+  // but we keep it for now as a fallback. Let's make it a simple, non-empty loop.
   let contextBoost = 0;
-  if (context && Array.isArray(context.history)) {
-    for (const item of context.history) {
-        // ... (existing context logic)
-    }
+  if (context && Array.isArray(context.history) && context.history.length > 0) {
+      const lastItem = context.history[context.history.length - 1];
+      if(lastItem && intent.tag === lastItem.tag) {
+          contextBoost = 0.05; // Small boost for repeating the same intent
+      }
   }
   
   let adaptiveBoost = 0;
   if (userProfile?.intentSuccessCount?.[intent.tag]) {
-      // ... (existing adaptive logic)
+      const successes = userProfile.intentSuccessCount[intent.tag];
+      adaptiveBoost = Math.min(0.20, successes * 0.015);
   }
+  // ===== نهاية الإصلاح =====
 
-  // New: Calculate fingerprint boost
   let fingerprintBoost = 0;
   if (fingerprint && fingerprint.chosenPrimaryNeed && intent.full_intent?.context_tags) {
       const intentNeeds = Object.values(intent.full_intent.context_tags).flat();
-      if(intentNeeds.includes(fingerprint.chosenPrimaryNeed)) {
-          // Strong boost if the primary need matches the intent's context tags
+      // A more robust check: check for any intersection between concepts and needs
+      const fingerprintConcepts = fingerprint.concepts?.map(c => c.concept) || [];
+      const hasMatch = intentNeeds.some(need => fingerprintConcepts.includes(need) || need === fingerprint.chosenPrimaryNeed);
+      if (hasMatch) {
           fingerprintBoost = FINGERPRINT_BOOST_FACTOR;
       }
   }
@@ -399,7 +393,6 @@ export function getTopIntents(rawMessage, options = {}) {
   const context = options.context || null;
   const userProfile = options.userProfile || null;
   const minScore = typeof options.minScore === 'number' ? options.minScore : 0.08;
-  // New: Accept fingerprint in options to pass it down
   const fingerprint = options.fingerprint || null;
 
   const tokens = tokenize(rawMessage);
@@ -414,7 +407,6 @@ export function getTopIntents(rawMessage, options = {}) {
   const msgTf = { vec, norm, tokens };
 
   const results = intentIndex.map(intent => {
-    // Pass the fingerprint to the detailed scoring function
     const det = scoreIntentDetailed(rawMessage, msgTf, intent, { context, userProfile, fingerprint });
     return {
       tag: intent.tag,
@@ -430,7 +422,6 @@ export function getTopIntents(rawMessage, options = {}) {
 
   return results.filter(r => r.score >= minScore).slice(0, topN);
 }
-// ===== نهاية التعديل رقم 2 =====
 
 // ------------------- Feedback / Learning hooks -------------------
 export function registerIntentSuccess(userProfile, tag) {
