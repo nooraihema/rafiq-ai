@@ -70,53 +70,49 @@ function similarityScore(a, b) {
    1) Map message tokens to concepts with weights
    returns Map concept -> score (0..1)
    --------------------------- */
+// ===== بداية الإصلاح =====
 function mapMessageToConceptsWeighted(normalizedMessage) {
   const tokens = tokenizeArabic(normalizedMessage); // array of normalized tokens
   const conceptScores = new Map();
-  const unknownTokens = new Set();
+  const unknownTokens = new Set(tokens); // Assume all tokens are unknown initially
 
   // pre-lowercase/normalize tokens (normalizeArabic assumed to handle)
-  for (const token of tokens) {
-    let matched = false;
+  for (const [concept, conceptData] of Object.entries(CONCEPTS_MAP)) {
+    // conceptData may be object {words:[], intensity:0.7} or array in older versions
+    const words = Array.isArray(conceptData) ? conceptData : (conceptData.words || []);
+    const normalizedWords = words.map(w => normalizeArabic(w)); // Normalize words from KB
 
-    for (const [concept, conceptData] of Object.entries(CONCEPTS_MAP)) {
-      // conceptData may be object {words:[], intensity:0.7} or array in older versions
-      const words = Array.isArray(conceptData) ? conceptData : (conceptData.words || []);
+    for (const token of tokens) {
       // exact match quick path
-      if (words.includes(token)) {
+      if (normalizedWords.includes(token)) {
         const prev = conceptScores.get(concept) || 0;
         conceptScores.set(concept, Math.max(prev, 1.0)); // full match
-        matched = true;
+        unknownTokens.delete(token); // It's a known token now
         continue;
       }
+      
       // fuzzy match check
       let bestSim = 0;
-      for (const w of words) {
-        const sim = similarityScore(token, normalizeArabic(w));
+      for (const w of normalizedWords) {
+        const sim = similarityScore(token, w);
         if (sim > bestSim) bestSim = sim;
-        if (bestSim >= 1.0) break;
       }
+
       if (bestSim >= FUZZY_THRESHOLD) {
         const prev = conceptScores.get(concept) || 0;
         // weight by similarity (e.g., 0.8 similarity => 0.8 score)
         conceptScores.set(concept, Math.max(prev, parseFloat(bestSim.toFixed(2))));
-        matched = true;
+        unknownTokens.delete(token); // It's a known token now
       }
     }
-
-    if (!matched) {
-      unknownTokens.add(token);
-    }
   }
-
-  // Normalize conceptScores to 0..1 (they already are similarity based)
-  // but we may want to blend by concept intensity later.
 
   return {
     conceptScores, // Map
     unknownTokens: Array.from(unknownTokens)
   };
 }
+// ===== نهاية الإصلاح =====
 
 /* ---------------------------
    2) Calculate emotional intensity (weighted blending)
