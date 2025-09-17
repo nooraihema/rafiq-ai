@@ -2,7 +2,10 @@
 // Implements: priority-aware recipes, diagnostic flags influence, multi-fragment blending,
 // memory-aware rendering, persona-style profiles, multi-stage fallbacks, and self-evaluation loop.
 
-import { DEBUG } from './config.js';
+// =================================================================
+// START: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
+import { DEBUG } from '../shared/config.js';
 // ===== بداية الإصلاح =====
 import {
   STRATEGIC_RECIPES,
@@ -13,8 +16,12 @@ import {
   RECOVERY_STRATEGIES
   // All other necessary functions and constants are exported from knowledge_base_vΩ1.js
   // and will be used as needed.
-} from './knowledge_base.js'; // Ensure the file name is correct
+} from '../knowledge/knowledge_base.js'; // Ensure the file name is correct
 // ===== نهاية الإصلاح =====
+// =================================================================
+// END: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
+
 
 // NOTE: Since your knowledge_base_vΩ1.js also exports functions like applyPersonaStyle,
 // we will assume they are available and might not need to be rewritten here.
