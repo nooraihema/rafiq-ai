@@ -1,6 +1,6 @@
-// chat.js vΩ - The Integrated Mind Conductor
+// chat.js vΩ+1 - The Fully Integrated Metacognitive Conductor
 // This is the final orchestrator that integrates all advanced engines:
-// Context Tracker, Fingerprint Engine, Intent Engine, and Composition Engine,
+// Context Tracker, Fingerprint Engine, Metacognitive Core, and the Meta Router,
 // while preserving the battle-tested safety and fallback mechanisms.
 
 import { DEBUG, SHORT_MEMORY_LIMIT, LONG_TERM_LIMIT } from './config.js';
@@ -33,15 +33,20 @@ import {
 } from './intent_engine.js';
 
 // =================================================================
-// START: IMPORTING THE NEW COGNITIVE ARCHITECTURE
+// START: IMPORTING THE NEW COGNITIVE ARCHITECTURE (v5.0+)
 // =================================================================
+// The old composition engine is replaced by the new metacognitive core.
+// The meta_router will handle the other engines (learning, emotion, dreaming).
+import { executeMetacognitiveCore } from './dynamic_logic_engine.js';
+import { processMeta } from './meta_router.js';
+// Legacy imports for context and fingerprinting remain
 import { ContextTracker } from './context_tracker.js';
 import { generateFingerprintV2 as generateFingerprint } from './fingerprint_engine.js';
-import { composeInferentialResponse } from './composition_engine.js';
-import { constructDynamicResponse } from './response_constructor.js'; // Kept as a fallback
+import { constructDynamicResponse } from './response_constructor.js'; // Kept as a critical fallback
 // =================================================================
 // END: IMPORTING THE NEW COGNITIVE ARCHITECTURE
 // =================================================================
+
 
 // --- Initialization ---
 buildIndexSync();
@@ -189,17 +194,26 @@ export default async function handler(req, res) {
         await incrementOccurrence(bestIntent.tag);
         recordRecurringTheme(profile, bestIntent.tag, fingerprint.primaryEmotion.type);
 
-        // Step 6: Creation - The new Composition Engine takes the lead
-        const personaKey = profile.preferred_persona || 'the_listener';
+        // =================================================================
+        // START: INTEGRATION OF NEW RESPONSE & META ENGINES
+        // =================================================================
+
+        // Step 6: Creation - The new Metacognitive Core takes the lead
         let responsePayload = null;
         let finalReply = '';
         
         try {
-          responsePayload = composeInferentialResponse(fingerprint, topIntents, personaKey);
-          finalReply = responsePayload.reply;
+          // The new v5.0 engine is the primary response generator now.
+          responsePayload = executeMetacognitiveCore(bestIntent.full_intent, fingerprint, profile);
+          if (responsePayload && responsePayload.reply) {
+            finalReply = responsePayload.reply;
+          } else {
+            if (DEBUG) console.warn("Metacognitive core returned a null or empty response. Using fallback.");
+            throw new Error("Empty response from Metacognitive Core");
+          }
         } catch (err) {
-          if (DEBUG) console.error("Composition engine crashed:", err);
-          // Fallback to the old reliable constructor
+          if (DEBUG) console.error("Metacognitive Core CRASHED:", err);
+          // Fallback to the old reliable constructor in case of a crash
           try {
               const fallbackPayload = await constructDynamicResponse(bestIntent.full_intent, profile, fingerprint.primaryEmotion.type, rawMessage);
               finalReply = fallbackPayload.reply;
@@ -217,6 +231,21 @@ export default async function handler(req, res) {
           finalReply += `\n\nبالمناسبة، لاحظت أنك قد تكون تتحدث أيضًا عن "${secondary.tag.replace(/_/g, ' ')}". هل ننتقل لهذا الموضوع بعد ذلك؟`;
         }
         
+        // Step 6.5: Post-Response Orchestration (Non-blocking)
+        // The meta_router is called here to analyze the turn and queue background tasks
+        // like learning, emotion tracking, and dreaming, without delaying the user's response.
+        try {
+          await processMeta(rawMessage, finalReply, fingerprint, profile);
+          if (DEBUG) console.log("✅ Meta-router successfully enqueued post-response tasks.");
+        } catch (metaErr) {
+          // This failure MUST NOT stop the user from getting a response.
+          console.error("🚨 Meta-router failed to process tasks:", metaErr);
+        }
+
+        // =================================================================
+        // END: INTEGRATION OF NEW RESPONSE & META ENGINES
+        // =================================================================
+
         // Step 7: Memory Update
         tracker.addTurn(fingerprint, { reply: finalReply, ...responsePayload });
         profile.shortMemory = tracker.serialize();
@@ -226,11 +255,12 @@ export default async function handler(req, res) {
         await saveUsers(users);
         return res.status(200).json({
           reply: finalReply,
-          source: responsePayload.source || 'composition_engine',
+          source: responsePayload.source || 'metacognitive_core_v5',
           tag: bestIntent.tag,
           score: Number(bestIntent.score.toFixed(3)),
           userId,
-          composition_eval: responsePayload.eval ?? null
+          // Forward metadata from the new core if it exists
+          metadata: responsePayload.metadata ?? null
         });
       }
     }
