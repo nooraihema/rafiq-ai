@@ -2,8 +2,15 @@
 // A complete architectural rewrite based on principles of immutability,
 // flexible cognitive pipelines, and goal-oriented learning. This is the full, unabridged code.
 
-import { DEBUG, AI_SETTINGS } from './config.js';
-import { PERSONA_PROFILES } from './knowledge_base.js'; // Assuming PERSONA_PROFILES is in knowledge_base
+// =================================================================
+// START: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
+import { DEBUG, AI_SETTINGS } from '../shared/config.js';
+import { PERSONA_PROFILES } from '../knowledge/knowledge_base.js'; // Assuming PERSONA_PROFILES is in knowledge_base
+// =================================================================
+// END: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
+
 
 /* ========================================================================== */
 /* SECTION 1: CORE UTILITIES & HELPERS                                        */
@@ -74,7 +81,7 @@ function chooseSuggestionHybrid(candidates = [], userProfile = {}, fingerprint =
     return clamp(raw, 0, 2);
   });
 
-  if (Math.random() < AI_SETTINGS.CHANCES.EPSILON_GREEDY) {
+  if (AI_SETTINGS && AI_SETTINGS.CHANCES && Math.random() < AI_SETTINGS.CHANCES.EPSILON_GREEDY) {
     return { choice: selectRandom(candidates), policy: 'epsilon_random' };
   }
 
@@ -104,10 +111,12 @@ const emotionalPreambleStep = (ctx) => {
     const intensity = safe(fingerprint, 'intensity', 0);
     let preamble = null;
 
-    if (emotionType === 'sadness' && intensity > AI_SETTINGS.INTENSITY_THRESHOLDS.SADNESS) {
-        preamble = "💜 أعلم أن هذا الشعور قد يكون ثقيلاً على قلبك الآن، لكن تذكر أنك لست وحدك.";
-    } else if (emotionType === 'anxiety' && intensity > AI_SETTINGS.INTENSITY_THRESHOLDS.ANXIETY) {
-        preamble = "أشعر بقوة قلقك من خلال كلماتك. دعنا نأخذ نفسًا عميقًا معًا، كل شيء سيكون على ما يرام.";
+    if (AI_SETTINGS && AI_SETTINGS.INTENSITY_THRESHOLDS) {
+        if (emotionType === 'sadness' && intensity > AI_SETTINGS.INTENSITY_THRESHOLDS.SADNESS) {
+            preamble = "💜 أعلم أن هذا الشعور قد يكون ثقيلاً على قلبك الآن، لكن تذكر أنك لست وحدك.";
+        } else if (emotionType === 'anxiety' && intensity > AI_SETTINGS.INTENSITY_THRESHOLDS.ANXIETY) {
+            preamble = "أشعر بقوة قلقك من خلال كلماتك. دعنا نأخذ نفسًا عميقًا معًا، كل شيء سيكون على ما يرام.";
+        }
     }
 
     if (preamble) {
@@ -123,7 +132,7 @@ const counterfactualStep = (ctx) => {
     const intensity = safe(fingerprint, 'intensity', 0);
     const isGoodCandidate = intensity < 0.8; // Avoid on very high distress
 
-    if (isGoodCandidate && Math.random() < AI_SETTINGS.CHANCES.COUNTERFACTUAL) {
+    if (AI_SETTINGS && AI_SETTINGS.CHANCES && isGoodCandidate && Math.random() < AI_SETTINGS.CHANCES.COUNTERFACTUAL) {
         const question = "دعنا نجرب تمريناً عقلياً سريعاً: لو أنك في موقف مشابه، قررت أن تفعل العكس تماماً، ماذا تتخيل أن تكون النتيجة؟";
         const newResponseParts = [...ctx.responseParts, question];
         // Stop the pipeline here to let the user ponder this deep question.
@@ -158,7 +167,7 @@ const coreSuggestionStep = (ctx) => {
 /** [Thought 4] Adds a touch of vulnerability and self-awareness to the response. */
 const selfDoubtStep = (ctx) => {
     // Only express doubt if a concrete suggestion was made.
-    if (ctx.metadata.chosenSuggestion && Math.random() < AI_SETTINGS.CHANCES.SELF_DOUBT) {
+    if (AI_SETTINGS && AI_SETTINGS.CHANCES && ctx.metadata.chosenSuggestion && Math.random() < AI_SETTINGS.CHANCES.SELF_DOUBT) {
         const doubtQuestion = "\n---\nبصراحة، لست متأكدًا تمامًا إذا كان هذا هو أفضل طريق. ما رأيك أنت؟ هل تشعر أننا على الطريق الصحيح؟";
         const newResponseParts = [...ctx.responseParts, doubtQuestion];
         return { ...ctx, responseParts: newResponseParts };
