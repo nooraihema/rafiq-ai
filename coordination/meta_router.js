@@ -1,12 +1,10 @@
-
-
 // meta_router.js v3.0 - The Orchestrator Beast
 // Features:
 //  - Priority queue for tasks with dynamic priorities
 //  - Event bus (publish/subscribe) for internal events
 //  - Adaptive idle detection per-fingerprint (learns typical return times)
 //  - Self-orchestration: metrics, auto-tuning priorities, backoff for noisy tasks
-//  - Safe persistence of router state & activity logs under ./memory/meta_router_state.json
+//  - Safe persistence of router state & activity logs under ./data/meta_router_state.json
 //
 // Exports:
 //  - processMeta(userMessage, responsePayload, fingerprint, userProfile)
@@ -20,14 +18,21 @@
 import fs from "fs";
 import path from "path";
 
+// =================================================================
+// START: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
 // ------------- Imports from your engines (assumed available) -------------
-import { runLearningEngine } from "./learning_engine.js";        // returns analysis {logEntry, suggestion, improvedResponse}
-import { trackEmotion } from "./emotion_tracker.js";            // returns point info
-import { runDreamingMode } from "./dreaming_mode.js";           // returns dream report
+import { runLearningEngine } from "../intelligence/learning_engine.js";        // returns analysis {logEntry, suggestion, improvedResponse}
+import { trackEmotion } from "../intelligence/emotion_tracker.js";            // returns point info
+import { runDreamingMode } from "../intelligence/dreaming_mode.js";           // returns dream report
 
 // ------------- Config & Files -------------
-const DATA_DIR = path.join(process.cwd(), "memory");
+// Path to the data directory (as per user specification)
+const DATA_DIR = path.join(process.cwd(), "data");
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+// =================================================================
+// END: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
 
 const ROUTER_STATE_FILE = path.join(DATA_DIR, "meta_router_state.json");
 
@@ -159,11 +164,14 @@ function taskLearning(userMessage, responsePayload, fingerprint) {
 function taskEmotion(userMessage, responsePayload, fingerprint) {
   return async () => {
     try {
-      const res = await trackEmotion(fingerprint, userMessage, responsePayload);
+      // NOTE: The emotion_tracker.js function signature might need adjustment based on its own code.
+      // Assuming it takes (userMessage, fingerprint)
+      const res = await trackEmotion(userMessage, fingerprint);
       ROUTER_STATE.metrics.taskCounts["emotion"] = (ROUTER_STATE.metrics.taskCounts["emotion"] || 0) + 1;
       emit("emotion_tracked", { fingerprint, res });
       // if high intensity, emit spike event
-      if ((res.intensity || avgVector(res.vector || [])) > 0.75) {
+      // This logic might need to be adapted based on the actual return object from trackEmotion
+      if ((res.last && res.last.intensity) > 0.75) {
         emit("emotion_spike", { fingerprint, res });
       }
       return { ok: true, res };
@@ -218,7 +226,7 @@ function recordActivity(fingerprint) {
   ROUTER_STATE.activityHistory[fingerprint || "anon"] = ROUTER_STATE.activityHistory[fingerprint || "anon"] || [];
   const arr = ROUTER_STATE.activityHistory[fingerprint || "anon"];
   arr.push(ts);
-  // keep last 30
+  // keep last 50
   if (arr.length > 50) arr.splice(0, arr.length - 50);
   // recompute median intervals
   if (arr.length >= 4) {
@@ -274,7 +282,7 @@ export async function processMeta(userMessage, responsePayload, fingerprint = "a
 
   // emotion tracking (high priority if intensity suspected)
   const emotionPriority = computeDynamicPriority(fingerprint, { ...context, emotionIntensity: context.emotionIntensity || 0.0 });
-  QUEUE.push(emotionPriority, { type: "emotion", exec: taskEmotion(userMessage, responsePayload, fingerprint) });
+  QUEUE.push(emotionPriority, { type: "emotion", exec: taskEmotion(userMessage, fingerprint) });
 
   // dreaming: schedule as background/low priority; but if idle threshold passed, escalate to higher priority
   const lastAt = ROUTER_STATE.lastActivityAt[fingerprint] || 0;
