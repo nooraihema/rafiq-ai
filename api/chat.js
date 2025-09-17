@@ -3,14 +3,17 @@
 // Context Tracker, Fingerprint Engine, Metacognitive Core, and the Meta Router,
 // while preserving the battle-tested safety and fallback mechanisms.
 
-import { DEBUG, SHORT_MEMORY_LIMIT, LONG_TERM_LIMIT } from './config.js';
+// =================================================================
+// START: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
+import { DEBUG, SHORT_MEMORY_LIMIT, LONG_TERM_LIMIT } from '../shared/config.js';
 // ===== Essential utilities only =====
 import {
   detectCritical,
   criticalSafetyReply,
   tokenize,
   normalizeArabic // Kept for legacy compatibility if needed
-} from './utils.js';
+} from '../shared/utils.js';
 // ===== End essential utilities =====
 
 import {
@@ -24,25 +27,25 @@ import {
   saveIntentThresholds,
   loadOccurrenceCounters,
   saveOccurrenceCounters
-} from './storage.js';
+} from '../shared/storage.js';
 import {
   intentIndex,
   buildIndexSync,
   getTopIntents,
   registerIntentSuccess
-} from './intent_engine.js';
+} from '../perception/intent_engine.js';
 
 // =================================================================
 // START: IMPORTING THE NEW COGNITIVE ARCHITECTURE (v5.0+)
 // =================================================================
 // The old composition engine is replaced by the new metacognitive core.
 // The meta_router will handle the other engines (learning, emotion, dreaming).
-import { executeMetacognitiveCore } from './dynamic_logic_engine.js';
-import { processMeta } from './meta_router.js';
+import { executeMetacognitiveCore } from '../core/dynamic_logic_engine.js';
+import { processMeta } from '../coordination/meta_router.js';
 // Legacy imports for context and fingerprinting remain
-import { ContextTracker } from './context_tracker.js';
-import { generateFingerprintV2 as generateFingerprint } from './fingerprint_engine.js';
-import { constructDynamicResponse } from './response_constructor.js'; // Kept as a critical fallback
+import { ContextTracker } from '../shared/context_tracker.js'; // Assuming it's in shared now
+import { generateFingerprintV2 as generateFingerprint } from '../perception/fingerprint_engine.js';
+import { constructDynamicResponse } from '../core/response_constructor.js'; // Kept as a critical fallback
 // =================================================================
 // END: IMPORTING THE NEW COGNITIVE ARCHITECTURE
 // =================================================================
