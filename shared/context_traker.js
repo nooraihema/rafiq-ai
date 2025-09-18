@@ -1,9 +1,14 @@
-
 // context_tracker.js v2.0 - The Short-Term Memory Core (Enhanced)
 // Purpose: maintain and analyze the immediate context of a conversation (working memory).
 // Adds: weighted history, energy index, contextual summary, pattern detection, response satisfaction flags.
 
+// =================================================================
+// START: PATH UPDATES FOR NEW STRUCTURE
+// =================================-===============================
 import { DEBUG } from './config.js';
+// =================================================================
+// END: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
 
 const DEFAULT_MAX_HISTORY = 8;       // Default number of turns to keep (configurable)
 const DECAY_BASE = 0.85;             // Exponential decay base for weighting older turns (0 < base < 1)
