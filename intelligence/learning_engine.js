@@ -1,4 +1,3 @@
-
 // learning_engine.js v2.0 - Adaptive Self-Review Engine (Arabic-aware, template rewriter)
 // Purpose: After every response, analyze multi-dimensional quality, update a per-user profile,
 // detect repeating patterns, and produce actionable suggestions + a template-based improved reply.
@@ -12,8 +11,17 @@
 import fs from "fs";
 import path from "path";
 
-const LOG_FILE = path.join(process.cwd(), "learning_logs.json");
-const PROFILE_FILE = path.join(process.cwd(), "user_profiles.json");
+// =================================================================
+// START: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
+// Path to the data directory (as per user specification)
+const DATA_DIR = path.join(process.cwd(), "data");
+const LOG_FILE = path.join(DATA_DIR, "learning_logs.json");
+const PROFILE_FILE = path.join(DATA_DIR, "user_profiles.json");
+// =================================================================
+// END: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
+
 
 // ----- Utilities: Arabic basic normalization & tokenization -----
 // Simple normalizer (removes diacritics, normalize alef forms, tatweel, lowercases)
@@ -73,6 +81,11 @@ const negativeIndicators = ["قَلِق", "قلب", "خائف", "خوف", "قل�
 // ----- Profile & Logs management -----
 function safeReadJSON(file) {
   try {
+    // Ensure the data directory exists before reading
+    const dir = path.dirname(file);
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
     if (!fs.existsSync(file)) return {};
     const t = fs.readFileSync(file, "utf8");
     return JSON.parse(t || "{}");
@@ -82,6 +95,11 @@ function safeReadJSON(file) {
 }
 function safeWriteJSON(file, obj) {
   try {
+    // Ensure the data directory exists before writing
+    const dir = path.dirname(file);
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
     fs.writeFileSync(file, JSON.stringify(obj, null, 2), "utf8");
   } catch (e) {
     console.error("[LearningEngine] write error:", e.message);
@@ -270,15 +288,17 @@ export async function runLearningEngine(userMessage = "", responsePayload = "", 
 }
 
 // Simple local demo if run directly (useful for quick manual test)
-if (require.main === module) {
-  (async () => {
-    const demoUser = "أنا قلق جدا من قرار الشغل الجديد ومش عارف أتصرف إزاي";
-    const demoResp = "تقدر تجرب تنتظر وترى الأمور.";
-    const res = await runLearningEngine(demoUser, demoResp, "demo_user_1");
-    console.log("=== Demo Result ===");
-    console.log("Analysis:", res.logEntry.analysis);
-    console.log("Notes:", res.logEntry.notes);
-    console.log("Suggestion:", res.suggestion.join(" | "));
-    console.log("Improved Response:\n", res.improvedResponse);
-  })();
-}
+// This check might fail if using ES modules without specific config.
+// For library use, this part is not critical.
+// if (require.main === module) {
+//   (async () => {
+//     const demoUser = "أنا قلق جدا من قرار الشغل الجديد ومش عارف أتصرف إزاي";
+//     const demoResp = "تقدر تجرب تنتظر وترى الأمور.";
+//     const res = await runLearningEngine(demoUser, demoResp, "demo_user_1");
+//     console.log("=== Demo Result ===");
+//     console.log("Analysis:", res.logEntry.analysis);
+//     console.log("Notes:", res.logEntry.notes);
+//     console.log("Suggestion:", res.suggestion.join(" | "));
+//     console.log("Improved Response:\n", res.improvedResponse);
+//   })();
+// }
