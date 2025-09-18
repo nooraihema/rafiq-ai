@@ -1,16 +1,10 @@
 
-// storage.js v14.1 - Asynchronous & Resilient Storage (with Meta-Learning + Emotion Safety)
+// storage.js v14.2 - Asynchronous & Resilient Storage (with Meta-Learning + Emotion Safety)
 
-import fs from 'fs/promises';
+import fs from "fs/promises";
 import crypto from "crypto";
 import path from "path";
-// =================================================================
-// START: PATH UPDATES FOR NEW STRUCTURE
-// =================================================================
-import { DATA_DIR, USERS_FILE, LEARNING_QUEUE_FILE, DEBUG } from './config.js';
-// =================================================================
-// END: PATH UPDATES FOR NEW STRUCTURE
-// =================================================================
+import { DATA_DIR, USERS_FILE, LEARNING_QUEUE_FILE, DEBUG } from "./config.js";
 
 const THRESHOLDS_FILE = path.join(DATA_DIR, "intent_thresholds.json");
 const OCCURRENCE_FILE = path.join(DATA_DIR, "occurrence_counters.json");
@@ -31,7 +25,7 @@ export async function loadUsers() {
     const raw = await fs.readFile(USERS_FILE, "utf8");
     return JSON.parse(raw || "{}");
   } catch (e) {
-    if (e.code === 'ENOENT') {
+    if (e.code === "ENOENT") {
       if (DEBUG) console.log("INFO: users.json not found. Creating a new one.");
       await saveUsers({});
       return {};
@@ -64,7 +58,7 @@ export async function appendLearningQueue(entry) {
     const raw = await fs.readFile(LEARNING_QUEUE_FILE, "utf8");
     queue = JSON.parse(raw || "[]");
   } catch (e) {
-    if (e.code !== 'ENOENT') {
+    if (e.code !== "ENOENT") {
       console.error("❌ STORAGE_ERROR: Failed to read learning_queue.json:", e);
     }
   }
@@ -79,51 +73,66 @@ export async function appendLearningQueue(entry) {
 }
 
 // ------------ Profile updaters ------------
+export function updateProfileWithEntities(profile = {}, entities = [], mood = null, rootCause = null) {
+  try {
+    // Ensure structure
+    profile.longTermProfile = profile.longTermProfile || {
+      recurring_themes: {},
+      mentioned_entities: {},
+      communication_style: "neutral",
+    };
 
-// 🛑 هنا كان سبب الكراش: لازم نهيّأ profile.emotions
-export function updateProfileWithEntities(profile, entities, mood, rootCause) {
-  profile.longTermProfile = profile.longTermProfile || { 
-    recurring_themes: {}, 
-    mentioned_entities: {}, 
-    communication_style: "neutral" 
-  };
+    profile.emotions = profile.emotions || {};
 
-  // ✅ إصلاح: تهيئة المشاعر إذا مش موجودة
-  profile.emotions = profile.emotions || {};
-  if (mood) {
-    if (!profile.emotions[mood]) profile.emotions[mood] = 0;
-    profile.emotions[mood] += 1;
-  }
-
-  for (const ent of entities) {
-    if (!profile.longTermProfile.mentioned_entities[ent]) {
-      profile.longTermProfile.mentioned_entities[ent] = {
-        type: "topic",
-        sentiment_associations: {},
-        last_mentioned: new Date().toISOString(),
-        mention_count: 0,
-        last_root_causes: []
-      };
+    // Record mood safely
+    if (mood) {
+      if (!profile.emotions[mood]) profile.emotions[mood] = 0;
+      profile.emotions[mood] += 1;
     }
-    const obj = profile.longTermProfile.mentioned_entities[ent];
-    obj.mention_count++;
-    obj.sentiment_associations[mood] = (obj.sentiment_associations[mood] || 0) + 1;
-    obj.last_mentioned = new Date().toISOString();
-    if (rootCause) {
-      obj.last_root_causes.unshift({ cause: rootCause, ts: new Date().toISOString() });
-      if (obj.last_root_causes.length > 5) obj.last_root_causes.pop();
+
+    // Process entities
+    for (const ent of entities) {
+      if (!profile.longTermProfile.mentioned_entities[ent]) {
+        profile.longTermProfile.mentioned_entities[ent] = {
+          type: "topic",
+          sentiment_associations: {},
+          last_mentioned: new Date().toISOString(),
+          mention_count: 0,
+          last_root_causes: [],
+        };
+      }
+      const obj = profile.longTermProfile.mentioned_entities[ent];
+      obj.mention_count++;
+      if (mood) {
+        obj.sentiment_associations[mood] =
+          (obj.sentiment_associations[mood] || 0) + 1;
+      }
+      obj.last_mentioned = new Date().toISOString();
+
+      if (rootCause) {
+        obj.last_root_causes.unshift({ cause: rootCause, ts: new Date().toISOString() });
+        if (obj.last_root_causes.length > 5) obj.last_root_causes.pop();
+      }
     }
+  } catch (err) {
+    console.error("❌ PROFILE_UPDATE_ERROR:", err);
   }
+  return profile;
 }
 
-export function recordRecurringTheme(profile, tag) {
-  if (!profile) return;
-  profile.longTermProfile = profile.longTermProfile || { 
-    recurring_themes: {}, 
-    mentioned_entities: {}, 
-    communication_style: "neutral" 
-  };
-  profile.longTermProfile.recurring_themes[tag] = (profile.longTermProfile.recurring_themes[tag] || 0) + 1;
+export function recordRecurringTheme(profile = {}, tag) {
+  try {
+    profile.longTermProfile = profile.longTermProfile || {
+      recurring_themes: {},
+      mentioned_entities: {},
+      communication_style: "neutral",
+    };
+    profile.longTermProfile.recurring_themes[tag] =
+      (profile.longTermProfile.recurring_themes[tag] || 0) + 1;
+  } catch (err) {
+    console.error("❌ THEME_RECORD_ERROR:", err);
+  }
+  return profile;
 }
 
 // ------------ Meta-Learning: Intent Thresholds ------------
@@ -133,7 +142,7 @@ export async function loadIntentThresholds() {
     const raw = await fs.readFile(THRESHOLDS_FILE, "utf8");
     return JSON.parse(raw || "{}");
   } catch (e) {
-    if (e.code === 'ENOENT') {
+    if (e.code === "ENOENT") {
       if (DEBUG) console.log("INFO: intent_thresholds.json not found. Creating a new one.");
       await saveIntentThresholds({});
       return {};
@@ -161,7 +170,7 @@ export async function loadOccurrenceCounters() {
     const raw = await fs.readFile(OCCURRENCE_FILE, "utf8");
     return JSON.parse(raw || "{}");
   } catch (e) {
-    if (e.code === 'ENOENT') {
+    if (e.code === "ENOENT") {
       if (DEBUG) console.log("INFO: occurrence_counters.json not found. Creating a new one.");
       await saveOccurrenceCounters({});
       return {};
@@ -181,3 +190,4 @@ export async function saveOccurrenceCounters(counters) {
     console.error("❌ STORAGE_ERROR: Failed to save occurrence counters:", e);
   }
 }
+
