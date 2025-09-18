@@ -1,28 +1,35 @@
-
 // intent_engine.js v15.1 - The Integrated Mind (Final Fix)
 // Now harmonized with the new semantic knowledge base and aware of psychological fingerprints.
 // Fixed an empty loop block causing a cryptic syntax error.
 
 import fs from "fs";
 import path from "path";
-import { DEBUG } from './config.js';
+// =================================================================
+// START: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
+import { DEBUG } from '../shared/config.js';
 import {
   normalizeArabic,
   tokenize,
   levenshtein,
   hasNegationNearby,
   hasEmphasisNearby
-} from './utils.js';
+} from '../shared/utils.js';
+// =================================================================
+// END: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
+
 
 // ------------------- Configuration -------------------
 const INTENTS_DIRS = [
   path.join(process.cwd(), "intents_new") // Focused on the final, processed directory.
 ];
 
-// Compatibility Fix: Use DATA_DIR for adaptive weights to work on Vercel
-const DATA_DIR = process.env.VERCEL_ENV ? path.join("/tmp", "data") : path.join(process.cwd(), "data");
+// Compatibility Fix: Use DATA_DIR from config, assuming it's correctly set up there.
+// We get DATA_DIR from config.js, so direct definition here is redundant if config is imported.
+import { DATA_DIR } from '../shared/config.js';
 const ADAPTIVE_WEIGHTS_FILE = path.join(DATA_DIR, "adaptive_weights.json");
-const SYNONYMS_FILE = path.join(process.cwd(), "synonyms.json");
+const SYNONYMS_FILE = path.join(process.cwd(), "knowledge", "synonyms.json"); // Updated path
 
 const DEFAULT_WEIGHTS = {
   wKeywords: 0.55,
