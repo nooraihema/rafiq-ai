@@ -1,5 +1,4 @@
-// config.js v14.0 - Enhanced Sensory Perception
-// Added contextual keywords for smarter entity extraction.
+// config.js v14.1 - Added AI Settings for Metacognitive Core
 
 import path from "path";
 
@@ -64,3 +63,25 @@ export const CONTEXTUAL_KEYWORDS = new Set([
     "علاقة", "تحدي", "خوف", "شعور", "احساس", "ضغط",
     "العمل", "الشغل", "الدراسة", "الجامعة", "البيت", "العائلة", "الزواج", "المال", "الفلوس", "الصحة"
 ]);
+
+
+// =================================================================
+// START: ADDITION - AI Settings for Dynamic Logic Engine
+// =================================================================
+/**
+ * Settings and probabilities for the metacognitive core (dynamic_logic_engine).
+ */
+export const AI_SETTINGS = {
+    CHANCES: {
+        EPSILON_GREEDY: 0.10,   // Probability to explore a random suggestion
+        COUNTERFACTUAL: 0.15,   // Probability to ask a "what if" question
+        SELF_DOUBT: 0.10,       // Probability to express self-doubt
+    },
+    INTENSITY_THRESHOLDS: {
+        SADNESS: 0.6,           // Intensity threshold to trigger special sadness response
+        ANXIETY: 0.7,           // Intensity threshold to trigger special anxiety response
+    }
+};
+// =================================================================
+// END: ADDITION
+// =================================================================
