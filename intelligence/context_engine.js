@@ -1,3 +1,4 @@
+
 // context_engine.js v15.1 - The Conscious Mind (Part 1.1: Memory Weighting + Smart Flags)
 // ------------------------------------------------------------------------------
 // Purpose:
@@ -18,9 +19,16 @@
 //   - turn.clarity_score (optional, 0..1)
 // ------------------------------------------------------------------------------
 
-import { DEBUG } from './config.js';
-import { MOTIVATIONAL_MAP } from './knowledge_base.js';
-import { getTimeOfDay, getDayOfWeek } from './utils.js';
+// =================================================================
+// START: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
+import { DEBUG } from '../shared/config.js';
+import { MOTIVATIONAL_MAP } from '../knowledge/knowledge_base.js';
+import { getTimeOfDay, getDayOfWeek } from '../shared/utils.js';
+// =================================================================
+// END: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
+
 
 // Tunable windows
 const MID_TERM_WINDOW = 15;   // number of recent turns to consider as "mid-term"
