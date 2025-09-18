@@ -43,7 +43,7 @@ import { constructDynamicResponse } from '../core/response_constructor.js';
 // =================================================================
 // START: NEW - HIPPOCAMPUS PROJECT IMPORTS (ADDITION)
 // =================================================================
-import { atomize } from '../hippocampus/KnowledgeAtomizer.js';
+import { atomize } from '../hippocampus/knowledgeAtomizer.js';
 import { MemoryGraph } from '../hippocampus/MemoryGraph.js';
 import { InferenceEngine } from '../hippocampus/InferenceEngine.js';
 // =================================================================
