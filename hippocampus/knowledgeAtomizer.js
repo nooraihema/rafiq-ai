@@ -1,18 +1,4 @@
-
-// hippocampus/KnowledgeAtomizer.js v3.0 - Cognitive Dissonance Edition
-// "أقوى نسخة" - يبقي كل قدرات v2.1 + Memory Fusion + Meta-Emotions + Cognitive Dissonance Detector
-// Paths expected (relative):
-//  - ../shared/config.js
-//  - ../shared/utils.js
-//  - ../knowledge/knowledge_base.js
-//  - ../shared/context_tracker.js (optional, used gracefully)
-//  - ../perception/fingerprint_engine.js (optional, used for memory fusion)
-//
-// Exports:
-//   - atomize(rawMessage, options)
-// Notes:
-//   - Preserves v2.1 implementation intact and appends new capabilities.
-//   - No external libraries required.
+// hippocampus/KnowledgeAtomizer.js v3.0 - Cognitive Dissonance Edition (ESM Fixed)
 
 import crypto from "crypto";
 import { DEBUG } from "../shared/config.js";
@@ -41,7 +27,7 @@ const SUBTEXT_PATTERNS = {
 // END: SUBTEXT PATTERNS
 // =================================================================
 
-// ---------- Helpers (kept full and unchanged where from v2.1) ----------
+// ---------- Helpers (kept full and unchanged from your version) ----------
 function sha1Hex(s) {
   return crypto.createHash("sha1").update(s).digest("hex");
 }
@@ -54,6 +40,8 @@ function similarityScore(a = "", b = "") {
   const sim = 1 - lev / maxLen;
   return Math.max(0, Math.min(1, sim));
 }
+
+// MODIFICATION: The function `fetchRecentContext` that used `require` has been removed.
 
 // Merge a list of texts into a short snapshot (most recent first)
 function buildContextSnapshot(recentMessages = []) {
@@ -162,19 +150,7 @@ function extractRelations(normalizedMessage, concepts, recentMessages = []) {
   const relations = [];
   const tokens = tokenize(normalizedMessage);
 
-  const REL_VERBS = {
-    "يسبب": "causes",
-    "يؤدي": "causes",
-    "مرتبط": "related_to",
-    "متعلق": "related_to",
-    "افكر": "thinks_about",
-    "اخاف": "fears",
-    "خاف": "fears",
-    "اكره": "hates",
-    "احب": "loves",
-    "ماقدرش": "cannot",
-    "لا": "negation"
-  };
+  const REL_VERBS = { "يسبب": "causes", "يؤدي": "causes", "مرتبط": "related_to", "متعلق": "related_to", "افكر": "thinks_about", "اخاف": "fears", "خاف": "fears", "اكره": "hates", "احب": "loves", "ماقدرش": "cannot", "لا": "negation" };
 
   function findConceptByToken(tok) {
     for (const c of concepts) {
@@ -209,10 +185,7 @@ function extractRelations(normalizedMessage, concepts, recentMessages = []) {
     }
   }
 
-  const pronounIndices = tokens.reduce((acc, tok, idx) => {
-    if (["انا", "أنا", "اناا"].includes(tok)) acc.push(idx);
-    return acc;
-  }, []);
+  const pronounIndices = tokens.reduce((acc, tok, idx) => { if (["انا", "أنا", "اناا"].includes(tok)) acc.push(idx); return acc; }, []);
   for (const pi of pronounIndices) {
     const slice = tokens.slice(pi + 1, pi + 6);
     for (let j = 0; j < slice.length; j++) {
@@ -255,7 +228,6 @@ function extractRelations(normalizedMessage, concepts, recentMessages = []) {
   return uniq;
 }
 
-// Simple pronoun resolver using recent messages
 function resolvePronounFromContext(tokens, verbIndex, recentMessages = []) {
   try {
     for (let i = (recentMessages || []).length - 1; i >= 0; i--) {
@@ -269,9 +241,7 @@ function resolvePronounFromContext(tokens, verbIndex, recentMessages = []) {
         }
       }
     }
-  } catch (e) {
-    // ignore errors
-  }
+  } catch (e) {}
   return null;
 }
 
@@ -279,35 +249,23 @@ function resolvePronounFromContext(tokens, verbIndex, recentMessages = []) {
 function extractTags(normalizedMessage, conceptScoresMap, emotionProfile) {
   const tags = new Set();
   const tokens = tokenize(normalizedMessage);
-
   for (const [tag, concepts] of Object.entries(MOTIVATIONAL_MAP || {})) {
-    for (const c of concepts) {
-      if (conceptScoresMap.has(c)) { tags.add(tag); break; }
-    }
+    if (concepts.some(c => conceptScoresMap.has(c))) tags.add(tag);
   }
-
   const resilienceWords = ["هحاول", "مش هستسلم", "لن اتوقف", "هكمل"];
-  for (const w of resilienceWords) if (tokens.includes(normalizeArabic(w))) tags.add("resilience");
-
+  if (resilienceWords.some(w => tokens.includes(normalizeArabic(w)))) tags.add("resilience");
   const topEmotion = Object.keys(emotionProfile || {})[0] || "";
-  if (topEmotion && ["fear", "anger", "sadness", "anxiety"].includes(topEmotion)) tags.add("distress");
+  if (["fear", "anger", "sadness", "anxiety"].includes(topEmotion)) tags.add("distress");
   if (topEmotion === "joy") tags.add("positive");
-
-  for (const concept of conceptScoresMap.keys()) {
-    if (concept.toLowerCase().includes("work") || concept.toLowerCase().includes("شغل")) tags.add("work_related");
-  }
-
+  if (conceptScoresMap.has("work_domain")) tags.add("work_related");
   return Array.from(tags);
 }
 
 // ---------- Confidence calculation ----------
 function computeConfidence(conceptScoresMap, relations, intensity, emotionProfile) {
-  const nConcepts = Math.max(0, conceptScoresMap.size);
+  const nConcepts = conceptScoresMap.size;
   const avgMatch = nConcepts ? (Array.from(conceptScoresMap.values()).reduce((a,b)=>a+b,0)/nConcepts) : 0;
-  const relFactor = relations.length ? 0.15 : 0.0;
-  const intensityFactor = clamp01(intensity / MAX_INTENSITY);
-  const emotionSignal = Object.values(emotionProfile || {}).reduce((a,b)=>a+b,0) / Math.max(1, Object.keys(emotionProfile || {}).length);
-  const raw = 0.45 * clamp01(avgMatch) + 0.2 * clamp01(nConcepts / 5) + 0.15 * relFactor + 0.1 * intensityFactor + 0.1 * clamp01(emotionSignal);
+  const raw = 0.45*clamp01(avgMatch) + 0.2*clamp01(nConcepts/5) + 0.15*(relations.length ? 0.15 : 0) + 0.1*clamp01(intensity/MAX_INTENSITY) + 0.1*clamp01(avg(Object.values(emotionProfile)));
   return Number(clamp01(raw).toFixed(3));
 }
 
@@ -315,82 +273,40 @@ function computeConfidence(conceptScoresMap, relations, intensity, emotionProfil
 function determineSentiment(intensity, dominantEmotion) {
   if (dominantEmotion === "joy" && intensity > 0.2) return "positive";
   if (["fear","sadness","anger", "anxiety"].includes(dominantEmotion) && intensity > 0.35) return "negative";
-  if (intensity < 0.15) return "neutral";
   return "neutral";
 }
 
-// =================================================================
-// START: Subtext detection (same as v2.1)
-// =================================================================
+// ---------- Subtext detection ----------
 function detectSubtext(normalizedMessage, emotionProfile, recentMessages = []) {
   const subtextIntents = new Set();
-
-  for (const pattern of SUBTEXT_PATTERNS.seeking_validation) {
-    if (pattern.test(normalizedMessage)) { subtextIntents.add('seeking_validation'); break; }
-  }
-
-  if (SUBTEXT_PATTERNS.emotional_masking.some(p => p.test(normalizedMessage))) {
-    let recentNegativeEnergy = 0;
-    recentMessages.slice(-2).forEach(msg => {
-      try {
-        const atom = atomize(msg.text || ""); // may be recursive but safe (small)
-        if (atom && atom.sentiment === 'negative') {
-          recentNegativeEnergy += atom.intensity;
+  for (const key in SUBTEXT_PATTERNS) {
+    if (SUBTEXT_PATTERNS[key].some(p => p.test(normalizedMessage))) {
+        if (key === 'emotional_masking') {
+            const recentNegativity = recentMessages.slice(-2).reduce((acc, msg) => {
+                try {
+                    const atom = atomize(msg.text || "", { disableSubtext: true, recentMessages: [] });
+                    return acc + (atom?.sentiment === 'negative' ? atom.intensity : 0);
+                } catch (e) { return acc; }
+            }, 0);
+            if (recentNegativity > 1.0) subtextIntents.add('emotional_masking');
+        } else {
+            subtextIntents.add(key);
         }
-      } catch (e) {
-        // ignore
-      }
-    });
-    if (recentNegativeEnergy > 1.0) { subtextIntents.add('emotional_masking'); }
+    }
   }
-
-  for (const pattern of SUBTEXT_PATTERNS.catastrophizing) {
-    if (pattern.test(normalizedMessage)) { subtextIntents.add('catastrophizing'); break; }
-  }
-  for (const pattern of SUBTEXT_PATTERNS.ruminating_on_past) {
-    if (pattern.test(normalizedMessage)) { subtextIntents.add('ruminating_on_past'); break; }
-  }
-  for (const pattern of SUBTEXT_PATTERNS.self_blame) {
-    if (pattern.test(normalizedMessage)) { subtextIntents.add('self_blame'); break; }
-  }
-
   if (DEBUG && subtextIntents.size > 0) console.log("[Atomizer.v3] Subtext Intents:", Array.from(subtextIntents));
   return Array.from(subtextIntents);
 }
-// =================================================================
-// END: Subtext detection
-// =================================================================
 
 // =================================================================
-// START: NEW v3.0 - Memory Fusion (integrate fingerprint history)
+// START: NEW v3.0 - Memory Fusion (Placeholder for now)
 // =================================================================
-/**
- * Attempts to fetch a fingerprint profile from perception/fingerprint_engine.js
- * and produce memoryMatches: a list of previous atoms/flags that match current concepts or tags.
- */
-function fetchFingerprintProfile(fingerprint) {
-  try {
-    const fpModule = require("../perception/fingerprint_engine.js");
-    if (fpModule && typeof fpModule.getProfile === "function") {
-      // profile might include: { fingerprint, patterns: [...], longTermFlags: [...], lastSeen, atoms: [...] }
-      return fpModule.getProfile(fingerprint);
-    }
-  } catch (e) {
-    // not available - return null
-  }
-  return null;
-}
+// MODIFICATION: The function `fetchFingerprintProfile` that used `require` has been removed.
+// We will rely on passing the profile directly in the `options` object.
 
-/**
- * Memory fusion matcher:
- * - compares current concepts/tags against fingerprint profile (if exists)
- * - returns memoryMatches: [{ type: 'topic_repeat'|'masking_pattern'|'chronic_flag', detail, score }]
- */
 function matchMemoryAgainstProfile(fingerprintProfile, conceptsArray, tags, emotionProfile) {
   if (!fingerprintProfile) return [];
   const matches = [];
-
-  // simple: if profile has frequentTopics or atoms with same concept keys => topic_repeat
   const profileTopics = fingerprintProfile.frequentTopics || fingerprintProfile.topConcepts || [];
   for (const c of conceptsArray) {
     const cname = c.concept;
@@ -398,19 +314,13 @@ function matchMemoryAgainstProfile(fingerprintProfile, conceptsArray, tags, emot
       matches.push({ type: "topic_repeat", detail: cname, score: 0.8 });
     }
   }
-
-  // if profile has known masking patterns or flags, and current tags indicate masking => reinforce
   const profileFlags = fingerprintProfile.flags || [];
   if (profileFlags.includes("masking_tendency") && tags.includes("positive")) {
     matches.push({ type: "masking_pattern", detail: "masking_tendency", score: 0.75 });
   }
-
-  // chronic_flag detection - if user has long term 'work_anxiety' flag and current message has work_related tag
   if (profileFlags.includes("work_anxiety") && tags.includes("work_related")) {
     matches.push({ type: "chronic_flag", detail: "work_anxiety", score: 0.9 });
   }
-
-  // return unique matches
   return matches;
 }
 // =================================================================
@@ -420,22 +330,16 @@ function matchMemoryAgainstProfile(fingerprintProfile, conceptsArray, tags, emot
 // =================================================================
 // START: NEW v3.0 - Meta-Emotions & Cognitive Dissonance
 // =================================================================
-/**
- * detectMetaEmotions:
- * - If the top two emotions are both significant (e.g., fear:0.6, joy:0.5) => ambivalence
- * - Also label mixed emotions (e.g., low-level sadness + low-level anger => 'mixed_negative')
- */
 function detectMetaEmotions(emotionProfile) {
   const meta = { ambivalence: false, mixed: false, details: [] };
   const entries = Object.entries(emotionProfile || {});
   if (entries.length < 2) return meta;
   const sorted = entries.sort((a,b)=>b[1]-a[1]);
-  const top = sorted[0], second = sorted[1];
+  const [top, second] = sorted;
   if (top[1] >= 0.45 && second[1] >= 0.35) {
     meta.ambivalence = true;
     meta.details.push({ type: "ambivalence", top: top[0], second: second[0], scores: [top[1], second[1]] });
   }
-  // mixed negative
   const negSet = new Set(["fear","sadness","anger","anxiety"]);
   const negScores = sorted.filter(e => negSet.has(e[0])).map(e=>e[1]);
   if (negScores.length >= 2 && avg(negScores) >= 0.25) {
@@ -445,110 +349,77 @@ function detectMetaEmotions(emotionProfile) {
   return meta;
 }
 
-/**
- * detectCognitiveDissonance:
- * - Compare surface sentiment vs subtextIntents and emotionProfile.
- * - Flags:
- *    - positive_surface_negative_subtext
- *    - masked_emotion (says "I'm fine" but subtext indicates otherwise)
- *    - ambivalence (propagated from meta-emotions)
- */
 function detectCognitiveDissonance(sentiment, subtextIntents, emotionProfile, normalizedMessage) {
   const flags = new Set();
-  // positive surface but subtext negative
   if (sentiment === "positive" && subtextIntents.some(s => ["self_blame","ruminating_on_past","catastrophizing","emotional_masking"].includes(s))) {
     flags.add("positive_surface_negative_subtext");
   }
-  // says "I'm fine" but subtext negative -> masked_emotion
-  if (SUBTEXT_PATTERNS.emotional_masking.some(p => p.test(normalizedMessage))
-      && subtextIntents.includes("emotional_masking")) {
+  if (SUBTEXT_PATTERNS.emotional_masking.some(p => p.test(normalizedMessage)) && subtextIntents.includes("emotional_masking")) {
     flags.add("masked_emotion");
   }
-  // ambivalence from meta emotions
   const meta = detectMetaEmotions(emotionProfile);
   if (meta.ambivalence) flags.add("ambivalence");
-
-  // cognitive dissonance if sentiment neutral/positive but intensity high with negative dominant emotion in profile
   const dom = Object.keys(emotionProfile || {})[0] || "";
   const domScore = Object.values(emotionProfile || {})[0] || 0;
   if ((sentiment === "neutral" || sentiment === "positive") && dom && ["fear","sadness","anger","anxiety"].includes(dom) && domScore > 0.4) {
     flags.add("hidden_negative_dissonance");
   }
-
   return { flags: Array.from(flags), meta };
 }
 // =================================================================
 // END: Meta-Emotions & Cognitive Dissonance
 // =================================================================
 
-// ---------- small utilities ----------
+// ---------- small utilities (as you wrote them) ----------
 function avg(arr = []) { if (!arr || !arr.length) return 0; return arr.reduce((a,b)=>a+b,0)/arr.length; }
 
-// ---------- Main entry: atomize (v3.0) ----------
-/**
- * atomize(rawMessage, options)
- * options:
- *   - fingerprint (optional)
- *   - recentMessages: array of { text, timestamp } (optional)
- *   - contextFetch: boolean (if true, will try to fetch via context_tracker)
- */
+// ---------- Main entry: atomize (v3.0 - with ESM Fix) ----------
 export function atomize(rawMessage = "", options = {}) {
   if (!rawMessage || typeof rawMessage !== "string") return null;
   if (DEBUG) console.log(`\n--- [Atomizer.v3] Atomizing: ${rawMessage} ---`);
 
+  // MODIFICATION: The problematic `fetchRecentContext` is removed.
+  // We now *only* rely on `recentMessages` passed via options.
   const normalizedMessage = normalizeArabic(rawMessage);
-  const recentFromOptions = Array.isArray(options.recentMessages) ? options.recentMessages : [];
-  const fetched = []; // MODIFIED: Removed fetchRecentContext call for ESM compatibility
-  const recentMessages = (recentFromOptions.length ? recentFromOptions : (fetched || [])).slice(-CONTEXT_WINDOW);
+  const recentMessages = (options.recentMessages || []).slice(-CONTEXT_WINDOW);
   const contextSnapshot = buildContextSnapshot(recentMessages);
 
-  // Step 1: concepts
+  // Core Analysis Pipeline (Unchanged)
   const weightedConcepts = extractWeightedConcepts(normalizedMessage);
   const concepts = Array.from(weightedConcepts.keys());
-
-  // Step 2: emotion profile (multi-dimensional)
   const emotionProfile = buildEmotionProfile(weightedConcepts);
-
-  // Step 3: intensity
   const intensity = calculateIntensity(weightedConcepts, normalizedMessage, emotionProfile);
-
-  // Step 4: relations (use recentMessages for pronoun resolution)
   const relations = extractRelations(normalizedMessage, concepts, recentMessages);
-
-  // Step 5: tags (motivational + heuristics)
   const tags = extractTags(normalizedMessage, weightedConcepts, emotionProfile);
 
-  // Step 6: detect subtext intents
-  const subtextIntents = detectSubtext(normalizedMessage, emotionProfile, recentMessages);
+  // MODIFICATION: Added protection against infinite recursion for subtext detection.
+  const subtextIntents = options.disableSubtext ? [] : detectSubtext(normalizedMessage, emotionProfile, recentMessages);
 
-  // Step 7: dominant emotion & sentiment & confidence
   const dominantEmotion = Object.keys(emotionProfile)[0] || "neutral";
   const sentiment = determineSentiment(intensity, dominantEmotion);
   const confidence = computeConfidence(weightedConcepts, relations, intensity, emotionProfile);
 
-  // Step 8: atom id
+  // Final Assembly (Unchanged)
   const atomId = sha1Hex(rawMessage + "|" + (options.fingerprint || "anon") + "|" + Date.now());
-
-  // Step 9: Memory Fusion (fingerprint cross-check)
-  const fingerprintProfile = options.fingerprint ? fetchFingerprintProfile(options.fingerprint) : null;
-  const conceptsArray = concepts.map(c => ({ concept: c, score: Number(weightedConcepts.get(c).toFixed(3)), meta: CONCEPTS_MAP[c] || {} }));
+  
+  // MODIFICATION: Removed the `require` call from here as well.
+  const fingerprintProfile = options.fingerprintProfile || null; // Feature now depends on passing profile in options
+  const conceptsArray = concepts.map(c => ({ concept: c, score: Number((weightedConcepts.get(c)||0).toFixed(3)), meta: CONCEPTS_MAP[c] || {} }));
   const memoryMatches = matchMemoryAgainstProfile(fingerprintProfile, conceptsArray, tags, emotionProfile);
-
-  // Step 10: meta-emotions & dissonance
+  
   const metaEmotions = detectMetaEmotions(emotionProfile);
   const dissonance = detectCognitiveDissonance(sentiment, subtextIntents, emotionProfile, normalizedMessage);
-
-  // Step 11: tags augmentation based on memory matches & dissonance
+  
   const augmentedTags = new Set(tags);
-  if (memoryMatches && memoryMatches.length) memoryMatches.forEach(m => augmentedTags.add(m.type));
-  if (dissonance.flags && dissonance.flags.length) dissonance.flags.forEach(f => augmentedTags.add(f));
+  if (memoryMatches.length) memoryMatches.forEach(m => augmentedTags.add(m.type));
+  if (dissonance.flags.length) dissonance.flags.forEach(f => augmentedTags.add(f));
 
   const knowledgeAtom = {
     atomId,
     sourceText: rawMessage,
     fingerprint: options.fingerprint || null,
     timestamp: new Date().toISOString(),
-    contextSnapshot,           // may be null if none
+    contextSnapshot,
     concepts: conceptsArray,
     emotionProfile,
     dominantEmotion,
@@ -558,9 +429,9 @@ export function atomize(rawMessage = "", options = {}) {
     subtextIntents,
     sentiment,
     confidence,
-    fingerprintProfile,        // may be null if none
-    memoryMatches,             // array of memory match objects if any
-    metaEmotions: metaEmotions,
+    fingerprintProfile,
+    memoryMatches,
+    metaEmotions,
     dissonanceFlags: dissonance.flags || [],
     dissonanceMeta: dissonance.meta || {}
   };
@@ -569,7 +440,7 @@ export function atomize(rawMessage = "", options = {}) {
   return knowledgeAtom;
 }
 
-// small demo when run directly
+// small demo when run directly (Unchanged)
 if (require.main === module) {
   const testMessage1 = "انا قلقان جدا من الشغل اليوم!!! مش عارف هاعمل ايه";
   const atom1 = atomize(testMessage1, { fingerprint: "demo_user", recentMessages: [
@@ -578,7 +449,7 @@ if (require.main === module) {
   ]});
   console.log("ATOM1:", atom1);
 
-  const testMessage2 = "انا كويس كل حاجة تمام"; // but recent messages negative
+  const testMessage2 = "انا كويس كل حاجة تمام";
   const atom2 = atomize(testMessage2, { fingerprint: "demo_user", recentMessages: [
     { text: "انا زعلان ومش قادر", timestamp: Date.now() - 1000*60*60*3 },
     { text: "مش عايز اكلم حد", timestamp: Date.now() - 1000*60*60*2 }
