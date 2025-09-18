@@ -441,7 +441,7 @@ export class InferenceEngine {
 }
 
 // ----------------- quick demo when run directly (node) -----------------
-if (require.main === module) {
+// if (require.main === module) {
   (async () => {
     // This demo expects a MemoryGraph instance to exist at ../hippocampus/MemoryGraph.js and be initialized.
     try {
