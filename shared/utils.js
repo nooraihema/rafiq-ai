@@ -3,7 +3,14 @@
 
 import fs from 'fs';
 import path from 'path';
+// =================================================================
+// START: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
 import { STOPWORDS, NEGATORS, EMPHASIS, MOOD_KEYWORDS, CRITICAL_KEYWORDS, CONTEXTUAL_KEYWORDS } from './config.js';
+// =================================================================
+// END: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
+
 
 // =================================================================
 // START: SEMANTIC KNOWLEDGE BASE LOADER (NEW in v15.0)
@@ -14,7 +21,8 @@ let REVERSE_SEMANTIC_MAP = {};
 
 function loadSemanticKnowledgeBase() {
     try {
-        const synonymsPath = path.join(process.cwd(), 'synonyms.json');
+        // Updated path to the synonyms file in the knowledge directory
+        const synonymsPath = path.join(process.cwd(), 'knowledge', 'synonyms.json');
         const raw = fs.readFileSync(synonymsPath, 'utf8');
         const parsed = JSON.parse(raw);
 
@@ -221,7 +229,7 @@ export function cairoGreetingPrefix() {
   const now = new Date();
   const cairoHour = (now.getUTCHours() + 2) % 24;
   if (cairoHour >= 5 && cairoHour < 12) return "صباح الخير";
-  if (cairoHour >= 12 && cairoHour < 17) return "مساء الخير";
+  if (cairoHour >= 12 && cairoHour < 17) return "مساء النور";
   return "مساء النور";
 }
 export function adaptReplyBase(reply, userProfile, mood) {
