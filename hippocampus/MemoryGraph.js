@@ -601,7 +601,7 @@ export function normalizeArabicLocal(text = "") {
 }
 
 // ----------------- Quick demo runner when executed directly -----------------
-if (require.main === module) {
+// if (require.main === module) {
   (async () => {
     await memoryGraph.initialize();
     // small demo atom (mock)
@@ -620,4 +620,3 @@ if (require.main === module) {
     console.log("Stats:", memoryGraph.getStats());
     await memoryGraph.persist();
   })();
-}
