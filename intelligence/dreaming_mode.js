@@ -1,5 +1,3 @@
-
-
 // dreaming_mode.js v6.0 - Sentient Dream Weaver (Merged Beast)
 // Purpose: Comprehensive autonomous dreaming engine:
 //  - produces insights (dreams) from emotion curve & graph
@@ -8,7 +6,7 @@
 //  - decay (forgetting) with configurable rates
 //  - meta-dreams (dreams from dreams) and meta-clustering
 //  - integrates strongest insights into user_profiles.json (uses fingerprint)
-// Storage files auto-created under ./memory:
+// Storage files auto-created under ./data:
 //  - emotions_curve.json
 //  - emotions_graph.json
 //  - dreams.json
@@ -30,9 +28,17 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 
+// =================================================================
+// START: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
 // -------------------- Configuration --------------------
-const DATA_DIR = path.join(process.cwd(), "memory");
+// Path to the data directory (as per user specification)
+const DATA_DIR = path.join(process.cwd(), "data");
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+// =================================================================
+// END: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
+
 
 const FILES = {
   CURVE: path.join(DATA_DIR, "emotions_curve.json"),
@@ -498,13 +504,15 @@ export default {
 };
 
 // -------------------- quick demo when run directly --------------------
-if (require.main === module) {
-  (async () => {
-    console.log("Running dreaming_mode demo (v6.0) ...");
-    const res = await runDreamingMode({ fingerprint: null, force: true, maxClusters: 4 });
-    console.log("Result: produced:", res.produced, "reinforced:", res.reinforced);
-    console.log("Top meta-dreams:", res.metaDreams.map(m => ({ id: m.id, confidence: m.confidence, summary: m.summary })));
-    const recent = getDreams({ sinceDays: 30 }).slice(0,5).map(summarizeDream);
-    console.log("Recent dreams sample:", recent);
-  })();
-}
+// This check might fail if using ES modules without specific config.
+// For library use, this part is not critical.
+// if (require.main === module) {
+//   (async () => {
+//     console.log("Running dreaming_mode demo (v6.0) ...");
+//     const res = await runDreamingMode({ fingerprint: null, force: true, maxClusters: 4 });
+//     console.log("Result: produced:", res.produced, "reinforced:", res.reinforced);
+//     console.log("Top meta-dreams:", res.metaDreams.map(m => ({ id: m.id, confidence: m.confidence, summary: m.summary })));
+//     const recent = getDreams({ sinceDays: 30 }).slice(0,5).map(summarizeDream);
+//     console.log("Recent dreams sample:", recent);
+//   })();
+// }
