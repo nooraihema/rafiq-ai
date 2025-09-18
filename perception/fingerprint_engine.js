@@ -436,4 +436,4 @@ export function summarizeFingerprint(fp) {
     flags: fp.diagnostics.flags,
     trend: fp.diagnostics.trend
   };
-}```
+}
