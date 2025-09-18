@@ -5,24 +5,46 @@
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
+
+// =================================================================
+// START: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
 import {
   cosineSimilarity,
   normalizeVector,
   movingAverage,
   linearRegression,
-} from "./utils/math_tools.js";
-import { extractEmotionVector, extractKeywords } from "./utils/nlp_emotion.js";
+} from "../shared/utils/math_tools.js"; // Assuming math_tools is now in shared/utils
+import { extractEmotionVector, extractKeywords } from "../shared/utils/nlp_emotion.js"; // Assuming nlp_emotion is now in shared/utils
 
 // 📂 ملفات التخزين
-const EMOTION_LOG = path.join("memory", "emotions_curve.json");
-const EMOTION_GRAPH = path.join("memory", "emotions_graph.json");
+// Path to the data directory (as per user specification)
+const EMOTION_LOG = path.join("data", "emotions_curve.json");
+const EMOTION_GRAPH = path.join("data", "emotions_graph.json");
+// =================================================================
+// END: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
 
 // 🧩 تحميل/حفظ
 function loadData(file) {
+  // Ensure the data directory exists before reading
+  const dir = path.dirname(file);
+  if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+  }
   if (!fs.existsSync(file)) return [];
-  return JSON.parse(fs.readFileSync(file, "utf-8"));
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf-8"));
+  } catch (e) {
+    return []; // Return empty array on parsing error
+  }
 }
 function saveData(file, data) {
+  // Ensure the data directory exists before writing
+  const dir = path.dirname(file);
+  if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+  }
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
 
@@ -46,6 +68,11 @@ function evolveCurve(curve, snapshot) {
   if (curve.length === 0) return [snapshot];
 
   const last = curve[curve.length - 1];
+  // Ensure vectors exist before comparing
+  if (!last.vector || !snapshot.vector) {
+      curve.push(snapshot);
+      return curve;
+  }
   const sim = cosineSimilarity(last.vector, snapshot.vector);
 
   if (sim > 0.94) {
@@ -53,7 +80,7 @@ function evolveCurve(curve, snapshot) {
     last.vector = last.vector.map((v, i) =>
       parseFloat(((v + snapshot.vector[i]) / 2).toFixed(4))
     );
-    last.keywords = [...new Set([...last.keywords, ...snapshot.keywords])];
+    last.keywords = [...new Set([...(last.keywords || []), ...(snapshot.keywords || [])])];
     last.timestamp = snapshot.timestamp;
   } else {
     curve.push(snapshot);
@@ -70,7 +97,8 @@ function detectTrends(curve) {
   const trends = [];
 
   emotions.forEach((emo, idx) => {
-    const values = curve.slice(-7).map(p => p.vector[idx]);
+    const values = curve.slice(-7).map(p => (p.vector && p.vector[idx]) ? p.vector[idx] : 0);
+    if(values.length < 3) return; // Need at least 3 points for moving average
     const slope = linearRegression(values);
     const avg = movingAverage(values, 3);
 
@@ -87,8 +115,11 @@ function forecastNext(curve) {
   if (curve.length < 6) return null;
 
   const last = curve.slice(-6);
+  // Ensure the first point has a vector
+  if(!last[0].vector) return null;
+
   return last[0].vector.map((_, idx) => {
-    const seq = last.map(p => p.vector[idx]);
+    const seq = last.map(p => (p.vector && p.vector[idx]) ? p.vector[idx] : 0);
     const slope = linearRegression(seq);
     return Math.min(Math.max(seq[seq.length - 1] + slope, 0), 1);
   });
@@ -99,6 +130,8 @@ function detectShocks(curve) {
   if (curve.length < 2) return [];
   const last = curve[curve.length - 1].vector;
   const prev = curve[curve.length - 2].vector;
+  
+  if (!last || !prev) return []; // Ensure vectors exist
 
   const diff = last.map((v, i) => v - prev[i]);
   return diff
@@ -113,6 +146,8 @@ function detectShocks(curve) {
 // 🌌 شبكة الذاكرة العاطفية (Graph Memory)
 function updateGraph(graph, snapshot) {
   const emotions = ["قلق", "فرح", "حزن", "غضب", "أمل", "فضول"];
+  
+  if(!snapshot.keywords || !snapshot.vector) return graph;
 
   snapshot.keywords.forEach(word => {
     emotions.forEach((emo, idx) => {
