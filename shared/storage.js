@@ -1,10 +1,15 @@
-
 // storage.js v14.0 - Asynchronous & Resilient Storage (with Meta-Learning)
 
 import fs from 'fs/promises';
 import crypto from "crypto";
 import path from "path";
+// =================================================================
+// START: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
 import { DATA_DIR, USERS_FILE, LEARNING_QUEUE_FILE, DEBUG } from './config.js';
+// =================================================================
+// END: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
 
 const THRESHOLDS_FILE = path.join(DATA_DIR, "intent_thresholds.json");
 const OCCURRENCE_FILE = path.join(DATA_DIR, "occurrence_counters.json");
