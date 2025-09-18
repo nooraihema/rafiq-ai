@@ -454,5 +454,4 @@ export class InferenceEngine {
       console.error("Demo failed - ensure MemoryGraph available and initialized.", e);
     }
   })();
-}
 
