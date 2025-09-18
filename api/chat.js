@@ -1,21 +1,17 @@
-// chat.js vΩ+1 - The Fully Integrated Metacognitive Conductor
-// This is the final orchestrator that integrates all advanced engines:
-// Context Tracker, Fingerprint Engine, Metacognitive Core, and the Meta Router,
-// while preserving the battle-tested safety and fallback mechanisms.
+// chat.js vΩ+2 - The Conscious & Self-Aware Conductor
+// Integrates the Hippocampus Project (Atomizer, MemoryGraph, InferenceEngine)
+// to give Rafiq a true, persistent, and introspective memory.
 
 // =================================================================
-// START: PATH UPDATES FOR NEW STRUCTURE
+// START: CORE IMPORTS (Paths as per your structure)
 // =================================================================
 import { DEBUG, SHORT_MEMORY_LIMIT, LONG_TERM_LIMIT } from '../shared/config.js';
-// ===== Essential utilities only =====
 import {
   detectCritical,
   criticalSafetyReply,
   tokenize,
-  normalizeArabic // Kept for legacy compatibility if needed
+  normalizeArabic
 } from '../shared/utils.js';
-// ===== End essential utilities =====
-
 import {
   loadUsers,
   saveUsers,
@@ -34,30 +30,35 @@ import {
   getTopIntents,
   registerIntentSuccess
 } from '../perception/intent_engine.js';
-
-// =================================================================
-// START: IMPORTING THE NEW COGNITIVE ARCHITECTURE (v5.0+)
-// =================================================================
-// The old composition engine is replaced by the new metacognitive core.
-// The meta_router will handle the other engines (learning, emotion, dreaming).
 import { executeMetacognitiveCore } from '../core/dynamic_logic_engine.js';
 import { processMeta } from '../coordination/meta_router.js';
-// Legacy imports for context and fingerprinting remain
-import { ContextTracker } from '../shared/context_tracker.js'; // Assuming it's in shared now
+import { ContextTracker } from '../shared/context_tracker.js';
 import { generateFingerprintV2 as generateFingerprint } from '../perception/fingerprint_engine.js';
-import { constructDynamicResponse } from '../core/response_constructor.js'; // Kept as a critical fallback
+import { constructDynamicResponse } from '../core/response_constructor.js';
 // =================================================================
-// END: IMPORTING THE NEW COGNITIVE ARCHITECTURE
+// END: CORE IMPORTS
+// =================================================================
+
+
+// =================================================================
+// START: NEW - HIPPOCAMPUS PROJECT IMPORTS (ADDITION)
+// =================================================================
+import { atomize } from '../hippocampus/KnowledgeAtomizer.js';
+import { MemoryGraph } from '../hippocampus/MemoryGraph.js';
+import { InferenceEngine } from '../hippocampus/InferenceEngine.js';
+// =================================================================
+// END: NEW - HIPPOCAMPUS PROJECT IMPORTS
 // =================================================================
 
 
 // --- Initialization ---
 buildIndexSync();
 
-// --- ContextTrackers per runtime (not persisted as class instances) ---
-const CONTEXT_TRACKERS = new Map(); // userId -> ContextTracker instance
+// --- In-memory instances for performance ---
+const CONTEXT_TRACKERS = new Map();
+const USER_MEMORY_GRAPHS = new Map(); // <-- ADDITION
 
-// --- Thresholds & constants (Preserving your battle-tested values) ---
+// --- Thresholds & constants (Unchanged) ---
 const CONFIDENCE_BASE_THRESHOLD = 0.40;
 const AMBIGUITY_MARGIN = 0.10;
 const MULTI_INTENT_THRESHOLD = 0.55;
@@ -65,11 +66,11 @@ const CLARIFICATION_VALID_CHOICES = /^[1-9][0-9]*$/;
 const DIAGNOSTIC_MIN_SCORE = 0.05;
 const DIAGNOSTIC_VISIBLE_TO_USER = true;
 
-// --- Internal State for Meta-Learning ---
+// --- Internal State for Meta-Learning (Unchanged) ---
 let INTENT_THRESHOLDS = {};
 let OCCURRENCE_COUNTERS = {};
 
-// --- Meta-Learning Initialization ---
+// --- Meta-Learning Initialization (Unchanged) ---
 (async () => {
   INTENT_THRESHOLDS = await loadIntentThresholds() || {};
   OCCURRENCE_COUNTERS = await loadOccurrenceCounters() || {};
@@ -80,7 +81,7 @@ let OCCURRENCE_COUNTERS = {};
   }
 })();
 
-// --- Meta-Learning Helpers (Preserved) ---
+// --- Meta-Learning Helpers (Unchanged - YOUR FULL CODE) ---
 function getThresholdForTag(tag) {
   if (!tag) return CONFIDENCE_BASE_THRESHOLD;
   const val = INTENT_THRESHOLDS[tag];
@@ -109,7 +110,7 @@ async function incrementOccurrence(tag) {
   await saveOccurrenceCounters(OCCURRENCE_COUNTERS);
 }
 
-// --- Diagnostic Builders (Preserved) ---
+// --- Diagnostic Builders (Unchanged - YOUR FULL CODE) ---
 function buildClarificationPrompt(options) {
   let question = "لم أكن متأكدًا تمامًا مما تقصده. هل يمكنك توضيح ما إذا كنت تقصد أحد هذه المواضيع؟\n";
   const lines = options.map((opt, i) => {
@@ -136,7 +137,7 @@ export default async function handler(req, res) {
     const rawMessage = (body.message || "").toString().trim();
     if (!rawMessage) return res.status(400).json({ error: "Empty message" });
     
-    // Step 1: Load User and Initialize Context
+    // Step 1: Load User and Initialize Context (Unchanged)
     let users = await loadUsers();
     let userId = body.userId || null;
     if (!userId || !users[userId]) {
@@ -145,6 +146,25 @@ export default async function handler(req, res) {
     }
     const profile = users[userId];
     profile.lastSeen = new Date().toISOString();
+
+    // =================================================================
+    // START: NEW - HIPPOCAMPUS INTEGRATION BLOCK (ADDITION)
+    // =================================================================
+    let userMemory = USER_MEMORY_GRAPHS.get(userId);
+    if (!userMemory) {
+        userMemory = new MemoryGraph();
+        await userMemory.initialize();
+        USER_MEMORY_GRAPHS.set(userId, userMemory);
+    }
+    const knowledgeAtom = atomize(rawMessage, { recentMessages: profile.shortMemory });
+    if (knowledgeAtom) {
+        userMemory.ingest(knowledgeAtom);
+    }
+    const consciousness = new InferenceEngine(userMemory);
+    const cognitiveProfile = await consciousness.generateCognitiveProfile();
+    // =================================================================
+    // END: NEW - HIPPOCAMPUS INTEGRATION BLOCK
+    // =================================================================
 
     let tracker = CONTEXT_TRACKERS.get(userId);
     if (!tracker) {
@@ -156,7 +176,7 @@ export default async function handler(req, res) {
     }
     const contextState = tracker.analyzeState();
 
-    // Step 2: Critical Safety Check
+    // Step 2: Critical Safety Check (Unchanged)
     if (detectCritical(rawMessage)) {
       profile.flags = { ...profile.flags, critical: true };
       await saveUsers(users);
@@ -164,16 +184,16 @@ export default async function handler(req, res) {
     }
 
     // Step 3: Perception - The New Cognitive Core
-    const fingerprint = generateFingerprint(rawMessage, contextState);
+    const fingerprint = generateFingerprint(rawMessage, { ...contextState, cognitiveProfile }); // <-- MODIFICATION: Pass cognitiveProfile
 
-    // Step 4: Dual Analysis - Intent Engine guided by the Fingerprint
+    // Step 4: Dual Analysis - Intent Engine guided by the Fingerprint (Unchanged)
     const topIntents = getTopIntents(rawMessage, { 
         topN: 3, 
         userProfile: profile, 
-        fingerprint // Pass the rich fingerprint to the upgraded intent engine
+        fingerprint
     });
 
-    // Step 5: Decision - Check for confidence and ambiguity
+    // Step 5: Decision - Check for confidence and ambiguity (Unchanged)
     const bestIntent = topIntents[0];
     if (bestIntent) {
       let threshold = getThresholdForTag(bestIntent.tag);
@@ -184,30 +204,25 @@ export default async function handler(req, res) {
       if (bestIntent.score >= threshold) {
         const secondIntent = topIntents[1];
         if (secondIntent && (bestIntent.score - secondIntent.score < AMBIGUITY_MARGIN)) {
-          // Ambiguity detected, ask for clarification (Preserved Logic)
           const options = [bestIntent, secondIntent].map(c => ({ tag: c.tag }));
           profile.expectingFollowUp = { isClarification: true, options, expiresTs: Date.now() + (5 * 60 * 1000) };
           await saveUsers(users);
           return res.status(200).json({ reply: buildClarificationPrompt(options), source: "clarification", userId });
         }
 
-        // --- SUCCESS PATH ---
+        // --- SUCCESS PATH --- (Unchanged logic)
         registerIntentSuccess(profile, bestIntent.tag);
         await adjustThresholdOnSuccess(bestIntent.tag);
         await incrementOccurrence(bestIntent.tag);
         recordRecurringTheme(profile, bestIntent.tag, fingerprint.primaryEmotion.type);
-
-        // =================================================================
-        // START: INTEGRATION OF NEW RESPONSE & META ENGINES
-        // =================================================================
 
         // Step 6: Creation - The new Metacognitive Core takes the lead
         let responsePayload = null;
         let finalReply = '';
         
         try {
-          // The new v5.0 engine is the primary response generator now.
-          responsePayload = executeMetacognitiveCore(bestIntent.full_intent, fingerprint, profile);
+          // <-- MODIFICATION: Pass cognitiveProfile to the response engine
+          responsePayload = executeMetacognitiveCore(bestIntent.full_intent, fingerprint, profile, cognitiveProfile); 
           if (responsePayload && responsePayload.reply) {
             finalReply = responsePayload.reply;
           } else {
@@ -216,7 +231,6 @@ export default async function handler(req, res) {
           }
         } catch (err) {
           if (DEBUG) console.error("Metacognitive Core CRASHED:", err);
-          // Fallback to the old reliable constructor in case of a crash
           try {
               const fallbackPayload = await constructDynamicResponse(bestIntent.full_intent, profile, fingerprint.primaryEmotion.type, rawMessage);
               finalReply = fallbackPayload.reply;
@@ -228,32 +242,32 @@ export default async function handler(req, res) {
           }
         }
 
-        // Multi-Intent Suggestion (Preserved Logic)
+        // Multi-Intent Suggestion (Unchanged)
         const secondary = topIntents.find(c => c.tag !== bestIntent.tag && c.score >= MULTI_INTENT_THRESHOLD);
         if (secondary) {
           finalReply += `\n\nبالمناسبة، لاحظت أنك قد تكون تتحدث أيضًا عن "${secondary.tag.replace(/_/g, ' ')}". هل ننتقل لهذا الموضوع بعد ذلك؟`;
         }
         
-        // Step 6.5: Post-Response Orchestration (Non-blocking)
-        // The meta_router is called here to analyze the turn and queue background tasks
-        // like learning, emotion tracking, and dreaming, without delaying the user's response.
+        // Step 6.5: Post-Response Orchestration (Unchanged)
         try {
           await processMeta(rawMessage, finalReply, fingerprint, profile);
           if (DEBUG) console.log("✅ Meta-router successfully enqueued post-response tasks.");
         } catch (metaErr) {
-          // This failure MUST NOT stop the user from getting a response.
           console.error("🚨 Meta-router failed to process tasks:", metaErr);
         }
-
-        // =================================================================
-        // END: INTEGRATION OF NEW RESPONSE & META ENGINES
-        // =================================================================
 
         // Step 7: Memory Update
         tracker.addTurn(fingerprint, { reply: finalReply, ...responsePayload });
         profile.shortMemory = tracker.serialize();
-        // Update long-term profile with rich data from fingerprint
         updateProfileWithEntities(profile, fingerprint.concepts.map(c => c.concept), fingerprint.primaryEmotion.type, null);
+        
+        // =================================================================
+        // START: NEW - HIPPOCAMPUS PERSISTENCE (ADDITION)
+        // =================================================================
+        await userMemory.persist();
+        // =================================================================
+        // END: NEW - HIPPOCAMPUS PERSISTENCE
+        // =================================================================
         
         await saveUsers(users);
         return res.status(200).json({
@@ -262,25 +276,20 @@ export default async function handler(req, res) {
           tag: bestIntent.tag,
           score: Number(bestIntent.score.toFixed(3)),
           userId,
-          // Forward metadata from the new core if it exists
           metadata: responsePayload.metadata ?? null
         });
       }
     }
 
-    // --- LOW CONFIDENCE PATH ---
+    // --- LOW CONFIDENCE PATH (Unchanged) ---
     if (bestIntent) await incrementOccurrence(bestIntent.tag);
     if (DEBUG) console.log(`LOW CONFIDENCE: Best candidate [${bestIntent?.tag}] with score ${bestIntent?.score?.toFixed(3)} did not meet its threshold.`);
-    
     await appendLearningQueue({ message: rawMessage, userId, topCandidate: bestIntent?.tag, score: bestIntent?.score });
-    
     const conciseDiag = buildConciseDiagnosticForUser(topIntents);
     const generalFallback = "لم أفهم قصدك تمامًا، هل يمكنك التوضيح بجملة مختلفة؟ أحيانًا يساعدني ذلك على فهمك بشكل أفضل. أنا هنا لأسمعك.";
     const fallbackReply = conciseDiag ? `${conciseDiag}\n\n${generalFallback}` : generalFallback;
-
     tracker.addTurn(fingerprint, { reply: fallbackReply, source: "fallback_diagnostic" });
     profile.shortMemory = tracker.serialize();
-    
     await saveUsers(users);
     return res.status(200).json({ reply: fallbackReply, source: "fallback_diagnostic", userId });
 
