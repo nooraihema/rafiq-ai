@@ -3,7 +3,13 @@
 // This module interprets the rich intent structure to build intelligent, contextual responses
 // and integrates smoothly with context_tracker & learning modules.
 
-import { DEBUG } from './config.js';
+// =omed================================================================
+// START: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
+import { DEBUG } from '../shared/config.js';
+// =================================================================
+// END: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
 
 /**
  * Selects a random item from an array.
