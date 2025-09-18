@@ -55,22 +55,6 @@ function similarityScore(a = "", b = "") {
   return Math.max(0, Math.min(1, sim));
 }
 
-// Try to fetch recent messages from shared/context_tracker if available
-function fetchRecentContext(fingerprint) {
-  try {
-    // require dynamically so code works in ESM or CommonJS setups that provide CommonJS modules.
-    // If the module is not present, fail silently and return [].
-    // eslint-disable-next-line no-eval
-    const contextModule = require("../shared/context_tracker.js");
-    if (contextModule && typeof contextModule.getRecentMessages === "function") {
-      return contextModule.getRecentMessages({ fingerprint, count: CONTEXT_WINDOW }) || [];
-    }
-  } catch (e) {
-    // ignore absence
-  }
-  return [];
-}
-
 // Merge a list of texts into a short snapshot (most recent first)
 function buildContextSnapshot(recentMessages = []) {
   if (!recentMessages || !recentMessages.length) return null;
