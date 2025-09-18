@@ -41,10 +41,11 @@ import { constructDynamicResponse } from '../core/response_constructor.js';
 
 
 // =================================================================
-// START: NEW - HIPPOCAMPUS PROJECT IMPORTS (ADDITION)
+// START: NEW - HIPPOCAMPUS PROJECT IMPORTS (MODIFIED FOR EASY FIX)
 // =================================================================
 import { atomize } from '../hippocampus/knowledgeAtomizer.js';
-import { MemoryGraph } from '../hippocampus/MemoryGraph.js';
+// MODIFICATION 1: Import the singleton instance `memoryGraph` instead of the class
+import { memoryGraph } from '../hippocampus/MemoryGraph.js'; 
 import { InferenceEngine } from '../hippocampus/InferenceEngine.js';
 // =================================================================
 // END: NEW - HIPPOCAMPUS PROJECT IMPORTS
@@ -56,7 +57,7 @@ buildIndexSync();
 
 // --- In-memory instances for performance ---
 const CONTEXT_TRACKERS = new Map();
-const USER_MEMORY_GRAPHS = new Map(); // <-- ADDITION
+const USER_MEMORY_GRAPHS = new Map(); // This will not be used in the easy fix, but we keep it.
 
 // --- Thresholds & constants (Unchanged) ---
 const CONFIDENCE_BASE_THRESHOLD = 0.40;
@@ -148,14 +149,13 @@ export default async function handler(req, res) {
     profile.lastSeen = new Date().toISOString();
 
     // =================================================================
-    // START: NEW - HIPPOCAMPUS INTEGRATION BLOCK (ADDITION)
+    // START: MODIFICATION 2 - HIPPOCAMPUS INTEGRATION (EASY FIX)
     // =================================================================
-    let userMemory = USER_MEMORY_GRAPHS.get(userId);
-    if (!userMemory) {
-        userMemory = new MemoryGraph();
-        await userMemory.initialize();
-        USER_MEMORY_GRAPHS.set(userId, userMemory);
-    }
+    // Use the global singleton instance of MemoryGraph. This is temporary
+    // and means memory is shared across all users for now.
+    let userMemory = memoryGraph; 
+    await userMemory.initialize(); // Ensure memory is loaded (safe to call multiple times)
+
     const knowledgeAtom = atomize(rawMessage, { recentMessages: profile.shortMemory });
     if (knowledgeAtom) {
         userMemory.ingest(knowledgeAtom);
@@ -163,7 +163,7 @@ export default async function handler(req, res) {
     const consciousness = new InferenceEngine(userMemory);
     const cognitiveProfile = await consciousness.generateCognitiveProfile();
     // =================================================================
-    // END: NEW - HIPPOCAMPUS INTEGRATION BLOCK
+    // END: MODIFICATION 2
     // =================================================================
 
     let tracker = CONTEXT_TRACKERS.get(userId);
@@ -184,7 +184,7 @@ export default async function handler(req, res) {
     }
 
     // Step 3: Perception - The New Cognitive Core
-    const fingerprint = generateFingerprint(rawMessage, { ...contextState, cognitiveProfile }); // <-- MODIFICATION: Pass cognitiveProfile
+    const fingerprint = generateFingerprint(rawMessage, { ...contextState, cognitiveProfile });
 
     // Step 4: Dual Analysis - Intent Engine guided by the Fingerprint (Unchanged)
     const topIntents = getTopIntents(rawMessage, { 
@@ -221,7 +221,6 @@ export default async function handler(req, res) {
         let finalReply = '';
         
         try {
-          // <-- MODIFICATION: Pass cognitiveProfile to the response engine
           responsePayload = executeMetacognitiveCore(bestIntent.full_intent, fingerprint, profile, cognitiveProfile); 
           if (responsePayload && responsePayload.reply) {
             finalReply = responsePayload.reply;
@@ -261,13 +260,8 @@ export default async function handler(req, res) {
         profile.shortMemory = tracker.serialize();
         updateProfileWithEntities(profile, fingerprint.concepts.map(c => c.concept), fingerprint.primaryEmotion.type, null);
         
-        // =================================================================
-        // START: NEW - HIPPOCAMPUS PERSISTENCE (ADDITION)
-        // =================================================================
+        // --- HIPPOCAMPUS PERSISTENCE (Unchanged) ---
         await userMemory.persist();
-        // =================================================================
-        // END: NEW - HIPPOCAMPUS PERSISTENCE
-        // =================================================================
         
         await saveUsers(users);
         return res.status(200).json({
