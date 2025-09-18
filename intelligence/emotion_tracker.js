@@ -14,8 +14,8 @@ import {
   normalizeVector,
   movingAverage,
   linearRegression,
-} from "../shared/utils/math_tools.js"; // Assuming math_tools is now in shared/utils
-import { extractEmotionVector, extractKeywords } from "../shared/utils/nlp_emotion.js"; // Assuming nlp_emotion is now in shared/utils
+} from "../shared/math_tools.js"; // Assuming math_tools is now in shared/utils
+import { extractEmotionVector, extractKeywords } from "../shared/nlp_emotion.js"; // Assuming nlp_emotion is now in shared/utils
 
 // 📂 ملفات التخزين
 // Path to the data directory (as per user specification)
