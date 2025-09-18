@@ -2,12 +2,15 @@
 // Purpose: Generate a rich psychological fingerprint with weighted blending,
 // multi-need inference, trend detection, diagnostic flags, and mini-learning hints.
 
-import { DEBUG } from './config.js';
+// =================================================================
+// START: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
+import { DEBUG } from '../shared/config.js';
 import {
   normalizeArabic,
   tokenize as tokenizeArabic,
   levenshtein as levenshteinDistance
-} from './utils.js';
+} from '../shared/utils.js';
 // utils.js should export:
 // - normalizeArabic(text): canonical normalization
 // - tokenize(text): returns array of tokens (normalized)
@@ -20,8 +23,12 @@ import {
   CONCEPTS_MAP,
   INTENSITY_MODIFIERS,
   MOTIVATIONAL_MAP
-} from './knowledge_base.js';
+} from '../knowledge/knowledge_base.js';
 // ===== نهاية الإصلاح النهائي =====
+// =================================================================
+// END: PATH UPDATES FOR NEW STRUCTURE
+// =================================================================
+
 
 /* ---------------------------
    Configurable thresholds
@@ -429,4 +436,4 @@ export function summarizeFingerprint(fp) {
     flags: fp.diagnostics.flags,
     trend: fp.diagnostics.trend
   };
-}
+}```
