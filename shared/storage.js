@@ -1,4 +1,5 @@
-// storage.js v14.0 - Asynchronous & Resilient Storage (with Meta-Learning)
+
+// storage.js v14.1 - Asynchronous & Resilient Storage (with Meta-Learning + Emotion Safety)
 
 import fs from 'fs/promises';
 import crypto from "crypto";
@@ -78,8 +79,22 @@ export async function appendLearningQueue(entry) {
 }
 
 // ------------ Profile updaters ------------
+
+// 🛑 هنا كان سبب الكراش: لازم نهيّأ profile.emotions
 export function updateProfileWithEntities(profile, entities, mood, rootCause) {
-  profile.longTermProfile = profile.longTermProfile || { recurring_themes: {}, mentioned_entities: {}, communication_style: "neutral" };
+  profile.longTermProfile = profile.longTermProfile || { 
+    recurring_themes: {}, 
+    mentioned_entities: {}, 
+    communication_style: "neutral" 
+  };
+
+  // ✅ إصلاح: تهيئة المشاعر إذا مش موجودة
+  profile.emotions = profile.emotions || {};
+  if (mood) {
+    if (!profile.emotions[mood]) profile.emotions[mood] = 0;
+    profile.emotions[mood] += 1;
+  }
+
   for (const ent of entities) {
     if (!profile.longTermProfile.mentioned_entities[ent]) {
       profile.longTermProfile.mentioned_entities[ent] = {
@@ -103,7 +118,11 @@ export function updateProfileWithEntities(profile, entities, mood, rootCause) {
 
 export function recordRecurringTheme(profile, tag) {
   if (!profile) return;
-  profile.longTermProfile = profile.longTermProfile || { recurring_themes: {}, mentioned_entities: {}, communication_style: "neutral" };
+  profile.longTermProfile = profile.longTermProfile || { 
+    recurring_themes: {}, 
+    mentioned_entities: {}, 
+    communication_style: "neutral" 
+  };
   profile.longTermProfile.recurring_themes[tag] = (profile.longTermProfile.recurring_themes[tag] || 0) + 1;
 }
 
