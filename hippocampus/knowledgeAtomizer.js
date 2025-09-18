@@ -498,7 +498,7 @@ export function atomize(rawMessage = "", options = {}) {
 
   const normalizedMessage = normalizeArabic(rawMessage);
   const recentFromOptions = Array.isArray(options.recentMessages) ? options.recentMessages : [];
-  const fetched = (options.contextFetch && options.fingerprint) ? fetchRecentContext(options.fingerprint) : [];
+  const fetched = []; // MODIFIED: Removed fetchRecentContext call for ESM compatibility
   const recentMessages = (recentFromOptions.length ? recentFromOptions : (fetched || [])).slice(-CONTEXT_WINDOW);
   const contextSnapshot = buildContextSnapshot(recentMessages);
 
