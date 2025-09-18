@@ -1,3 +1,4 @@
+
 // hippocampus/KnowledgeAtomizer.js v3.0 - Cognitive Dissonance Edition (ESM Safe)
 // "أقوى نسخة" - يبقي كل قدرات v2.1 + Memory Fusion + Meta-Emotions + Cognitive Dissonance Detector
 // Paths expected (relative):
@@ -17,6 +18,7 @@ import crypto from "crypto";
 import { DEBUG } from "../shared/config.js";
 import { normalizeArabic, tokenize, levenshtein } from "../shared/utils.js";
 import { CONCEPTS_MAP, INTENSITY_MODIFIERS, MOTIVATIONAL_MAP } from "../knowledge/knowledge_base.js";
+import { fileURLToPath } from "url";
 
 // ---------- Tunables (v3.0) ----------
 const FUZZY_THRESHOLD = 0.65;
@@ -600,8 +602,9 @@ export function atomize(rawMessage = "", options = {}) {
   return knowledgeAtom;
 }
 
-// small demo when run directly
-if (require.main === module) {
+// small demo when run directly (ESM-safe)
+const __filename = fileURLToPath(import.meta.url);
+if (process.argv[1] === __filename) {
   const testMessage1 = "انا قلقان جدا من الشغل اليوم!!! مش عارف هاعمل ايه";
   const atom1 = atomize(testMessage1, { fingerprint: "demo_user", recentMessages: [
     { text: "امبارح المدير زعل مني", timestamp: Date.now() - 1000*60*60*24 },
@@ -616,3 +619,4 @@ if (require.main === module) {
   ]});
   console.log("ATOM2:", atom2);
 }
+
