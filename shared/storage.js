@@ -1,5 +1,4 @@
-
-// storage.js v14.2 - Asynchronous & Resilient Storage (with Meta-Learning + Emotion Safety)
+// storage.js v14.3 - Asynchronous & Resilient Storage (with safety checks)
 
 import fs from "fs/promises";
 import crypto from "crypto";
@@ -122,11 +121,23 @@ export function updateProfileWithEntities(profile = {}, entities = [], mood = nu
 
 export function recordRecurringTheme(profile = {}, tag) {
   try {
+    // This first check is good and already exists
     profile.longTermProfile = profile.longTermProfile || {
       recurring_themes: {},
       mentioned_entities: {},
       communication_style: "neutral",
     };
+
+    // =================================================================
+    // START: [V9 FIX] SAFETY CHECK
+    // This is the added line to fix the crash.
+    // =================================================================
+    // Ensure the 'recurring_themes' object itself exists before trying to access a property on it.
+    profile.longTermProfile.recurring_themes = profile.longTermProfile.recurring_themes || {};
+    // =================================================================
+    // END: [V9 FIX]
+    // =================================================================
+
     profile.longTermProfile.recurring_themes[tag] =
       (profile.longTermProfile.recurring_themes[tag] || 0) + 1;
   } catch (err) {
@@ -190,4 +201,3 @@ export async function saveOccurrenceCounters(counters) {
     console.error("❌ STORAGE_ERROR: Failed to save occurrence counters:", e);
   }
 }
-
