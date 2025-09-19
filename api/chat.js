@@ -1,5 +1,4 @@
-
-// chat.js vΩ+2 - The Conscious & Self-Aware Conductor
+// chat.js vΩ+3 - The Hybrid Conscious Conductor (V5 & V9)
 // =================================================================
 // START: CORE IMPORTS (Paths as per your structure)
 // =================================================================
@@ -28,7 +27,11 @@ import {
   getTopIntents,
   registerIntentSuccess
 } from '../perception/intent_engine.js';
-import { executeMetacognitiveCore } from '../core/dynamic_logic_engine.js';
+
+// [V9 UPGRADE] Import both the old and new engines for safe switching.
+import { executeMetacognitiveCore } from '../core/dynamic_logic_engine.js'; // The original V5 engine
+import { executeV9Engine } from '../core/dynamic_logic_engine.js'; // The new V9 engine
+
 import { processMeta } from '../coordination/meta_router.js';
 import { ContextTracker } from '../shared/context_tracker.js';
 import { generateFingerprintV2 as generateFingerprint } from '../perception/fingerprint_engine.js';
@@ -61,6 +64,15 @@ const MULTI_INTENT_THRESHOLD = 0.55;
 const CLARIFICATION_VALID_CHOICES = /^[1-9][0-9]*$/;
 const DIAGNOSTIC_MIN_SCORE = 0.05;
 const DIAGNOSTIC_VISIBLE_TO_USER = true;
+
+// =================================================================
+// START: [V9 UPGRADE] SAFETY SWITCH
+// =================================================================
+// Set this to true to use the new V9 engine, false to use the stable V5 engine.
+const USE_V9_ENGINE = true; 
+// =================================================================
+// END: [V9 UPGRADE] SAFETY SWITCH
+// =================================================================
 
 // --- Internal State ---
 let INTENT_THRESHOLDS = {};
@@ -148,7 +160,7 @@ export default async function handler(req, res) {
     // --- HIPPOCAMPUS INTEGRATION ---
     let userMemory = memoryGraph; 
     await userMemory.initialize();
-    const knowledgeAtom = atomize(rawMessage, { recentMessages: profile.shortMemory });
+    const knowledgeAtom = atomize(rawMessage, { recentMessages: profile.shortMemory?.history || profile.shortMemory });
     if (knowledgeAtom) {
       userMemory.ingest(knowledgeAtom);
       if (DEBUG) console.log("🧩 Knowledge atom ingested:", knowledgeAtom);
@@ -160,12 +172,14 @@ export default async function handler(req, res) {
     // --- Context Tracker ---
     let tracker = CONTEXT_TRACKERS.get(userId);
     if (!tracker) {
-      tracker = new ContextTracker(profile);
-      if (Array.isArray(profile.shortMemory) && profile.shortMemory.length > 0) tracker.restoreFromSerialized(profile.shortMemory);
+      tracker = new ContextTracker(profile, {});
+      // [V9 UPGRADE] The tracker's restore function now handles the full serialized object.
+      tracker.restoreFromSerialized(profile.shortMemory);
       CONTEXT_TRACKERS.set(userId, tracker);
       if (DEBUG) console.log("🗂️ Context tracker initialized.");
     }
-    const contextState = tracker.analyzeState();
+    // [V9 UPGRADE] We get the full context analysis, which now includes the sessionContext.
+    const contextState = tracker.generateContextualSummary();
     if (DEBUG) console.log("🔍 Context state:", contextState);
 
     // --- Critical Check ---
@@ -213,12 +227,34 @@ export default async function handler(req, res) {
         let finalReply = '';
 
         try {
-          responsePayload = executeMetacognitiveCore(bestIntent.full_intent, fingerprint, profile, cognitiveProfile);
+          // =================================================================
+          // START: [V9 UPGRADE] ENGINE SWITCHING LOGIC
+          // =================================================================
+          if (USE_V9_ENGINE && bestIntent.full_intent?.metadata?.version?.startsWith("9")) {
+              if (DEBUG) console.log("🚀 Switching to V9 Engine...");
+              // [V9 UPGRADE] Get the current session context from the tracker.
+              const initialSessionContext = tracker.getSessionContext();
+              
+              responsePayload = executeV9Engine(bestIntent.full_intent, fingerprint, profile, initialSessionContext);
+              
+              // [V9 UPGRADE] Update the context tracker with the new state returned by the engine.
+              if (responsePayload.metadata?.nextSessionContext) {
+                  tracker.updateSessionContext(responsePayload.metadata.nextSessionContext);
+              }
+          } else {
+              if (DEBUG) console.log("⚙️ Using legacy V5 Engine...");
+              responsePayload = executeMetacognitiveCore(bestIntent.full_intent, fingerprint, profile, cognitiveProfile);
+          }
+          // =================================================================
+          // END: [V9 UPGRADE] ENGINE SWITCHING LOGIC
+          // =================================================================
+          
           if (responsePayload && responsePayload.reply) finalReply = responsePayload.reply;
-          else throw new Error("Empty response from Metacognitive Core");
-          if (DEBUG) console.log("🧩 Metacognitive core reply:", finalReply);
+          else throw new Error("Empty response from Core Engine");
+          if (DEBUG) console.log("🧩 Core engine reply:", finalReply);
+
         } catch (err) {
-          if (DEBUG) console.error("🚨 Metacognitive core crashed:", err);
+          if (DEBUG) console.error("🚨 Core engine crashed:", err);
           try {
             const fallbackPayload = await constructDynamicResponse(bestIntent.full_intent, profile, fingerprint.primaryEmotion.type, rawMessage);
             finalReply = fallbackPayload.reply;
@@ -248,6 +284,7 @@ export default async function handler(req, res) {
 
         // --- Update Memory & Profile ---
         tracker.addTurn(fingerprint, { reply: finalReply, ...responsePayload });
+        // [V9 UPGRADE] The tracker's serialize function now returns the full object { history, sessionContext }.
         profile.shortMemory = tracker.serialize();
         updateProfileWithEntities(profile, fingerprint.concepts.map(c => c.concept), fingerprint.primaryEmotion.type, null);
 
@@ -260,7 +297,7 @@ export default async function handler(req, res) {
 
         return res.status(200).json({
           reply: finalReply,
-          source: responsePayload.source || 'metacognitive_core_v5',
+          source: responsePayload.source || 'v9_engine',
           tag: bestIntent.tag,
           score: Number(bestIntent.score.toFixed(3)),
           userId,
