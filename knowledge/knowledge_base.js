@@ -1,4 +1,3 @@
-
 // knowledge_base_vΩ1.js
 // The Expanded Predictive Mind - vΩ.1
 // A comprehensive, modular knowledge base + helper utilities implementing
@@ -245,7 +244,35 @@ const PERSONA_PROFILES = {
     style: (text, ctx = {}) => `تذكّر: ${text}`,
     opener: "كصديق، انا جنبك.",
     closer: "دائمًا هنا لو احتجت نصيحة."
+  },
+
+  // =================================================================
+  // START: [V9 UPGRADE] NEW PERSONA DEFINITIONS FOR THE V9 ENGINE
+  // =================================================================
+  the_empathetic_listener: {
+    name: "المستمع المتعاطف",
+    description: "يركز على الاستماع والتحقق من صحة المشاعر ومنح مساحة آمنة للتعبير. يتجنب القفز إلى الحلول.",
+    tone: "gentle, validating, non-judgmental, calm",
+    prefix: "💜 ",
+    suffix: ""
+  },
+  the_wise_guide: {
+    name: "المرشد الحكيم",
+    description: "يقدم رؤى وأدوات عملية بلغة بسيطة ومشجعة. يركز على تمكين المستخدم لاتخاذ خطوات عملية.",
+    tone: "encouraging, practical, clear, supportive",
+    prefix: "💡 ",
+    suffix: ""
+  },
+  the_calm_instructor: {
+    name: "المرشد الهادئ",
+    description: "يقدم تعليمات واضحة ومباشرة للتمارين (مثل تمارين التهدئة). نبرته هادئة ومطمئنة.",
+    tone: "calm, direct, reassuring, simple",
+    prefix: "🧘 ",
+    suffix: ""
   }
+  // =================================================================
+  // END: [V9 UPGRADE] NEW PERSONA DEFINITIONS
+  // =================================================================
 };
 
 /////////////////////
