@@ -1,7 +1,5 @@
-// chat.js vΩ+2 - The Conscious & Self-Aware Conductor
-// Integrates the Hippocampus Project (Atomizer, MemoryGraph, InferenceEngine)
-// to give Rafiq a true, persistent, and introspective memory.
 
+// chat.js vΩ+2 - The Conscious & Self-Aware Conductor
 // =================================================================
 // START: CORE IMPORTS (Paths as per your structure)
 // =================================================================
@@ -39,27 +37,24 @@ import { constructDynamicResponse } from '../core/response_constructor.js';
 // END: CORE IMPORTS
 // =================================================================
 
-
 // =================================================================
-// START: NEW - HIPPOCAMPUS PROJECT IMPORTS (MODIFIED FOR EASY FIX)
+// START: NEW - HIPPOCAMPUS PROJECT IMPORTS
 // =================================================================
 import { atomize } from '../hippocampus/knowledgeAtomizer.js';
-// MODIFICATION 1: Import the singleton instance `memoryGraph` instead of the class
 import { memoryGraph } from '../hippocampus/MemoryGraph.js'; 
 import { InferenceEngine } from '../hippocampus/InferenceEngine.js';
 // =================================================================
-// END: NEW - HIPPOCAMPUS PROJECT IMPORTS
+// END: HIPPOCAMPUS IMPORTS
 // =================================================================
-
 
 // --- Initialization ---
 buildIndexSync();
 
-// --- In-memory instances for performance ---
+// --- In-memory instances ---
 const CONTEXT_TRACKERS = new Map();
-const USER_MEMORY_GRAPHS = new Map(); // This will not be used in the easy fix, but we keep it.
+const USER_MEMORY_GRAPHS = new Map();
 
-// --- Thresholds & constants (Unchanged) ---
+// --- Thresholds & constants ---
 const CONFIDENCE_BASE_THRESHOLD = 0.40;
 const AMBIGUITY_MARGIN = 0.10;
 const MULTI_INTENT_THRESHOLD = 0.55;
@@ -67,22 +62,20 @@ const CLARIFICATION_VALID_CHOICES = /^[1-9][0-9]*$/;
 const DIAGNOSTIC_MIN_SCORE = 0.05;
 const DIAGNOSTIC_VISIBLE_TO_USER = true;
 
-// --- Internal State for Meta-Learning (Unchanged) ---
+// --- Internal State ---
 let INTENT_THRESHOLDS = {};
 let OCCURRENCE_COUNTERS = {};
 
-// --- Meta-Learning Initialization (Unchanged) ---
+// --- Meta-Learning Initialization ---
 (async () => {
   INTENT_THRESHOLDS = await loadIntentThresholds() || {};
   OCCURRENCE_COUNTERS = await loadOccurrenceCounters() || {};
   if (DEBUG) {
-    console.log(
-      `🧠 Meta-Learning Initialized: ${Object.keys(INTENT_THRESHOLDS).length} thresholds, ${Object.keys(OCCURRENCE_COUNTERS).length} occurrence counters loaded.`
-    );
+    console.log(`🧠 Meta-Learning Initialized: ${Object.keys(INTENT_THRESHOLDS).length} thresholds, ${Object.keys(OCCURRENCE_COUNTERS).length} occurrence counters loaded.`);
   }
 })();
 
-// --- Meta-Learning Helpers (Unchanged - YOUR FULL CODE) ---
+// --- Helpers ---
 function getThresholdForTag(tag) {
   if (!tag) return CONFIDENCE_BASE_THRESHOLD;
   const val = INTENT_THRESHOLDS[tag];
@@ -111,7 +104,7 @@ async function incrementOccurrence(tag) {
   await saveOccurrenceCounters(OCCURRENCE_COUNTERS);
 }
 
-// --- Diagnostic Builders (Unchanged - YOUR FULL CODE) ---
+// --- Diagnostic Builders ---
 function buildClarificationPrompt(options) {
   let question = "لم أكن متأكدًا تمامًا مما تقصده. هل يمكنك توضيح ما إذا كنت تقصد أحد هذه المواضيع؟\n";
   const lines = options.map((opt, i) => {
@@ -137,69 +130,68 @@ export default async function handler(req, res) {
     const body = req.body || {};
     const rawMessage = (body.message || "").toString().trim();
     if (!rawMessage) return res.status(400).json({ error: "Empty message" });
-    
-    // Step 1: Load User and Initialize Context (Unchanged)
+    if (DEBUG) console.log(`📨 Incoming message: "${rawMessage}"`);
+
+    // --- Load User ---
     let users = await loadUsers();
     let userId = body.userId || null;
     if (!userId || !users[userId]) {
       userId = makeUserId();
       users[userId] = { id: userId, createdAt: new Date().toISOString(), shortMemory: [], longTermProfile: { recurring_themes: {} } };
+      if (DEBUG) console.log(`🆕 New user created: ${userId}`);
+    } else if (DEBUG) {
+      console.log(`👤 Existing user: ${userId}`);
     }
     const profile = users[userId];
     profile.lastSeen = new Date().toISOString();
 
-    // =================================================================
-    // START: MODIFICATION 2 - HIPPOCAMPUS INTEGRATION (EASY FIX)
-    // =================================================================
-    // Use the global singleton instance of MemoryGraph. This is temporary
-    // and means memory is shared across all users for now.
+    // --- HIPPOCAMPUS INTEGRATION ---
     let userMemory = memoryGraph; 
-    await userMemory.initialize(); // Ensure memory is loaded (safe to call multiple times)
-
+    await userMemory.initialize();
     const knowledgeAtom = atomize(rawMessage, { recentMessages: profile.shortMemory });
     if (knowledgeAtom) {
-        userMemory.ingest(knowledgeAtom);
+      userMemory.ingest(knowledgeAtom);
+      if (DEBUG) console.log("🧩 Knowledge atom ingested:", knowledgeAtom);
     }
     const consciousness = new InferenceEngine(userMemory);
     const cognitiveProfile = await consciousness.generateCognitiveProfile();
-    // =================================================================
-    // END: MODIFICATION 2
-    // =================================================================
+    if (DEBUG) console.log("🧠 Cognitive profile generated:", cognitiveProfile);
 
+    // --- Context Tracker ---
     let tracker = CONTEXT_TRACKERS.get(userId);
     if (!tracker) {
       tracker = new ContextTracker(profile);
-      if (Array.isArray(profile.shortMemory) && profile.shortMemory.length > 0) {
-        tracker.restoreFromSerialized(profile.shortMemory);
-      }
+      if (Array.isArray(profile.shortMemory) && profile.shortMemory.length > 0) tracker.restoreFromSerialized(profile.shortMemory);
       CONTEXT_TRACKERS.set(userId, tracker);
+      if (DEBUG) console.log("🗂️ Context tracker initialized.");
     }
     const contextState = tracker.analyzeState();
+    if (DEBUG) console.log("🔍 Context state:", contextState);
 
-    // Step 2: Critical Safety Check (Unchanged)
+    // --- Critical Check ---
     if (detectCritical(rawMessage)) {
       profile.flags = { ...profile.flags, critical: true };
       await saveUsers(users);
+      if (DEBUG) console.warn("⚠️ Critical message detected!");
       return res.status(200).json({ reply: criticalSafetyReply(), source: "safety", userId });
     }
 
-    // Step 3: Perception - The New Cognitive Core
+    // --- Fingerprint ---
     const fingerprint = generateFingerprint(rawMessage, { ...contextState, cognitiveProfile });
+    if (DEBUG) console.log("🔑 Fingerprint generated:", fingerprint);
 
-    // Step 4: Dual Analysis - Intent Engine guided by the Fingerprint (Unchanged)
-    const topIntents = getTopIntents(rawMessage, { 
-        topN: 3, 
-        userProfile: profile, 
-        fingerprint
-    });
+    // --- Intent Analysis ---
+    const topIntents = getTopIntents(rawMessage, { topN: 3, userProfile: profile, fingerprint });
+    if (DEBUG) console.log("🎯 Top intents:", topIntents);
 
-    // Step 5: Decision - Check for confidence and ambiguity (Unchanged)
+    // --- Decision & Response ---
     const bestIntent = topIntents[0];
     if (bestIntent) {
       let threshold = getThresholdForTag(bestIntent.tag);
       const tokens = tokenize(rawMessage);
       if (tokens.length <= 3) threshold = Math.min(0.9, threshold + 0.20);
       else if (tokens.length <= 6) threshold = Math.min(0.9, threshold + 0.10);
+      if (DEBUG) console.log(`⚖️ Best intent: ${bestIntent.tag}, score: ${bestIntent.score}, threshold: ${threshold}`);
 
       if (bestIntent.score >= threshold) {
         const secondIntent = topIntents[1];
@@ -207,47 +199,46 @@ export default async function handler(req, res) {
           const options = [bestIntent, secondIntent].map(c => ({ tag: c.tag }));
           profile.expectingFollowUp = { isClarification: true, options, expiresTs: Date.now() + (5 * 60 * 1000) };
           await saveUsers(users);
+          if (DEBUG) console.log("❓ Ambiguous intents detected, asking for clarification.");
           return res.status(200).json({ reply: buildClarificationPrompt(options), source: "clarification", userId });
         }
 
-        // --- SUCCESS PATH --- (Unchanged logic)
         registerIntentSuccess(profile, bestIntent.tag);
         await adjustThresholdOnSuccess(bestIntent.tag);
         await incrementOccurrence(bestIntent.tag);
         recordRecurringTheme(profile, bestIntent.tag, fingerprint.primaryEmotion.type);
+        if (DEBUG) console.log("✅ Intent registered and thresholds updated.");
 
-        // Step 6: Creation - The new Metacognitive Core takes the lead
         let responsePayload = null;
         let finalReply = '';
-        
+
         try {
-          responsePayload = executeMetacognitiveCore(bestIntent.full_intent, fingerprint, profile, cognitiveProfile); 
-          if (responsePayload && responsePayload.reply) {
-            finalReply = responsePayload.reply;
-          } else {
-            if (DEBUG) console.warn("Metacognitive core returned a null or empty response. Using fallback.");
-            throw new Error("Empty response from Metacognitive Core");
-          }
+          responsePayload = executeMetacognitiveCore(bestIntent.full_intent, fingerprint, profile, cognitiveProfile);
+          if (responsePayload && responsePayload.reply) finalReply = responsePayload.reply;
+          else throw new Error("Empty response from Metacognitive Core");
+          if (DEBUG) console.log("🧩 Metacognitive core reply:", finalReply);
         } catch (err) {
-          if (DEBUG) console.error("Metacognitive Core CRASHED:", err);
+          if (DEBUG) console.error("🚨 Metacognitive core crashed:", err);
           try {
-              const fallbackPayload = await constructDynamicResponse(bestIntent.full_intent, profile, fingerprint.primaryEmotion.type, rawMessage);
-              finalReply = fallbackPayload.reply;
-              responsePayload = { source: 'fallback_constructor', ...fallbackPayload };
+            const fallbackPayload = await constructDynamicResponse(bestIntent.full_intent, profile, fingerprint.primaryEmotion.type, rawMessage);
+            finalReply = fallbackPayload.reply;
+            responsePayload = { source: 'fallback_constructor', ...fallbackPayload };
+            if (DEBUG) console.log("🛠️ Fallback constructor reply:", finalReply);
           } catch (fallbackErr) {
-              if (DEBUG) console.error("Fallback constructor also crashed:", fallbackErr);
-              finalReply = "أنا أسمعك، لكنني أواجه صعوبة في ترتيب أفكاري الآن.";
-              responsePayload = { source: 'critical_fallback' };
+            if (DEBUG) console.error("🚨 Fallback constructor also crashed:", fallbackErr);
+            finalReply = "أنا أسمعك، لكنني أواجه صعوبة في ترتيب أفكاري الآن.";
+            responsePayload = { source: 'critical_fallback' };
           }
         }
 
-        // Multi-Intent Suggestion (Unchanged)
+        // --- Multi-Intent Suggestion ---
         const secondary = topIntents.find(c => c.tag !== bestIntent.tag && c.score >= MULTI_INTENT_THRESHOLD);
         if (secondary) {
           finalReply += `\n\nبالمناسبة، لاحظت أنك قد تكون تتحدث أيضًا عن "${secondary.tag.replace(/_/g, ' ')}". هل ننتقل لهذا الموضوع بعد ذلك؟`;
+          if (DEBUG) console.log("💡 Multi-intent suggestion added:", secondary.tag);
         }
-        
-        // Step 6.5: Post-Response Orchestration (Unchanged)
+
+        // --- Post-Response Orchestration ---
         try {
           await processMeta(rawMessage, finalReply, fingerprint, profile);
           if (DEBUG) console.log("✅ Meta-router successfully enqueued post-response tasks.");
@@ -255,15 +246,18 @@ export default async function handler(req, res) {
           console.error("🚨 Meta-router failed to process tasks:", metaErr);
         }
 
-        // Step 7: Memory Update
+        // --- Update Memory & Profile ---
         tracker.addTurn(fingerprint, { reply: finalReply, ...responsePayload });
         profile.shortMemory = tracker.serialize();
         updateProfileWithEntities(profile, fingerprint.concepts.map(c => c.concept), fingerprint.primaryEmotion.type, null);
-        
-        // --- HIPPOCAMPUS PERSISTENCE (Unchanged) ---
+
+        // --- HIPPOCAMPUS PERSISTENCE ---
         await userMemory.persist();
-        
+        if (DEBUG) console.log("💾 User memory persisted in hippocampus.");
+
+        // --- Save Users ---
         await saveUsers(users);
+
         return res.status(200).json({
           reply: finalReply,
           source: responsePayload.source || 'metacognitive_core_v5',
@@ -275,16 +269,19 @@ export default async function handler(req, res) {
       }
     }
 
-    // --- LOW CONFIDENCE PATH (Unchanged) ---
+    // --- LOW CONFIDENCE PATH ---
     if (bestIntent) await incrementOccurrence(bestIntent.tag);
-    if (DEBUG) console.log(`LOW CONFIDENCE: Best candidate [${bestIntent?.tag}] with score ${bestIntent?.score?.toFixed(3)} did not meet its threshold.`);
+    if (DEBUG) console.log(`⚠️ LOW CONFIDENCE: Best candidate [${bestIntent?.tag}] with score ${bestIntent?.score?.toFixed(3)} did not meet threshold.`);
+
     await appendLearningQueue({ message: rawMessage, userId, topCandidate: bestIntent?.tag, score: bestIntent?.score });
     const conciseDiag = buildConciseDiagnosticForUser(topIntents);
     const generalFallback = "لم أفهم قصدك تمامًا، هل يمكنك التوضيح بجملة مختلفة؟ أحيانًا يساعدني ذلك على فهمك بشكل أفضل. أنا هنا لأسمعك.";
     const fallbackReply = conciseDiag ? `${conciseDiag}\n\n${generalFallback}` : generalFallback;
+
     tracker.addTurn(fingerprint, { reply: fallbackReply, source: "fallback_diagnostic" });
     profile.shortMemory = tracker.serialize();
     await saveUsers(users);
+
     return res.status(200).json({ reply: fallbackReply, source: "fallback_diagnostic", userId });
 
   } catch (err) {
