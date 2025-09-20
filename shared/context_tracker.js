@@ -1,4 +1,4 @@
-// context_tracker.js v9.0 - The Stateful Short-Term Memory Core
+// context_tracker.js v9.1 - The Stateful Short-Term Memory Core (with getHistory fix)
 // Purpose: Maintain and analyze immediate conversational context.
 // Adds: Management for dialogue state (state, layer, active_intent) to support the v9 engine.
 
@@ -84,6 +84,20 @@ export class ContextTracker {
             this.sessionContext = { ...this.sessionContext, ...userProfile.sessionContext };
         }
     }
+
+    // =================================================================
+    // START: [CRASH FIX] ADDED THE MISSING getHistory METHOD
+    // =================================================================
+    /**
+     * Returns the raw turn history.
+     * Needed by other modules like KnowledgeAtomizer.
+     */
+    getHistory() {
+        return this.history || [];
+    }
+    // =================================================================
+    // END: [CRASH FIX]
+    // =================================================================
 
     /**
      * [V9 UPGRADE] A dedicated method to update the session context.
@@ -203,7 +217,7 @@ export class ContextTracker {
             const energy = this.computeEnergyIndexFromFingerprint(turn.user_fingerprint);
             energySum += energy * w;
             const concepts = Array.isArray(safeGet(turn, 'user_fingerprint.concepts', [])) ? turn.user_fingerprint.concepts : [];
-            concepts.forEach(c => state.recent_concepts.set(c, (state.recent_concepts.get(c) || 0) + w));
+            concepts.forEach(c => state.recent_concepts.set(c.concept, (state.recent_concepts.get(c.concept) || 0) + w)); // Corrected this line
             const need = safeGet(turn, 'user_fingerprint.inferredNeed', null);
             if (need) state.recent_needs.set(need, (state.recent_needs.get(need) || 0) + w);
             const recipe = safeGet(turn, 'ai_response.recipe', []) || [];
@@ -265,13 +279,11 @@ export class ContextTracker {
             energyIndex: analysis.averageEnergyIndex,
             isStuck: analysis.is_stuck_in_loop,
             patterns: analysis.patterns,
-            // [V9 UPGRADE] Add the current session context to the summary
             sessionContext: this.getSessionContext()
         };
     }
 
     serialize() {
-        // [V9 UPGRADE] Serialization now also includes the session context.
         return {
             history: JSON.parse(JSON.stringify(this.history)),
             sessionContext: this.sessionContext
@@ -279,7 +291,6 @@ export class ContextTracker {
     }
 
     restoreFromSerialized(serializedData = {}) {
-        // [V9 UPGRADE] Restoration now also restores the session context.
         if (serializedData && typeof serializedData === 'object') {
             if (Array.isArray(serializedData.history)) {
                 this.history = [...serializedData.history].slice(-this.MAX_HISTORY);
