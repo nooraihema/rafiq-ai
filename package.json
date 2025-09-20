@@ -19,6 +19,7 @@
       },
       "homepage": "https://github.com/nooraihema/rafiq-ai#readme",
       "dependencies": {
+            "@vercel/kv": "^3.0.0",
             "sql.js": "^1.13.0"
       }
 }
