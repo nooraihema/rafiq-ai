@@ -1,9 +1,7 @@
-
-// emotion_tracker.js v10.0 - Sentient Emotional Engine with Graph Memory
+// emotion_tracker.js v10.1 - In-Memory Sentient Emotional Engine
 // 🧠 تتبع + تنبؤ + صدمات + شبكة معرفية تربط الكلمات بالمشاعر والزمن + fingerprint
+// Now uses In-Memory storage to prevent file system errors on Vercel.
 
-import fs from "fs";
-import path from "path";
 import crypto from "crypto";
 
 // =================================================================
@@ -16,37 +14,24 @@ import {
   linearRegression,
 } from "../shared/math_tools.js"; // Assuming math_tools is now in shared/utils
 import { extractEmotionVector, extractKeywords } from "../shared/nlp_emotion.js"; // Assuming nlp_emotion is now in shared/utils
-
-// 📂 ملفات التخزين
-// Path to the data directory (as per user specification)
-const EMOTION_LOG = path.join("data", "emotions_curve.json");
-const EMOTION_GRAPH = path.join("data", "emotions_graph.json");
 // =================================================================
 // END: PATH UPDATES FOR NEW STRUCTURE
 // =================================================================
 
-// 🧩 تحميل/حفظ
-function loadData(file) {
-  // Ensure the data directory exists before reading
-  const dir = path.dirname(file);
-  if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-  }
-  if (!fs.existsSync(file)) return [];
-  try {
-    return JSON.parse(fs.readFileSync(file, "utf-8"));
-  } catch (e) {
-    return []; // Return empty array on parsing error
-  }
+// --- [CRASH FIX] ---
+// We replace the file system (fs) with our simple in-memory store.
+// This database will live for the duration of the serverless function's lifecycle.
+const memoryStore = {
+  emotion_log: [],
+  emotion_graph: [],
+};
+
+if (process.env.NODE_ENV === 'development') {
+    console.log("✅ [EMOTION_TRACKER] Running in smart In-Memory Temporary Storage mode.");
 }
-function saveData(file, data) {
-  // Ensure the data directory exists before writing
-  const dir = path.dirname(file);
-  if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-  }
-  fs.writeFileSync(file, JSON.stringify(data, null, 2));
-}
+// --------------------
+
+// 🧩 The old loadData and saveData functions are no longer needed.
 
 // 🧠 لقطة انفعالية متقدمة
 function analyzeSnapshot(userMessage, fingerprint) {
@@ -170,13 +155,13 @@ function updateGraph(graph, snapshot) {
 
 // 📌 API رئيسي
 export async function trackEmotion(userMessage, fingerprint) {
-  // منحنى
-  let curve = loadData(EMOTION_LOG);
+  // We now directly use our in-memory store
+  let curve = memoryStore.emotion_log;
   const snapshot = analyzeSnapshot(userMessage, fingerprint);
   curve = evolveCurve(curve, snapshot);
 
   // شبكة
-  let graph = loadData(EMOTION_GRAPH);
+  let graph = memoryStore.emotion_graph;
   graph = updateGraph(graph, snapshot);
 
   // تحليلات
@@ -184,10 +169,8 @@ export async function trackEmotion(userMessage, fingerprint) {
   const forecast = forecastNext(curve);
   const shocks = detectShocks(curve);
 
-  // حفظ
-  saveData(EMOTION_LOG, curve);
-  saveData(EMOTION_GRAPH, graph);
-
+  // The 'saveData' calls are no longer needed because we modified the data in-memory directly.
+  
   return {
     last: snapshot,
     curveSize: curve.length,
@@ -200,7 +183,7 @@ export async function trackEmotion(userMessage, fingerprint) {
 
 // 🔍 استعلام الشبكة: "إيه أكتر كلمة مرتبطة بالحزن مثلاً؟"
 export function queryEmotionGraph(emotion, limit = 5) {
-  let graph = loadData(EMOTION_GRAPH);
+  let graph = memoryStore.emotion_graph;
   const filtered = graph.filter(node => node.emotion === emotion);
   const ranked = filtered.sort((a, b) => b.weight - a.weight);
   return ranked.slice(0, limit);
