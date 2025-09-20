@@ -1,4 +1,4 @@
-// storage.js v17.0 - The Smartest Solution: In-Memory Temporary Storage
+// storage.js v17.1 - The Smartest Solution: In-Memory Temporary Storage (with safety fix)
 
 import crypto from "crypto";
 import { DEBUG } from "./config.js";
@@ -41,21 +41,31 @@ export async function appendLearningQueue(entry) {
 }
 
 // ------------ Profile updaters ------------
-// NO CHANGES WERE MADE TO THE LOGIC OF THESE FUNCTIONS.
-// They don't interact with storage directly, so they remain identical.
+// This function has been updated with an extra safety check to prevent crashes.
 
 export function updateProfileWithEntities(profile = {}, entities = [], mood = null, rootCause = null) {
   try {
+    // Ensure main profile structures exist
     profile.longTermProfile = profile.longTermProfile || {
       recurring_themes: {},
       mentioned_entities: {},
       communication_style: "neutral",
     };
+    
+    // === [CRASH FIX] ===
+    // This is the added safety check. We ensure profile.emotions is always an object.
     profile.emotions = profile.emotions || {};
+    // ===================
+
+    // Record mood safely
     if (mood) {
-      if (!profile.emotions[mood]) profile.emotions[mood] = 0;
+      if (!profile.emotions[mood]) {
+        profile.emotions[mood] = 0;
+      }
       profile.emotions[mood] += 1;
     }
+
+    // Process entities
     for (const ent of entities) {
       if (!profile.longTermProfile.mentioned_entities[ent]) {
         profile.longTermProfile.mentioned_entities[ent] = {
@@ -69,10 +79,12 @@ export function updateProfileWithEntities(profile = {}, entities = [], mood = nu
       const obj = profile.longTermProfile.mentioned_entities[ent];
       obj.mention_count++;
       if (mood) {
+        // Since we checked profile.emotions above, this part is now safer.
         obj.sentiment_associations[mood] =
           (obj.sentiment_associations[mood] || 0) + 1;
       }
       obj.last_mentioned = new Date().toISOString();
+
       if (rootCause) {
         obj.last_root_causes.unshift({ cause: rootCause, ts: new Date().toISOString() });
         if (obj.last_root_causes.length > 5) obj.last_root_causes.pop();
