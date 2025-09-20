@@ -1,47 +1,48 @@
-// storage.js v14.3 - Asynchronous & Resilient Storage (with safety checks)
+// storage.js v15.0 - Vercel KV Integration
 
-import fs from "fs/promises";
+import { kv } from "@vercel/kv";
 import crypto from "crypto";
-import path from "path";
-import { DATA_DIR, USERS_FILE, LEARNING_QUEUE_FILE, DEBUG } from "./config.js";
+import { DEBUG } from "./config.js";
 
-const THRESHOLDS_FILE = path.join(DATA_DIR, "intent_thresholds.json");
-const OCCURRENCE_FILE = path.join(DATA_DIR, "occurrence_counters.json");
+// --- Key names for Vercel KV ---
+// We use these constants instead of file paths now.
+const USERS_KEY = "rafiq_users";
+const LEARNING_QUEUE_KEY = "rafiq_learning_queue";
+const THRESHOLDS_KEY = "rafiq_intent_thresholds";
+const OCCURRENCE_KEY = "rafiq_occurrence_counters";
 
 // --- Directory Setup ---
-(async () => {
-  try {
-    await fs.mkdir(DATA_DIR, { recursive: true });
-  } catch (e) {
-    console.error("❌ CRITICAL_STORAGE_ERROR: Could not create data directory.", e);
-  }
-})();
+// This block is no longer needed as Vercel KV doesn't use local directories.
+// (async () => {
+//   try {
+//     await fs.mkdir(DATA_DIR, { recursive: true });
+//   } catch (e) {
+//     console.error("❌ CRITICAL_STORAGE_ERROR: Could not create data directory.", e);
+//   }
+// })();
 
 // ------------ Users storage ------------
 export async function loadUsers() {
   try {
-    await fs.access(USERS_FILE);
-    const raw = await fs.readFile(USERS_FILE, "utf8");
-    return JSON.parse(raw || "{}");
-  } catch (e) {
-    if (e.code === "ENOENT") {
-      if (DEBUG) console.log("INFO: users.json not found. Creating a new one.");
-      await saveUsers({});
+    const raw = await kv.get(USERS_KEY);
+    // If 'raw' is null (key doesn't exist), return an empty object.
+    if (raw === null) {
+      if (DEBUG) console.log("INFO: User data not found in KV. Returning empty object.");
       return {};
     }
-    console.error("❌ STORAGE_ERROR: Failed to load users file:", e);
-    return {};
+    return raw;
+  } catch (e) {
+    console.error("❌ KV_STORAGE_ERROR: Failed to load users from KV:", e);
+    return {}; // Return empty object on error to prevent crashes.
   }
 }
 
 export async function saveUsers(users) {
   try {
-    const tempFile = `${USERS_FILE}.${Date.now()}.tmp`;
-    await fs.writeFile(tempFile, JSON.stringify(users, null, 2), "utf8");
-    await fs.rename(tempFile, USERS_FILE);
-    if (DEBUG) console.log("✅ Users data saved successfully.");
+    await kv.set(USERS_KEY, users);
+    if (DEBUG) console.log("✅ Users data saved successfully to Vercel KV.");
   } catch (e) {
-    console.error("❌ STORAGE_ERROR: Failed to save users file:", e);
+    console.error("❌ KV_STORAGE_ERROR: Failed to save users to KV:", e);
   }
 }
 
@@ -53,25 +54,30 @@ export function makeUserId() {
 export async function appendLearningQueue(entry) {
   let queue = [];
   try {
-    await fs.access(LEARNING_QUEUE_FILE);
-    const raw = await fs.readFile(LEARNING_QUEUE_FILE, "utf8");
-    queue = JSON.parse(raw || "[]");
-  } catch (e) {
-    if (e.code !== "ENOENT") {
-      console.error("❌ STORAGE_ERROR: Failed to read learning_queue.json:", e);
+    // Get the current queue from KV
+    const currentQueue = await kv.get(LEARNING_QUEUE_KEY);
+    // If it exists and is an array, use it. Otherwise, start fresh.
+    if (Array.isArray(currentQueue)) {
+      queue = currentQueue;
     }
+  } catch (e) {
+    console.error("❌ KV_STORAGE_ERROR: Failed to read learning_queue from KV:", e);
   }
 
   try {
     queue.push({ ts: new Date().toISOString(), ...entry });
-    await fs.writeFile(LEARNING_QUEUE_FILE, JSON.stringify(queue, null, 2), "utf8");
-    if (DEBUG) console.log("Appended to learning queue.");
+    // Save the entire updated queue back to KV
+    await kv.set(LEARNING_QUEUE_KEY, queue);
+    if (DEBUG) console.log("Appended to learning queue in Vercel KV.");
   } catch (e) {
-    console.error("❌ STORAGE_ERROR: Failed to append to learning queue:", e);
+    console.error("❌ KV_STORAGE_ERROR: Failed to append to learning queue in KV:", e);
   }
 }
 
 // ------------ Profile updaters ------------
+// NO CHANGES WERE MADE TO THE LOGIC OF THESE FUNCTIONS.
+// They don't interact with storage directly, so they remain identical.
+
 export function updateProfileWithEntities(profile = {}, entities = [], mood = null, rootCause = null) {
   try {
     // Ensure structure
@@ -127,16 +133,8 @@ export function recordRecurringTheme(profile = {}, tag) {
       mentioned_entities: {},
       communication_style: "neutral",
     };
-
-    // =================================================================
-    // START: [V9 FIX] SAFETY CHECK
-    // This is the added line to fix the crash.
-    // =================================================================
-    // Ensure the 'recurring_themes' object itself exists before trying to access a property on it.
+    
     profile.longTermProfile.recurring_themes = profile.longTermProfile.recurring_themes || {};
-    // =================================================================
-    // END: [V9 FIX]
-    // =================================================================
 
     profile.longTermProfile.recurring_themes[tag] =
       (profile.longTermProfile.recurring_themes[tag] || 0) + 1;
@@ -149,55 +147,47 @@ export function recordRecurringTheme(profile = {}, tag) {
 // ------------ Meta-Learning: Intent Thresholds ------------
 export async function loadIntentThresholds() {
   try {
-    await fs.access(THRESHOLDS_FILE);
-    const raw = await fs.readFile(THRESHOLDS_FILE, "utf8");
-    return JSON.parse(raw || "{}");
-  } catch (e) {
-    if (e.code === "ENOENT") {
-      if (DEBUG) console.log("INFO: intent_thresholds.json not found. Creating a new one.");
-      await saveIntentThresholds({});
+    const raw = await kv.get(THRESHOLDS_KEY);
+    if (raw === null) {
+      if (DEBUG) console.log("INFO: intent_thresholds not found in KV. Returning empty object.");
       return {};
     }
-    console.error("❌ STORAGE_ERROR: Failed to load thresholds:", e);
+    return raw;
+  } catch (e) {
+    console.error("❌ KV_STORAGE_ERROR: Failed to load thresholds from KV:", e);
     return {};
   }
 }
 
 export async function saveIntentThresholds(thresholds) {
   try {
-    const tempFile = `${THRESHOLDS_FILE}.${Date.now()}.tmp`;
-    await fs.writeFile(tempFile, JSON.stringify(thresholds, null, 2), "utf8");
-    await fs.rename(tempFile, THRESHOLDS_FILE);
-    if (DEBUG) console.log("✅ Intent thresholds saved.");
+    await kv.set(THRESHOLDS_KEY, thresholds);
+    if (DEBUG) console.log("✅ Intent thresholds saved to Vercel KV.");
   } catch (e) {
-    console.error("❌ STORAGE_ERROR: Failed to save thresholds:", e);
+    console.error("❌ KV_STORAGE_ERROR: Failed to save thresholds to KV:", e);
   }
 }
 
 // ------------ Meta-Learning: Occurrence Counters ------------
 export async function loadOccurrenceCounters() {
   try {
-    await fs.access(OCCURRENCE_FILE);
-    const raw = await fs.readFile(OCCURRENCE_FILE, "utf8");
-    return JSON.parse(raw || "{}");
-  } catch (e) {
-    if (e.code === "ENOENT") {
-      if (DEBUG) console.log("INFO: occurrence_counters.json not found. Creating a new one.");
-      await saveOccurrenceCounters({});
+    const raw = await kv.get(OCCURRENCE_KEY);
+    if (raw === null) {
+      if (DEBUG) console.log("INFO: occurrence_counters not found in KV. Returning empty object.");
       return {};
     }
-    console.error("❌ STORAGE_ERROR: Failed to load occurrence counters:", e);
+    return raw;
+  } catch (e) {
+    console.error("❌ KV_STORAGE_ERROR: Failed to load occurrence counters from KV:", e);
     return {};
   }
 }
 
 export async function saveOccurrenceCounters(counters) {
   try {
-    const tempFile = `${OCCURRENCE_FILE}.${Date.now()}.tmp`;
-    await fs.writeFile(tempFile, JSON.stringify(counters, null, 2), "utf8");
-    await fs.rename(tempFile, OCCURRENCE_FILE);
-    if (DEBUG) console.log("✅ Occurrence counters saved.");
+    await kv.set(OCCURRENCE_KEY, counters);
+    if (DEBUG) console.log("✅ Occurrence counters saved to Vercel KV.");
   } catch (e) {
-    console.error("❌ STORAGE_ERROR: Failed to save occurrence counters:", e);
+    console.error("❌ KV_STORAGE_ERROR: Failed to save occurrence counters to KV:", e);
   }
 }
