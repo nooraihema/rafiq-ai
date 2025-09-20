@@ -13,7 +13,7 @@ import { composeInferentialResponse } from '../core/composition_engine.js';
 import { processMeta } from '../coordination/meta_router.js';
 import { ContextTracker } from '../shared/context_tracker.js';
 import { generateFingerprintV2 as generateFingerprint } from '../perception/fingerprint_engine.js';
-import { atomize } from '../hippocampus/KnowledgeAtomizer.js';
+import { atomize } from '../hippocampus/knowledgeAtomizer.js';
 import { memoryGraph } from '../hippocampus/MemoryGraph.js';
 import { InferenceEngine } from '../hippocampus/InferenceEngine.js';
 // =================================================================
