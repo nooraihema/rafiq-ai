@@ -1,19 +1,18 @@
-// learning_engine.js v9.0 - State-Aware Self-Review Engine
+// learning_engine.js v9.1 - State-Aware Self-Review Engine (In-Memory Edition)
 // Purpose: After every response, analyze quality against intent-defined success metrics.
-// This version integrates with the v9 intent template to perform more objective, goal-oriented analysis.
+// This version is adapted for In-Memory storage to prevent file system errors.
 
-import fs from "fs";
-import path from "path";
+// --- [CRASH FIX] ---
+// We replace the file system (fs) with our simple in-memory store.
+const memoryStore = {
+  learning_logs: [],
+  user_profiles: {},
+};
 
-// =================================================================
-// START: PATH UPDATES FOR NEW STRUCTURE
-// =================================================================
-const DATA_DIR = path.join(process.cwd(), "data");
-const LOG_FILE = path.join(DATA_DIR, "learning_logs.json");
-const PROFILE_FILE = path.join(DATA_DIR, "user_profiles.json");
-// =================================================================
-// END: PATH UPDATES FOR NEW STRUCTURE
-// =================================================================
+if (process.env.NODE_ENV === 'development') {
+    console.log("✅ [LEARNING_ENGINE] Running in smart In-Memory Temporary Storage mode.");
+}
+// --------------------
 
 
 // ----- Utilities: Arabic basic normalization & tokenization -----
@@ -64,32 +63,6 @@ function cosineSimilarityFromTF(tfA, tfB) {
 const empathyKeywords = ["مفتكر", "آسف", "أفهم", "مفهوم", "متفهم", "مزعج", "صعب", "قلق", "متأسف", "أقدّر", "تفهمت"];
 const actionVerbs = ["جرب", "قم", "افعل", "حاول", "ابدأ", "اتخذ", "راجع", "نقح"];
 const negativeIndicators = ["قَلِق", "قلب", "خائف", "خوف", "قلق", "مضغوط", "محبط", "حزين"];
-
-// ----- Profile & Logs management -----
-function safeReadJSON(file) {
-  try {
-    const dir = path.dirname(file);
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-    }
-    if (!fs.existsSync(file)) return {};
-    const t = fs.readFileSync(file, "utf8");
-    return JSON.parse(t || "{}");
-  } catch (e) {
-    return {};
-  }
-}
-function safeWriteJSON(file, obj) {
-  try {
-    const dir = path.dirname(file);
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(file, JSON.stringify(obj, null, 2), "utf8");
-  } catch (e) {
-    console.error("[LearningEngine] write error:", e.message);
-  }
-}
 
 // ----- Heuristic analyzers -----
 function calcRepetitionScore(currentTokens, recentTokensArray = []) {
@@ -201,6 +174,16 @@ export async function runLearningEngine(
     finalSessionContext = {} // The session context AFTER this turn
 ) {
   try {
+    // --- [CRASH FIX] ---
+    // Safety check to ensure all required context objects are valid.
+    if (!fingerprint || !activeIntent || !initialSessionContext || !finalSessionContext) {
+        console.error("[LearningEngine] Fatal: Missing critical context for analysis.");
+        return {
+            logEntry: null, suggestion: ["تحليل الجودة متوقف بسبب نقص في السياق."], improvedResponse: responsePayload
+        };
+    }
+    // --------------------
+
     const userTokens = tokenize(userMessage);
     const respTokens = tokenize(responsePayload);
     const tfUser = termFrequency(userTokens);
@@ -214,7 +197,11 @@ export async function runLearningEngine(
     const hasAction = containsKeyword(respTokens, actionVerbs) || respTokens.some(t => t.endsWith("؟") === false && t.length > 3);
     const helpfulness = (hasAction ? 0.6 : 0.2) + 0.4 * depth;
 
-    const logs = safeReadJSON(LOG_FILE) || [];
+    // --- [CRASH FIX] ---
+    // Ensure logs is always an array before filtering.
+    const logs = Array.isArray(memoryStore.learning_logs) ? memoryStore.learning_logs : [];
+    // --------------------
+    
     const userId = fingerprint.userId || "anon"; // Assuming fingerprint has a userId
     const recentForUser = logs.filter(l => l.userId === userId).slice(-6).map(l => tokenize(l.userMessage));
     const repScore = calcRepetitionScore(userTokens, recentForUser);
@@ -247,7 +234,7 @@ export async function runLearningEngine(
     // [V9 UPGRADE] Add notes from the new analysis
     notes.push(...goalAnalysis.notes);
 
-    const profiles = safeReadJSON(PROFILE_FILE) || {};
+    const profiles = memoryStore.user_profiles || {};
     const prof = profiles[userId] || {
       userId, messages: 0, avgRelevance: 0, avgDepth: 0, lastSeen: null, repeatedTopics: {}
     };
@@ -264,7 +251,7 @@ export async function runLearningEngine(
     prof.avgGoalSuccess = ((prof.avgGoalSuccess || 0) * (prof.messages - 1) + goalAnalysis.score) / prof.messages;
 
     profiles[userId] = prof;
-    safeWriteJSON(PROFILE_FILE, profiles);
+    memoryStore.user_profiles = profiles; // Save back to in-memory store
 
     const logEntry = {
       timestamp: new Date().toISOString(),
@@ -276,9 +263,8 @@ export async function runLearningEngine(
       notes
     };
     
-    const existing = Array.isArray(logs) ? logs : [];
-    existing.push(logEntry);
-    safeWriteJSON(LOG_FILE, existing);
+    logs.push(logEntry);
+    memoryStore.learning_logs = logs; // Save back to in-memory store
 
     const suggestion = [];
     if (analysis.relevance < 0.45) suggestion.push("ركز على استهداف كلمات المستخدم الأساسية.");
@@ -295,7 +281,7 @@ export async function runLearningEngine(
 
     const improvedResponse = templateRewrite({ userMessage, responsePayload, analysis });
 
-    if (process.env.DEBUG === "true") {
+    if (process.env.DEBUG === "true" || process.env.VERCEL_ENV === "development") {
       console.log("[LearningEngine] analysis:", analysis, "goalAnalysis:", goalAnalysis, "notes:", notes);
     }
 
@@ -305,7 +291,7 @@ export async function runLearningEngine(
       improvedResponse
     };
   } catch (err) {
-    console.error("[LearningEngine] Fatal:", err.message);
+    console.error("[LearningEngine] Fatal:", err.message, err.stack);
     return {
       logEntry: null,
       suggestion: ["حدث خطأ داخلي أثناء تحليل الرد."],
@@ -313,23 +299,3 @@ export async function runLearningEngine(
     };
   }
 }
-
-// Simple local demo if run directly
-// if (require.main === module) {
-//   (async () => {
-//     const demoUser = "أنا قلق جدا من قرار الشغل الجديد ومش عارف أتصرف إزاي";
-//     const demoResp = "تقدر تجرب تنتظر وترى الأمور.";
-//     // For V9, we need to mock more context
-//     const demoIntent = { success_metrics: { primary: true, secondary: true } };
-//     const initialCtx = { state: 'validating', last_intensity: 0.8 };
-//     const finalCtx = { state: 'exploring' };
-//     const demoFingerprint = { intensity: 0.6, userId: 'demo_user_1' };
-//     const res = await runLearningEngine(demoUser, demoResp, demoFingerprint, demoIntent, initialCtx, finalCtx);
-//     console.log("=== Demo Result ===");
-//     console.log("Analysis:", res.logEntry.analysis);
-//     console.log("Goal Analysis:", res.logEntry.goalAnalysis);
-//     console.log("Notes:", res.logEntry.notes);
-//     console.log("Suggestion:", res.suggestion.join(" | "));
-//     console.log("Improved Response:\n", res.improvedResponse);
-//   })();
-// }
