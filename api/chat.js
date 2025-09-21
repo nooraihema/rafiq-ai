@@ -1,4 +1,3 @@
-
 // chat.js v11.1 - The Collective Mind Conductor + Supreme Response Fusion
 // Implements "Mind's Workshop" + ResponseSynthesizer + HybridComposer integration
 // Author: For Rafiq system
@@ -21,8 +20,12 @@ import { memoryGraph } from '../hippocampus/MemoryGraph.js';
 import { InferenceEngine } from '../hippocampus/InferenceEngine.js';
 
 // Integration of new modules
-import ResponseSynthesizer from '../intelligence/ResponseSynthesizer.js';
-import HybridComposer from '../intelligence/HybridComposer.js';
+// --- MODIFICATION START ---
+// 1. Imported the specific functions `synthesizeResponse` and `synthesizeHybridResponse` using named imports (with curly braces {}).
+// 2. Corrected the file path for `ResponseSynthesizer.js` and removed the old `ResponseSelector.js`.
+import { synthesizeResponse } from '../intelligence/ResponseSynthesizer.js';
+import { synthesizeHybridResponse } from '../intelligence/HybridComposer.js';
+// --- MODIFICATION END ---
 
 // =================================================================
 // SECTION 1B: INITIALIZATION
@@ -73,12 +76,15 @@ async function executeCollectiveMind(props) {
     metadata: {}
   }));
 
-  const synthesized = ResponseSynthesizer.synthesizeResponse(
+  // --- MODIFICATION START ---
+  // 3. Called the imported function `synthesizeResponse` directly.
+  const synthesized = synthesizeResponse(
     synthesizerInput,
     cognitiveProfile,
     { strategicGoal, fingerprint },
     tracker
   );
+  // --- MODIFICATION END ---
 
   // STEP 4: HybridComposer final selection
   const hybridInput = [
@@ -86,12 +92,15 @@ async function executeCollectiveMind(props) {
     { reply: baseResponse.reply, source: 'v9engine', confidence: baseResponse.confidence || 0.8 }
   ];
 
-  const finalHybrid = HybridComposer.selectHybrid(hybridInput);
+  // --- MODIFICATION START ---
+  // 4. Called the imported function `synthesizeHybridResponse` directly. The original file had a method `.selectHybrid` which was corrected to the actual exported function name.
+  const finalHybrid = synthesizeHybridResponse(hybridInput, { fingerprint, tracker });
+  // --- MODIFICATION END ---
 
   // STEP 5: Attach metadata for tracking
   const responsePayload = {
     reply: finalHybrid.reply,
-    source: finalHybrid.source,
+    source: finalHybrid.source || "hybrid_composer", // Ensure source is set
     metadata: {
       synthesizerMetadata: synthesized.metadata,
       hybridMetadata: finalHybrid.metadata || {},
@@ -123,7 +132,7 @@ export default async function handler(req, res) {
       userId = makeUserId();
       users[userId] = {
         id: userId,
-        createdAt: new Date().toISOString(),
+        createdAt: new new Date().toISOString(),
         shortMemory: { history: [], sessionContext: { state: null, active_intent: null, turn_counter: 0 } }
       };
       if (DEBUG) console.log(`🆕 New user: ${userId}`);
