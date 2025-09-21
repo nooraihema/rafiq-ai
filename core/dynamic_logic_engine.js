@@ -1,6 +1,6 @@
-// dynamic_logic_engine.js v9.0-hybrid - The Empathic & Guided Core (with V5 legacy support)
-// This version integrates the advanced v9.0 intent template, while retaining the original
-// v5 metacognitive core for backward compatibility and safe switching.
+// dynamic_logic_engine.js v10.0-protocol - The Protocol-Aware Expert Executor
+// This version introduces a new top-level function `executeProtocolStep` to orchestrate
+// the powerful V9 engine, while keeping all V5 and V9 legacy code intact.
 
 // =================================================================
 // START: PATH UPDATES & IMPORTS
@@ -246,12 +246,18 @@ function V9_chooseSuggestionHybrid(candidates = [], userProfile = {}, fingerprin
 const V9_dialogueFlowStep = (ctx) => {
     const { fullIntent, sessionContext } = ctx;
     const sessionState = sessionContext.state;
-    if (sessionState === 'validating') {
-        const layerKey = fullIntent.dialogue_flow.entry_point || 'L0_Validation_and_Venting';
-        const validationResponse = selectRandom(safeGet(fullIntent, `dialogue_flow.layers.${layerKey}`));
-        if (validationResponse) {
-            const newResponseParts = [validationResponse];
-            return { ...ctx, responseParts: newResponseParts, stopProcessing: true };
+    // --- MODIFICATION: Logic simplified to handle any layer based on sessionContext ---
+    const layerKey = sessionState; // The state from sessionContext IS the layer key.
+    const layer = safeGet(fullIntent, `dialogue_flow.layers.${layerKey}`);
+
+    if(layer && layer.responses) {
+        const response = selectRandom(layer.responses);
+        const responseText = (typeof response === 'object') ? [response.opener, response.question].filter(Boolean).join('\n') : response;
+        if (responseText) {
+            const newResponseParts = [responseText];
+            // If this layer's purpose is just to talk, we might stop here.
+            const stopHere = layer.next_state === "L3_Tool_Selection"; // Example logic
+            return { ...ctx, responseParts: newResponseParts, stopProcessing: stopHere };
         }
     }
     return ctx;
@@ -260,8 +266,8 @@ const V9_serviceHookStep = (ctx) => {
     const { fullIntent, fingerprint } = ctx;
     const calmingHook = safeGet(fullIntent, 'service_hooks.calming_service');
     if (calmingHook) {
-        const emotionIntensity = safeGet(fingerprint, 'emotions.primary.intensity', 0);
-        if (emotionIntensity > 0.8 && ctx.sessionContext.state !== 'validating') {
+        const emotionIntensity = safeGet(fingerprint, 'intensity', 0); // Corrected path
+        if (emotionIntensity > 0.8 && ctx.sessionContext.state !== 'L0_Validation') {
              const newResponseParts = [calmingHook.suggestion_prompt];
              const newMetadata = { ...ctx.metadata, request_service_intent: calmingHook.target_intent };
              return { ...ctx, responseParts: newResponseParts, metadata: newMetadata, stopProcessing: true };
@@ -271,20 +277,15 @@ const V9_serviceHookStep = (ctx) => {
 };
 const V9_coreSuggestionStep = (ctx) => {
     const { fullIntent, fingerprint, userProfile, sessionContext } = ctx;
-    if (sessionContext.state !== 'tool_introduction') {
-        const currentLayerKey = sessionContext.layer || 'L1_Exploration';
-        const explorationLayer = safeGet(fullIntent, `dialogue_flow.layers.${currentLayerKey}`);
-        const explorationPrompt = selectRandom(explorationLayer);
-        if (explorationPrompt && typeof explorationPrompt === 'object') {
-            const responseText = [explorationPrompt.opener, explorationPrompt.question].filter(Boolean).join('\n');
-            const newResponseParts = [...ctx.responseParts, responseText];
-            return { ...ctx, responseParts: newResponseParts };
-        } else if (typeof explorationPrompt === 'string') {
-            return { ...ctx, responseParts: [...ctx.responseParts, explorationPrompt] };
-        }
+    
+    // This step now only triggers if we are specifically in a state that requires tool selection.
+    if (sessionContext.state !== 'L3_Tool_Selection') {
+        return ctx;
     }
+
     const candidates = safeGet(fullIntent, 'actionable_suggestions', []);
     const pick = V9_chooseSuggestionHybrid(candidates, userProfile, fingerprint, fullIntent);
+    
     if (pick && pick.choice) {
         const finalChoice = pick.choice;
         const suggestionText = finalChoice.suggestion_prompt || finalChoice.suggestion;
@@ -296,7 +297,7 @@ const V9_coreSuggestionStep = (ctx) => {
     return { ...ctx, responseParts: [...ctx.responseParts, fallbackResponse] };
 };
 const V9_bridgingLogicStep = (ctx) => {
-    if (ctx.sessionContext.state === 'resolved') {
+    if (ctx.sessionContext.state === 'resolved') { // Example state
         const bridge = selectRandom(safeGet(ctx.fullIntent, 'bridging_logic.on_successful_resolution'));
         if (bridge) {
             const newResponseParts = [...ctx.responseParts, bridge.suggestion];
@@ -320,10 +321,13 @@ const cognitivePipelineV9 = [
 /* ========================================================================== */
 export function executeV9Engine(fullIntent = {}, fingerprint = {}, userProfile = {}, sessionContext = {}) {
     if (!fullIntent || !fullIntent.core_concept) return null;
+
+    // --- MODIFICATION: The sessionContext is now the single source of truth ---
     const currentSessionContext = {
-        state: sessionContext.state || 'validating',
-        layer: sessionContext.layer || fullIntent.dialogue_flow.entry_point,
+        state: sessionContext.state || fullIntent.dialogue_flow.entry_point, // Start from entry point if no state
+        turn_counter: sessionContext.turn_counter || 0
     };
+
     let responseContext = {
         responseParts: [],
         metadata: { intentTag: fullIntent.tag },
@@ -339,14 +343,27 @@ export function executeV9Engine(fullIntent = {}, fingerprint = {}, userProfile =
         if (DEBUG) console.log("V9 Engine: Pipeline resulted in no response. Falling back.");
         return { reply: "أنا أفكر في كلماتك. هل يمكنك أن تخبرني المزيد؟", source: 'v9_engine_fallback', metadata: {} };
     }
-    const personaKey = safeGet(fullIntent, 'dynamic_response_logic.persona_logic', 'the_empathetic_listener');
+    
+    // --- MODIFICATION: Persona logic now uses the current state ---
+    const personaKey = safeGet(fullIntent, `dynamic_response_logic.persona_logic.${currentSessionContext.state}`, 'the_empathetic_listener');
     const persona = safeGet(knowledgeBase, `PERSONA_PROFILES.${personaKey}`, {});
+    
     let finalReply = responseContext.responseParts.join('\n\n');
     if (persona.prefix) {
         finalReply = `${persona.prefix} ${finalReply}`;
     }
-    const nextSessionContext = { ...currentSessionContext };
-    // Logic to transition state would be added here
+    
+    // --- MODIFICATION: State transition logic is now explicit ---
+    const currentLayer = safeGet(fullIntent, `dialogue_flow.layers.${currentSessionContext.state}`, {});
+    const nextState = currentLayer.next_state || null; // If null, the protocol ends.
+
+    const nextSessionContext = { 
+        ...currentSessionContext,
+        active_intent: fullIntent.tag, // Keep the protocol active
+        state: nextState,
+        turn_counter: currentSessionContext.turn_counter + 1
+    };
+
     const newMetadata = {
         ...responseContext.metadata,
         nextSessionContext,
@@ -355,11 +372,45 @@ export function executeV9Engine(fullIntent = {}, fingerprint = {}, userProfile =
             suggestionId: responseContext.metadata.chosenSuggestion?.id || null
         }
     };
-    return { reply: finalReply, source: `v9_engine`, metadata: newMetadata };
+    return { reply: finalReply, source: `v9_engine:${fullIntent.tag}:${currentSessionContext.state}`, metadata: newMetadata };
 }
 // =================================================================
 // END: [V9 ENGINE CODE]
 // =================================================================
+
+// --- [THE GRAND UPGRADE: The Protocol Executor] ---
+/* ==================================================================
+   NEW EXPORTED FUNCTION: executeProtocolStep
+   This is the new, clean entry point. It decides whether to use the
+   powerful V9 engine for protocol-based intents or the legacy V5
+   engine for simpler ones, based on the intent's structure.
+   ================================================================== */
+export function executeProtocolStep(protocolPacket, fingerprint, userProfile, sessionContext) {
+    const { full_intent, initial_context } = protocolPacket;
+
+    if (!full_intent) {
+        if (DEBUG) console.warn("executeProtocolStep called with an empty protocol packet.");
+        return { reply: "أنا أفكر في ذلك...", source: "protocol_error", metadata: {} };
+    }
+
+    // --- Strategic Decision: Check if the intent is a modern V9 protocol ---
+    if (full_intent.dialogue_flow && full_intent.dialogue_flow.layers) {
+        if (DEBUG) console.log(`PROTOCOL EXECUTOR: Engaging V9 Engine for protocol "${full_intent.tag}" at state "${initial_context.state}".`);
+        // Use the powerful V9 engine for structured dialogues
+        return executeV9Engine(full_intent, fingerprint, userProfile, initial_context);
+    } 
+    
+    // --- Fallback: Use the legacy V5 engine for older, simpler intents ---
+    if (full_intent.actionable_suggestions) {
+        if (DEBUG) console.log(`PROTOCOL EXECUTOR: Engaging legacy V5 Engine for simple intent "${full_intent.tag}".`);
+        return executeMetacognitiveCore(full_intent, fingerprint, userProfile);
+    }
+
+    // --- Final Fallback ---
+    if (DEBUG) console.log(`PROTOCOL EXECUTOR: Intent "${full_intent.tag}" has no executable parts. Falling back.`);
+    return { reply: "هناك فكرة لدي، لكن دعني أنظمها أولاً. ماذا يدور في ذهنك الآن؟", source: "protocol_no_action", metadata: {} };
+}
+
 
 // [V9 UPGRADE] Renaming the old memory functions to avoid export conflicts.
 export { V5_consolidateDailySummary as consolidateDailySummary }
