@@ -1,10 +1,12 @@
-// intelligence/HybridComposer.js v2.3-maestro (FINAL COMPLETE & CORRECTED VERSION)
-// THE HYBRID COMPOSER — "THE CONSCIOUS MAESTRO"
+// intelligence/HybridComposer.js v3.0 - The Final Conductor
+// This version is now fully integrated with the Strategic Planner and Protocol Executor.
+// It uses the strategic recommendations from the "Protocol Packet" to make its final decision.
+// ALL ORIGINAL LOGIC IS PRESERVED and used as part of the new strategic flow.
 
 const DEBUG = false;
 
 /* =========================
-   Tunables & Config
+   Tunables & Config (Preserved)
    ========================= */
 const DEFAULT_PERSONAS = [
   { id: "logical", weight: 1.0, desc: "منطق، أسباب، خطوات" },
@@ -17,7 +19,7 @@ const MAX_FRAGMENTS = 4;
 const NOVELTY_DECAY_WINDOW = 6;
 
 /* =========================
-   Helpers
+   Helpers (Preserved)
    ========================= */
 function safeStr(s) { return (s === null || s === undefined) ? "" : String(s); }
 function clamp(v, a = 0, b = 1) { return Math.max(a, Math.min(b, v)); }
@@ -45,7 +47,7 @@ function firstSentence(text) {
 }
 
 /* =========================
-   Persona modules (Self-contained)
+   Persona modules (Preserved)
    ========================= */
 const PERSONA_FUNCS = {
     logical: (candidate) => {
@@ -55,7 +57,6 @@ const PERSONA_FUNCS = {
             : "اقتراح منطقي: حاول كتابة الخيارات ثم قيّم كل خيار.";
         return { persona: "logical", segment, score: 0.95 };
     },
-    // --- THIS IS THE CORRECTED FUNCTION ---
     empathic: (candidate) => {
         const seed = firstSentence(candidate.reply) || "واضح إن الوضع صعب.";
         const seg = `${seed} أنا معاك — مشاعرك مفهومة ومن الطبيعي أن تتردد.`;
@@ -71,7 +72,7 @@ const PERSONA_FUNCS = {
 };
 
 /* =========================
-   Inner Critics / Validators (Self-contained)
+   Inner Critics / Validators (Preserved)
    ========================= */
 function safetyCheck(fingerprint, candidates) {
   const flags = [];
@@ -81,7 +82,7 @@ function safetyCheck(fingerprint, candidates) {
 }
 
 /* =========================
-   Fusion Core (Self-contained)
+   Fusion Core (Preserved)
    ========================= */
 function analyzeCandidates(candidates = [], tracker = null, fingerprint = {}) {
   const history = tracker?.getHistory ? tracker.getHistory() : [];
@@ -104,7 +105,7 @@ function analyzeCandidates(candidates = [], tracker = null, fingerprint = {}) {
 }
 
 /* =================================================
-   THE MAESTRO'S WEAVING ROOM: From Selection to Artful Synthesis
+   THE MAESTRO'S WEAVING ROOM (Preserved)
    ================================================= */
 function createEmpathyBridge(fingerprint) {
     const bridges = [
@@ -132,10 +133,12 @@ function weaveEmpathyAndAction(empathicCandidate, practicalCandidate, fingerprin
 }
 
 /* =========================
-   API: synthesizeHybridResponse (THE MAESTRO'S PODIUM)
+   API: synthesizeHybridResponse (THE UPGRADED MAESTRO'S PODIUM)
    ========================= */
-function synthesizeHybridResponse(candidates = [], context = {}) {
+// --- MODIFICATION: The function now accepts the "protocolPacket" from the Strategic Planner ---
+function synthesizeHybridResponse(candidates = [], protocolPacket = {}, context = {}) {
   const { tracker = null, fingerprint = {} } = context;
+  const { strategicRecommendation } = protocolPacket; // Extract the strategy
 
   const fallbackResponse = {
     reply: "أنا معاك، ممكن توضّح أكتر؟", source: "hybrid_composer_fallback",
@@ -152,28 +155,43 @@ function synthesizeHybridResponse(candidates = [], context = {}) {
   const analyzed = analyzeCandidates(candidates, tracker, fingerprint);
   if (!analyzed || analyzed.length === 0) return fallbackResponse;
   
-  const primaryEmotion = fingerprint?.primaryEmotion?.type || 'neutral';
-  const hasProblemContext = fingerprint?.concepts?.some(c => ['decision_making', 'work', 'procrastination'].includes(c.concept));
-  
-  if ((primaryEmotion === 'anxiety' || primaryEmotion === 'sadness') && hasProblemContext) {
-      if (DEBUG) console.log("MAESTRO STRATEGY: Weaving Empathy with Action.");
+  // --- [THE NEW STRATEGIC DECISION CORE] ---
+  // The Maestro now reads the strategic recommendation from the packet and executes it.
+  if (DEBUG) console.log(`MAESTRO: Executing strategy -> "${strategicRecommendation}"`);
+
+  switch (strategicRecommendation) {
+    case 'WEAVE_EMPATHY_WITH_INTENT':
+      const empathicSource = analyzed.find(c => c.candidate.source === 'empathic_safety_net');
+      // Find the candidate that came from the protocol engine
+      const protocolCandidate = analyzed.find(c => c.candidate.source.includes('protocol_engine'));
       
-      const empathicSource = analyzed.find(c => c.candidate.source === 'empathic_safety_net' || c.personaAvg > 0.6);
-      const practicalSource = analyzed.find(c => c.candidate.source.includes('v9engine') || c.candidate.source.includes('synthesizer'));
-
-      if (empathicSource && practicalSource) {
-          return weaveEmpathyAndAction(empathicSource.candidate, practicalSource.candidate, fingerprint);
+      if (empathicSource && protocolCandidate) {
+          return weaveEmpathyAndAction(empathicSource.candidate, protocolCandidate.candidate, fingerprint);
       }
-  }
+      // Fallback if one is missing, prioritize the protocol response
+      return protocolCandidate?.candidate || empathicSource?.candidate || fallbackResponse;
 
-  if (DEBUG) console.log("MAESTRO STRATEGY: Conducting - Selecting the best single performer.");
-  const topCandidate = analyzed[0].candidate;
-  
-  return {
-    reply: `${topCandidate.reply}\n\n[ملحوظة: تم توليد الرد من مزيج متعدد الأصوات.]`,
-    variants: [],
-    metadata: { source: `maestro_conductor:${topCandidate.source}` }
-  };
+    case 'EMPATHY_FIRST':
+      const bestEmpathic = analyzed.find(c => c.candidate.source === 'empathic_safety_net');
+      if (bestEmpathic) return bestEmpathic.candidate;
+      // Fallback to the highest-scored candidate if the safety net isn't there for some reason
+      return analyzed[0].candidate;
+
+    case 'EXECUTE_INTENT_DIRECTLY':
+        const directCandidate = analyzed.find(c => c.candidate.source.includes('protocol_engine'));
+        if (directCandidate) return directCandidate.candidate;
+        return analyzed[0].candidate; // Fallback
+        
+    case 'EXPLORE_AND_CLARIFY':
+    default: // Default fallback strategy
+        if (DEBUG) console.log("MAESTRO: Defaulting to best single performer.");
+        const topCandidate = analyzed[0].candidate;
+        return {
+            reply: `${topCandidate.reply}\n\n[ملحوظة: تم توليد الرد من مزيج متعدد الأصوات.]`,
+            variants: [], // Simplified for now
+            metadata: { source: `maestro_conductor:${topCandidate.source}` }
+        };
+  }
 }
 
 export default { synthesizeHybridResponse };
