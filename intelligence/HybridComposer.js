@@ -1,4 +1,4 @@
-// intelligence/HybridComposer.js v2.2-maestro (FINAL COMPLETE & CORRECTED VERSION)
+// intelligence/HybridComposer.js v2.3-maestro (FINAL COMPLETE & CORRECTED VERSION)
 // THE HYBRID COMPOSER — "THE CONSCIOUS MAESTRO"
 
 const DEBUG = false;
@@ -10,8 +10,6 @@ const DEFAULT_PERSONAS = [
   { id: "logical", weight: 1.0, desc: "منطق، أسباب، خطوات" },
   { id: "empathic", weight: 1.0, desc: "تعاطف، تطبيع، تأييد" },
   { id: "pragmatic", weight: 1.0, desc: "خطوات عملية قابلة للتنفيذ" },
-  { id: "visionary", weight: 0.9, desc: "سناريوهات مستقبلية" },
-  { id: "playful", weight: 0.4, desc: "خفيف، تقليل توتر" }
 ];
 
 const MAX_VARIANTS = 4;
@@ -46,7 +44,6 @@ function firstSentence(text) {
   return m[0] || text;
 }
 
-
 /* =========================
    Persona modules (Self-contained)
    ========================= */
@@ -58,10 +55,11 @@ const PERSONA_FUNCS = {
             : "اقتراح منطقي: حاول كتابة الخيارات ثم قيّم كل خيار.";
         return { persona: "logical", segment, score: 0.95 };
     },
+    // --- THIS IS THE CORRECTED FUNCTION ---
     empathic: (candidate) => {
         const seed = firstSentence(candidate.reply) || "واضح إن الوضع صعب.";
         const seg = `${seed} أنا معاك — مشاعرك مفهومة ومن الطبيعي أن تتردد.`;
-        return { persona: "empathic", segment, seg, score: 0.98 };
+        return { persona: "empathic", segment: seg, score: 0.98 };
     },
     pragmatic: (candidate) => {
         const small = [
@@ -72,7 +70,6 @@ const PERSONA_FUNCS = {
     }
 };
 
-
 /* =========================
    Inner Critics / Validators (Self-contained)
    ========================= */
@@ -82,23 +79,6 @@ function safetyCheck(fingerprint, candidates) {
   for (const e of ["انتحار", "بموت", "أقتل", "أذبح"]) if (text.includes(e)) flags.push("emergency_critical");
   return { ok: flags.length === 0, flags };
 }
-
-function contradictionDetector(segments) {
-    const highConflict = [];
-    const opposites = [["افعل", "لا تفعل"], ["ابدأ", "انتظر"], ["تسرع", "تمهل"]];
-    for (let i = 0; i < segments.length; i++) {
-        for (let j = i + 1; j < segments.length; j++) {
-            const a = segments[i], b = segments[j];
-            for (const [p, q] of opposites) {
-                if ((a.includes(p) && b.includes(q)) || (a.includes(q) && b.includes(p))) {
-                    highConflict.push({ pair: [i, j], words: [p, q], segments: [a, b] });
-                }
-            }
-        }
-    }
-    return { highConflict, conflict: highConflict.length > 0 };
-}
-
 
 /* =========================
    Fusion Core (Self-contained)
@@ -122,36 +102,6 @@ function analyzeCandidates(candidates = [], tracker = null, fingerprint = {}) {
     return { candidate: c, calibratedScore: calibrated, personaAvg, novelty };
   }).sort((a, b) => b.calibratedScore - a.calibratedScore);
 }
-
-function composeFragmentsFromAnalysis(analyzed) {
-  const topN = Math.min(analyzed.length, MAX_FRAGMENTS);
-  const engines = analyzed.slice(0, topN);
-  const fragments = [];
-  for (const eng of engines) {
-      // Simplified fragment creation
-      const bestPersona = Object.keys(PERSONA_FUNCS).reduce((best, pid) => {
-          const score = jaccardSim(eng.candidate.reply, PERSONA_FUNCS[pid](eng.candidate).segment);
-          return score > best.score ? { pid, score } : best;
-      }, { pid: 'logical', score: 0 });
-      fragments.push({ persona: bestPersona.pid, segment: eng.candidate.reply });
-  }
-  return { fragments, provenance: { chosen_engines: engines.map(e => e.candidate.source) } };
-}
-
-function surfaceRealizer(fragments) {
-    if (!fragments || fragments.length === 0) return "يمكننا استكشاف هذا الأمر معًا خطوة بخطوة.";
-    return fragments.map(f => firstSentence(f.segment)).join('\n\n');
-}
-
-function generateVariants(fusedText, fragments) {
-    const empathicSeg = fragments.find(f => f.persona === "empathic")?.segment || fusedText;
-    const pragmaticSeg = fragments.find(f => f.persona === "pragmatic")?.segment || fusedText;
-    return [
-      { id: "compact", text: `${firstSentence(empathicSeg)}\n\nاقتراح سريع: ${firstSentence(pragmaticSeg)}`, confidence: 0.9 },
-      { id: "expanded", text: fusedText, confidence: 0.85 }
-    ];
-}
-
 
 /* =================================================
    THE MAESTRO'S WEAVING ROOM: From Selection to Artful Synthesis
@@ -181,7 +131,6 @@ function weaveEmpathyAndAction(empathicCandidate, practicalCandidate, fingerprin
     };
 }
 
-
 /* =========================
    API: synthesizeHybridResponse (THE MAESTRO'S PODIUM)
    ========================= */
@@ -203,11 +152,9 @@ function synthesizeHybridResponse(candidates = [], context = {}) {
   const analyzed = analyzeCandidates(candidates, tracker, fingerprint);
   if (!analyzed || analyzed.length === 0) return fallbackResponse;
   
-  // --- [MAESTRO STRATEGIC LOGIC] ---
   const primaryEmotion = fingerprint?.primaryEmotion?.type || 'neutral';
   const hasProblemContext = fingerprint?.concepts?.some(c => ['decision_making', 'work', 'procrastination'].includes(c.concept));
   
-  // STRATEGY 1: Weaving for complex emotional + practical situations
   if ((primaryEmotion === 'anxiety' || primaryEmotion === 'sadness') && hasProblemContext) {
       if (DEBUG) console.log("MAESTRO STRATEGY: Weaving Empathy with Action.");
       
@@ -219,21 +166,14 @@ function synthesizeHybridResponse(candidates = [], context = {}) {
       }
   }
 
-  // STRATEGY 2: Default to the best-analyzed candidate (Conductor Strategy)
   if (DEBUG) console.log("MAESTRO STRATEGY: Conducting - Selecting the best single performer.");
   const topCandidate = analyzed[0].candidate;
   
-  const { fragments } = composeFragmentsFromAnalysis(analyzed);
-  const fusedText = surfaceRealizer(fragments);
-  const variants = generateVariants(fusedText, fragments);
-  let primaryVariant = variants.find(v => v.id === "expanded") || variants[0] || { text: topCandidate.reply };
-
   return {
-    reply: `${primaryVariant.text}\n\n[ملحوظة: تم توليد الرد من مزيج متعدد الأصوات.]`,
-    variants,
+    reply: `${topCandidate.reply}\n\n[ملحوظة: تم توليد الرد من مزيج متعدد الأصوات.]`,
+    variants: [],
     metadata: { source: `maestro_conductor:${topCandidate.source}` }
   };
 }
 
-// --- Standardized default export ---
 export default { synthesizeHybridResponse };
