@@ -1,7 +1,7 @@
-// chat.js v11.1 - The Collective Mind Conductor + Supreme Response Fusion
-// Implements "Mind's Workshop" + ResponseSynthesizer + HybridComposer integration
+// chat.js v12.0 - The Conscious Orchestra
+// Implements the "Parallel Audition" model, using all engines in concert.
 // Author: For Rafiq system
-// Notes: Full multi-layer synthesis, micro-story, fractal seeds, tone harmonizer, meta-twist
+// Notes: All engines now work in parallel to generate diverse candidates for a final, intelligent selection.
 
 // =================================================================
 // SECTION 1: CORE & HIPPOCAMPUS IMPORTS
@@ -19,12 +19,9 @@ import { atomize } from '../hippocampus/knowledgeAtomizer.js';
 import { memoryGraph } from '../hippocampus/MemoryGraph.js';
 import { InferenceEngine } from '../hippocampus/InferenceEngine.js';
 
-// Integration of new modules
-// --- MODIFICATION START ---
-// 1. Reverted to default imports (without curly braces) to match the `export default` in the other files.
+// --- MODIFICATION: Importing our repaired and ready expert engines ---
 import ResponseSynthesizer from '../intelligence/ResponseSynthesizer.js';
 import HybridComposer from '../intelligence/HybridComposer.js';
-// --- MODIFICATION END ---
 
 // =================================================================
 // SECTION 1B: INITIALIZATION
@@ -34,81 +31,51 @@ const CONTEXT_TRACKERS = new Map();
 const CONFIDENCE_THRESHOLD = 0.45;
 
 // =================================================================
-// SECTION 2: THE NEW STRATEGIC EXECUTION CORE
+// SECTION 2: THE NEW CONSCIOUS ORCHESTRA CONDUCTOR
 // =================================================================
-async function executeCollectiveMind(props) {
+async function conductOrchestra(props) {
   const { cognitiveProfile, fingerprint, topIntents, sessionContext, userProfile, tracker } = props;
 
-  if (DEBUG) console.log("🚀 Engaging The Collective Mind Protocol...");
+  if (DEBUG) console.log("🎼 Conducting The Conscious Orchestra...");
 
-  // STEP 1: Strategic Goal Setting
-  const primaryNeed = cognitiveProfile.theoryOfMind.predictedNeeds[0] || 'need_for_reassurance';
-  const uncertainty = cognitiveProfile.uncertaintyProfile.uncertainty;
-  const bestIntent = topIntents[0];
+  // --- STEP 1: PARALLEL AUDITION ---
+  // The conductor asks each expert musician to perform their best piece.
 
-  let strategicGoal;
-  if (uncertainty > 0.6) strategicGoal = 'clarify_and_probe';
-  else if (primaryNeed === 'need_for_insight' && bestIntent) strategicGoal = 'advance_dialogue_flow';
-  else strategicGoal = 'validate_and_explore';
+  // a) The Soloist (Direct & Logical Candidate)
+  // V9Engine provides the clear, logical melody.
+  const logicalCandidate = executeV9Engine(topIntents[0], fingerprint, userProfile, sessionContext);
 
-  if (DEBUG) console.log(`🎯 Strategic Goal: ${strategicGoal}`);
-
-  // STEP 2: Execute base engine (state-aware)
-  let baseResponse;
-  if (bestIntent && bestIntent.full_intent?.dialogue_flow) {
-    baseResponse = executeV9Engine(bestIntent.full_intent, fingerprint, userProfile, sessionContext);
-    if (baseResponse.metadata?.nextSessionContext) {
-      tracker.updateSessionContext(baseResponse.metadata.nextSessionContext);
-    }
-  } else {
-    baseResponse = {
-      reply: "أنا أفكر في كلماتك بعمق. هل يمكنك أن تشرح لي أكثر؟",
-      source: 'collective_mind_fallback_no_flow'
-    };
-  }
-
-  // STEP 3: ResponseSynthesizer fusion
-  const synthesizerInput = topIntents.map(intent => ({
-    reply: baseResponse.reply,
-    source: intent.name || intent.id || 'unknown',
-    confidence: intent.score || 0.6,
-    metadata: {}
-  }));
-
-  // --- MODIFICATION START ---
-  // 2. Reverted the function call to use the imported object `ResponseSynthesizer`.
-  const synthesized = ResponseSynthesizer.synthesizeResponse(
-    synthesizerInput,
-    cognitiveProfile,
-    { strategicGoal, fingerprint },
-    tracker
+  // b) The Pianist (Artistic & Fused Candidate)
+  // ResponseSynthesizer adds harmony and emotional depth, using the logical melody as a base.
+  const artisticCandidate = ResponseSynthesizer.synthesizeResponse(
+      [logicalCandidate].filter(Boolean), // Pass only valid candidates
+      { cognitiveProfile, fingerprint }, 
+      {}, 
+      tracker
   );
-  // --- MODIFICATION END ---
 
-  // STEP 4: HybridComposer final selection
-  const hybridInput = [
-    { reply: synthesized.reply, source: 'synthesizer', confidence: 0.9 },
-    { reply: baseResponse.reply, source: 'v9engine', confidence: baseResponse.confidence || 0.8 }
-  ];
-
-  // --- MODIFICATION START ---
-  // 3. Reverted the function call to use the imported object `HybridComposer`.
-  const finalHybrid = HybridComposer.synthesizeHybridResponse(hybridInput, { fingerprint, tracker });
-  // --- MODIFICATION END ---
-
-  // STEP 5: Attach metadata for tracking
-  const responsePayload = {
-    reply: finalHybrid.reply,
-    source: finalHybrid.source || "hybrid_composer", // Ensure source is set
-    metadata: {
-      synthesizerMetadata: synthesized.metadata,
-      hybridMetadata: finalHybrid.metadata || {},
-      topIntent: bestIntent,
-      strategicGoal
-    }
+  // c) The Heartbeat (Empathic Safety Net)
+  // This is a guaranteed, pure emotional response, ensuring we never sound cold.
+  const empathicCandidate = {
+    reply: `أتفهم أن هذا الموقف يسبب لك الكثير من المشاعر الصعبة. أنا هنا لأسمعك، ومثل هذه المشاعر طبيعية تمامًا.`,
+    source: 'empathic_safety_net',
+    confidence: 0.95,
+    metadata: { isSafetyNet: true }
   };
 
-  return responsePayload;
+  // Gather all performances. The .filter(Boolean) removes any nulls if an engine fails.
+  const allCandidates = [logicalCandidate, artisticCandidate, empathicCandidate].filter(Boolean);
+  if (DEBUG) console.log(`🎶 Audition produced ${allCandidates.length} candidates.`);
+
+  // --- STEP 2: THE FINAL JUDGEMENT ---
+  // The Music Arranger (HybridComposer) listens to all performances and selects/fuses the final masterpiece.
+  // Its internal logic will now weigh these diverse options based on the user's fingerprint.
+  const finalResponse = HybridComposer.synthesizeHybridResponse(
+      allCandidates, 
+      { fingerprint, tracker }
+  );
+
+  return finalResponse;
 }
 
 // =================================================================
@@ -149,7 +116,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ reply: criticalSafetyReply(), source: "safety", userId });
     }
 
-    // --- PERCEPTION & KNOWLEDGE GRAPH ---
+    // --- PERCEPTION & KNOWLEDGE GRAPH (The Conductor reads the music sheet) ---
     await memoryGraph.initialize();
     const knowledgeAtom = atomize(rawMessage, { recentMessages: tracker.getHistory() });
     if (knowledgeAtom) memoryGraph.ingest(knowledgeAtom);
@@ -167,7 +134,8 @@ export default async function handler(req, res) {
     let responsePayload = {};
 
     if (topIntents[0] && topIntents[0].score > CONFIDENCE_THRESHOLD) {
-      responsePayload = await executeCollectiveMind({
+      // --- MODIFICATION: The Conductor starts the Orchestra ---
+      responsePayload = await conductOrchestra({
         cognitiveProfile,
         fingerprint,
         topIntents,
@@ -179,7 +147,7 @@ export default async function handler(req, res) {
     } else {
       if (DEBUG) console.log(`⚠️ LOW CONFIDENCE`);
       finalReply = "لم أفهم قصدك تمامًا، هل يمكنك التوضيح بجملة مختلفة؟";
-      responsePayload = { source: "fallback_low_confidence" };
+      responsePayload = { source: "fallback_low_confidence", metadata: {} };
     }
 
     // --- POST-RESPONSE HOUSEKEEPING ---
@@ -205,7 +173,7 @@ export default async function handler(req, res) {
 
   } catch (err) {
     console.error("API error:", err);
-    if (DEBUG) console.error(err.stack);
+    if (DEBUG) console.error(err.stack); // Use err.stack for more detailed error logging
     return res.status(500).json({ error: "Internal Server Error" });
   }
 }
