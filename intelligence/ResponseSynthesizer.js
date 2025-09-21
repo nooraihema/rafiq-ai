@@ -1,4 +1,4 @@
-// intelligence/ResponseSynthesizer.js v1.2
+// intelligence/ResponseSynthesizer.js v1.2 (FINAL CORRECTED VERSION v3)
 // SUPREME FUSION (all-in-one, no external libs)
 // New in v1.2: generate alternative variants (concise, formal, bullet, empathic, action-first)
 // Exports: synthesizeResponse(candidates, selfState, anticipations, tracker)
@@ -289,13 +289,18 @@ function variant_action_first(reply) {
    Smart merge fallback (naive)
    ========================= */
 
+// --- MODIFICATION: Added defensive checks to prevent TypeError ---
 function mergeCandidatesSmart(bestA, bestB) {
-  if (!bestA && !bestB) return '';
-  if (!bestB) return bestA.reply;
-  const a = bestA.candidate || bestA;
-  const b = bestB.candidate || bestB;
-  const main = a.reply;
-  const addon = (b.reply.split(/[.؟!]\s*/).find(s => s.length > 25) || b.reply) || '';
+  // Handle cases where bestA or its candidate might be missing or null
+  if (!bestA || !bestA.candidate) return ''; 
+  // If only one valid candidate exists, return its reply safely
+  if (!bestB) return bestA.candidate.reply || ''; 
+
+  const a = bestA.candidate;
+  const b = bestB.candidate || bestB; // Fallback for b
+  const main = a.reply || '';
+  const addonText = b.reply || '';
+  const addon = (addonText.split(/[.؟!]\s*/).find(s => s.length > 25) || addonText);
   return `${main}\n\nمعلومة إضافية: ${addon}`.trim();
 }
 
@@ -303,7 +308,6 @@ function mergeCandidatesSmart(bestA, bestB) {
    Public API: synthesizeResponse
    ========================= */
 
-// --- MODIFICATION: Removed 'export' from the function declaration ---
 function synthesizeResponse(candidates = [], selfState = {}, anticipations = {}, tracker = null) {
   const cleanCandidates = (candidates || []).map(c => ({
     reply: safeStr(c.reply),
@@ -323,6 +327,15 @@ function synthesizeResponse(candidates = [], selfState = {}, anticipations = {},
   // 1) Score candidates
   const scored = scoreCandidates(cleanCandidates, tracker);
   if (DEBUG) console.log('[_synth] scored candidates:', scored.map(s => ({ src: s.candidate.source, raw: s.rawScore.toFixed(2) })));
+
+  // --- MODIFICATION: Handle the case of zero scored candidates ---
+  if (!scored || scored.length === 0) {
+    return {
+        reply: "أفكر بعمق في ما قلته. هل يمكنك إعادة صياغة سؤالك؟",
+        source: 'response_synthesizer_v1.2',
+        metadata: { reason: 'no_valid_scored_candidates' }
+    };
+  }
 
   // 2) Self-dialogue fusion across top candidates
   const fusion = selfDialogueFusion(scored, { selfState, anticipations, tracker });
@@ -348,11 +361,15 @@ function synthesizeResponse(candidates = [], selfState = {}, anticipations = {},
   // 6) Seeds & meta
   const seeds = dynamicSeeds(combined);
   const metaTwist = "في داخلي كان ممكن يكون في رد آخر؛ اخترت هذا المزيج لأنه يوازن بين مشاعرك والحلول العملية.";
+  
+  // --- MODIFICATION: Added a safe check to prevent slice on undefined ---
+  const mergedSnippet = mergeCandidatesSmart(scored[0], scored[1] || null) || '';
+
   const provenance = {
     chosen_engines: scored.slice(0, 3).map(s => ({ source: s.candidate.source, score: s.rawScore.toFixed(3) })),
     persona_contributions: fusion.personaContributions,
     novelty_scores: scored.map(s => ({ src: s.candidate.source, novelty: s.novelty })),
-    mergedAlternativeSnippet: mergeCandidatesSmart(scored[0], scored[1] || null).slice(0, 400)
+    mergedAlternativeSnippet: mergedSnippet.slice(0, 400)
   };
 
   // 7) Generate variants
@@ -385,5 +402,5 @@ function synthesizeResponse(candidates = [], selfState = {}, anticipations = {},
   return final;
 }
 
-// --- MODIFICATION: Added a default export at the end of the file ---
+// --- MODIFICATION: Kept the default export for consistency ---
 export default { synthesizeResponse };
