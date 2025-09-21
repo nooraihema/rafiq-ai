@@ -21,10 +21,9 @@ import { InferenceEngine } from '../hippocampus/InferenceEngine.js';
 
 // Integration of new modules
 // --- MODIFICATION START ---
-// 1. Imported the specific functions `synthesizeResponse` and `synthesizeHybridResponse` using named imports (with curly braces {}).
-// 2. Corrected the file path for `ResponseSynthesizer.js` and removed the old `ResponseSelector.js`.
-import { synthesizeResponse } from '../intelligence/ResponseSynthesizer.js';
-import { synthesizeHybridResponse } from '../intelligence/HybridComposer.js';
+// 1. Reverted to default imports (without curly braces) to match the `export default` in the other files.
+import ResponseSynthesizer from '../intelligence/ResponseSynthesizer.js';
+import HybridComposer from '../intelligence/HybridComposer.js';
 // --- MODIFICATION END ---
 
 // =================================================================
@@ -77,8 +76,8 @@ async function executeCollectiveMind(props) {
   }));
 
   // --- MODIFICATION START ---
-  // 3. Called the imported function `synthesizeResponse` directly.
-  const synthesized = synthesizeResponse(
+  // 2. Reverted the function call to use the imported object `ResponseSynthesizer`.
+  const synthesized = ResponseSynthesizer.synthesizeResponse(
     synthesizerInput,
     cognitiveProfile,
     { strategicGoal, fingerprint },
@@ -93,8 +92,8 @@ async function executeCollectiveMind(props) {
   ];
 
   // --- MODIFICATION START ---
-  // 4. Called the imported function `synthesizeHybridResponse` directly. The original file had a method `.selectHybrid` which was corrected to the actual exported function name.
-  const finalHybrid = synthesizeHybridResponse(hybridInput, { fingerprint, tracker });
+  // 3. Reverted the function call to use the imported object `HybridComposer`.
+  const finalHybrid = HybridComposer.synthesizeHybridResponse(hybridInput, { fingerprint, tracker });
   // --- MODIFICATION END ---
 
   // STEP 5: Attach metadata for tracking
@@ -132,7 +131,7 @@ export default async function handler(req, res) {
       userId = makeUserId();
       users[userId] = {
         id: userId,
-        createdAt: new new Date().toISOString(),
+        createdAt: new Date().toISOString(),
         shortMemory: { history: [], sessionContext: { state: null, active_intent: null, turn_counter: 0 } }
       };
       if (DEBUG) console.log(`🆕 New user: ${userId}`);
