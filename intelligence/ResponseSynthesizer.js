@@ -1,4 +1,3 @@
-
 // intelligence/ResponseSynthesizer.js v1.2
 // SUPREME FUSION (all-in-one, no external libs)
 // New in v1.2: generate alternative variants (concise, formal, bullet, empathic, action-first)
@@ -304,7 +303,8 @@ function mergeCandidatesSmart(bestA, bestB) {
    Public API: synthesizeResponse
    ========================= */
 
-export function synthesizeResponse(candidates = [], selfState = {}, anticipations = {}, tracker = null) {
+// --- MODIFICATION: Removed 'export' from the function declaration ---
+function synthesizeResponse(candidates = [], selfState = {}, anticipations = {}, tracker = null) {
   const cleanCandidates = (candidates || []).map(c => ({
     reply: safeStr(c.reply),
     source: c.source || 'unknown',
@@ -384,3 +384,6 @@ export function synthesizeResponse(candidates = [], selfState = {}, anticipation
 
   return final;
 }
+
+// --- MODIFICATION: Added a default export at the end of the file ---
+export default { synthesizeResponse };
