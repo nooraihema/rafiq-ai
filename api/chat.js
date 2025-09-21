@@ -1,17 +1,17 @@
-// chat.js v13.0 - The Session-Aware Protocol Conductor
-// Implements the "Protocol-First" strategy with in-memory session persistence.
-// The Conscious Orchestra now serves as a creative fallback.
+// chat.js v14.0 - The Stable Protocol Conductor
+// Final version with corrected parameter passing and robust session management.
+// The Conscious Orchestra is fully restored as the creative fallback.
 // Author: For Rafiq system
 
-// =================================================================
+// =أو================================================================
 // SECTION 1: CORE & HIPPOCAMPUS IMPORTS
 // =================================================================
 import { DEBUG } from '../shared/config.js';
 import { detectCritical, criticalSafetyReply, tokenize } from '../shared/utils.js';
 import { loadUsers, saveUsers, makeUserId } from '../shared/storage.js';
-// --- MODIFICATION: Importing the new strategic planner and protocol executor ---
+// --- MODIFICATION: Using the final, correct function names ---
 import { buildIndexSync, findActiveProtocol } from '../perception/intent_engine.js';
-import { executeProtocolStep } from '../core/dynamic_logic_engine.js';
+import { executeV9Engine } from '../core/dynamic_logic_engine.js'; // We will call V9 directly
 import { composeInferentialResponse } from '../core/composition_engine.js';
 import { processMeta } from '../coordination/meta_router.js';
 import { ContextTracker } from '../shared/context_tracker.js';
@@ -28,25 +28,20 @@ import HybridComposer from '../intelligence/HybridComposer.js';
 // SECTION 1B: INITIALIZATION & SESSION MEMORY
 // =================================================================
 buildIndexSync();
-// --- MODIFICATION: This is now our primary mechanism for session memory ---
 const CONTEXT_TRACKERS = new Map();
-const CONFIDENCE_THRESHOLD = 0.45; // This is now mainly for the fallback logic
+const CONFIDENCE_THRESHOLD = 0.45;
 
 // =================================================================
-// SECTION 2: THE CONSCIOUS ORCHESTRA (Preserved as a Creative Fallback)
+// SECTION 2: THE CONSCIOUS ORCHESTRA (Restored to its full power)
 // =================================================================
 async function conductOrchestra(props) {
-  const { cognitiveProfile, fingerprint, top_raw_intent, sessionContext, userProfile, tracker } = props;
+  const { cognitiveProfile, fingerprint, topIntents, sessionContext, userProfile, tracker } = props;
 
   if (DEBUG) console.log("🎼 Orchestra Fallback: No specific protocol found. Generating creative response.");
 
-  // a) The Soloist (a simple response based on the top raw intent, if any)
-  const logicalCandidate = {
-      reply: top_raw_intent?.full_intent?.dialogue_flow?.layers?.L0_Validation?.responses[0] || "كيف يمكنني مساعدتك بشكل أفضل؟",
-      source: `fallback_engine:${top_raw_intent?.tag || 'none'}`,
-      confidence: top_raw_intent?.score || 0.6,
-      metadata: {}
-  };
+  // a) The Soloist (Direct & Logical Candidate from V9)
+  // We call the original executeV9Engine as it was designed to be called.
+  const logicalCandidate = executeV9Engine(topIntents[0]?.full_intent, fingerprint, userProfile, sessionContext);
 
   // b) The Pianist (Artistic & Fused Candidate)
   const artisticCandidate = ResponseSynthesizer.synthesizeResponse(
@@ -67,11 +62,11 @@ async function conductOrchestra(props) {
   const allCandidates = [logicalCandidate, artisticCandidate, empathicCandidate].filter(Boolean);
   if (DEBUG) console.log(`🎶 Fallback Audition produced ${allCandidates.length} candidates.`);
 
-  // The Music Arranger (HybridComposer) makes the final selection
-  // --- MODIFICATION: Passing the protocolPacket as an empty object for compatibility ---
+  // The Music Arranger (HybridComposer) makes the final selection.
   const finalResponse = HybridComposer.synthesizeHybridResponse(
-      allCandidates, 
-      { protocol_found: false }, // Signal that this is a fallback
+      allCandidates,
+      // We pass the new protocol packet structure, signaling this is a fallback.
+      { protocol_found: false, strategicRecommendation: 'EXPLORE_AND_CLARIFY' },
       { fingerprint, tracker }
   );
 
@@ -79,7 +74,7 @@ async function conductOrchestra(props) {
 }
 
 // =================================================================
-// SECTION 3: MAIN HANDLER (With Session-Aware Protocol Logic)
+// SECTION 3: MAIN HANDLER (With Corrected Protocol Logic)
 // =================================================================
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -91,7 +86,7 @@ export default async function handler(req, res) {
 
     if (DEBUG) console.log(`\n\n- - - [ NEW TURN ] - - -\n📨 Incoming message: "${rawMessage}"`);
 
-    // --- USER & SESSION-AWARE CONTEXT SETUP ---
+    // --- USER & SESSION-AWARE CONTEXT SETUP (Preserved) ---
     let users = await loadUsers();
     let userId = body.userId || null;
     if (!userId || !users[userId]) {
@@ -105,7 +100,6 @@ export default async function handler(req, res) {
     }
     const profile = users[userId];
 
-    // --- MODIFICATION: The session memory logic is now robust ---
     let tracker = CONTEXT_TRACKERS.get(userId);
     if (!tracker) {
       if(DEBUG) console.log(`SESSION: No active tracker for ${userId}. Creating from profile.`);
@@ -120,8 +114,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ reply: criticalSafetyReply(), source: "safety", userId });
     }
 
-    // --- PERCEPTION & KNOWLEDGE GRAPH (Unchanged) ---
-    // This part of your code is excellent and remains the same.
+    // --- PERCEPTION & KNOWLEDGE GRAPH (Preserved) ---
     await memoryGraph.initialize();
     const knowledgeAtom = atomize(rawMessage, { recentMessages: tracker.getHistory() });
     if (knowledgeAtom) memoryGraph.ingest(knowledgeAtom);
@@ -130,50 +123,61 @@ export default async function handler(req, res) {
     const fingerprint = generateFingerprint(rawMessage, { ...tracker.generateContextualSummary(), cognitiveProfile });
     
     // =================================================================
-    // SECTION 4: STRATEGIC EXECUTION (Upgraded to Protocol-First)
+    // SECTION 4: STRATEGIC EXECUTION (Corrected)
     // =================================================================
     let finalReply = "";
     let responsePayload = {};
 
-    // --- MODIFICATION: The new strategic core of the application ---
-    // 1. First, we ask the Strategic Planner to find a protocol.
+    // 1. The Strategic Planner finds a protocol.
     const protocolPacket = findActiveProtocol(rawMessage, fingerprint, sessionContext, profile);
 
     if (protocolPacket.protocol_found) {
-        if (DEBUG) console.log(`STRATEGY: Protocol "${protocolPacket.protocol_tag}" is active. Engaging Protocol Executor.`);
-        // 2. If a protocol is found, we execute the current step.
-        responsePayload = executeProtocolStep(
+        if (DEBUG) console.log(`STRATEGY: Protocol "${protocolPacket.protocol_tag}" is active. Engaging V9 Engine directly.`);
+        
+        // --- [THE CRITICAL FIX] ---
+        // 2. We call the powerful V9 engine DIRECTLY with the correct parameters.
+        // We are no longer using a faulty wrapper function.
+        responsePayload = executeV9Engine(
             protocolPacket.full_intent,
             fingerprint,
             profile,
             protocolPacket.initial_context
         );
     } else {
-        // 3. If NO protocol is found, we fall back to the creative Conscious Orchestra.
+        // 3. If no protocol is found, we fall back to the creative Conscious Orchestra.
         if (DEBUG) console.log(`STRATEGY: No protocol found. Engaging Conscious Orchestra as fallback.`);
+        
+        // The orchestra needs the results of the old intent engine to function.
+        const topIntents = [protocolPacket.top_raw_intent].filter(Boolean);
+
         responsePayload = await conductOrchestra({
             cognitiveProfile,
             fingerprint,
-            top_raw_intent: protocolPacket.top_raw_intent, // Pass any raw data we found
+            topIntents, // Pass the raw intent found
             sessionContext,
             userProfile: profile,
             tracker
         });
-        // Since the orchestra is a fallback, we clear the context to avoid getting stuck.
-        responsePayload.metadata = { ...(responsePayload.metadata || {}), nextSessionContext: { active_intent: null, state: null, turn_counter: 0 } };
+    }
+
+    // This handles the case where an engine might fail and return null
+    if (!responsePayload) {
+        responsePayload = {
+            reply: "أنا أفكر في كلماتك بعمق. هل يمكنك أن تشرح لي أكثر؟",
+            source: 'critical_fallback',
+            metadata: {}
+        };
     }
 
     finalReply = responsePayload.reply;
     
-    // --- POST-RESPONSE HOUSEKEEPING (With Session Memory Update) ---
+    // --- POST-RESPONSE HOUSEKEEPING (Preserved) ---
     tracker.addTurn(fingerprint, { reply: finalReply, ...responsePayload });
     
-    // --- MODIFICATION: The memory update is now more robust ---
     if (responsePayload.metadata?.nextSessionContext) {
         if(DEBUG) console.log(`SESSION: Updating context for ${userId} to state:`, responsePayload.metadata.nextSessionContext);
         tracker.updateSessionContext(responsePayload.metadata.nextSessionContext);
     } else {
-       // If a response has no next context (e.g., orchestra fallback), reset the state for the next turn.
        if(DEBUG) console.log(`SESSION: No next context provided. Resetting state for ${userId}.`);
        tracker.updateSessionContext({ active_intent: null, state: null });
     }
