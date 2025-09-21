@@ -24,7 +24,7 @@ const DEFAULT_PERSONAS = [
   { id: "logical", weight: 1.0, desc: "منطق، أسباب، خطوات" },
   { id: "empathic", weight: 1.0, desc: "تعاطف، تطبيع، تأييد" },
   { id: "pragmatic", weight: 1.0, desc: "خطوات عملية قابلة للتنفيذ" },
-  { id: "visionary", weight: 0.9, desc: "سناريوهات مستقبلية"، },
+  { id: "visionary", weight: 0.9, desc: "سناريوهات مستقبلية" },
   { id: "playful", weight: 0.4, desc: "خفيف، تقليل توتر" }
 ];
 
