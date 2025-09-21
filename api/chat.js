@@ -21,7 +21,7 @@ import { memoryGraph } from '../hippocampus/MemoryGraph.js';
 import { InferenceEngine } from '../hippocampus/InferenceEngine.js';
 
 // Integration of new modules
-import ResponseSynthesizer from '../intelligence/ResponseSynthesizer.js';
+import ResponseSynthesizer from '../intelligence/ResponseSelector.js';
 import HybridComposer from '../intelligence/HybridComposer.js';
 
 // =================================================================
