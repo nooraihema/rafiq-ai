@@ -1,6 +1,6 @@
-// intelligence/HybridComposer.js v4.0 - The Decisive Maestro with Perfect Memory
-// This version implements the "Specificity Priority" rule and ensures the `nextSessionContext`
-// is always passed through, creating a stable, intelligent, and context-aware conductor.
+// intelligence/HybridComposer.js v5.0 - The Multi-Dimensional Maestro
+// This final version is designed to understand the full "Cognitive Briefing".
+// It can now consciously decide to weave responses from MULTIPLE active protocols.
 // ALL ORIGINAL LOGIC IS PRESERVED.
 
 const DEBUG = false;
@@ -105,13 +105,13 @@ function analyzeCandidates(candidates = [], tracker = null, fingerprint = {}) {
 }
 
 /* =================================================
-   THE MAESTRO'S WEAVING ROOM (Preserved)
+   THE MAESTRO'S WEAVING ROOM (Upgraded for Multi-Protocol)
    ================================================= */
 function createEmpathyBridge(fingerprint) {
     const bridges = [
-        "أنا هنا معك في هذا الشعور. وعندما تشعر أنك مستعد، يمكننا أن نلقي نظرة على خطوة صغيرة جدًا قد تساعد.",
-        "من المهم أن نعطي هذا الشعور حقه. وفي نفس الوقت، أحيانًا خطوة عملية بسيطة يمكن أن تخفف بعض العبء. ما رأيك أن نجرب؟",
-        "دعنا لا نحاول حل المشكلة الكبيرة الآن، بل فقط نضيء شمعة صغيرة في هذا المكان المظلم. إليك فكرة بسيطة:"
+        "أتفهم أنك تتعامل مع أكثر من شيء في نفس الوقت. دعنا نتناولهم واحدًا تلو الآخر.",
+        "من الواضح أن هناك طبقات مختلفة لما تشعر به. لنبدأ بالجزء الأكثر إلحاحًا.",
+        "شكرًا لمشاركة كل هذا. يبدو أن هناك جانبًا عاطفيًا وجانبًا عمليًا للموقف. ما رأيك أن نبدأ بالجانب العاطفي أولاً؟"
     ];
     return sample(bridges);
 }
@@ -119,7 +119,7 @@ function createEmpathyBridge(fingerprint) {
 function weaveEmpathyAndAction(empathicCandidate, practicalCandidate, fingerprint) {
     const validation = firstSentence(empathicCandidate.reply);
     const bridge = createEmpathyBridge(fingerprint);
-    const gentleAction = `كخطوة أولى، ${firstSentence(practicalCandidate.reply).replace(/اقتراح عملي:|قائمة سريعة:/gi, "").trim()}`;
+    const gentleAction = `وبخصوص ${practicalCandidate.metadata?.concept || 'الجزء العملي'}، ${firstSentence(practicalCandidate.reply).replace(/اقتراح عملي:|قائمة سريعة:/gi, "").trim()}`;
 
     const finalReplyText = `${validation}\n\n${bridge}\n\n${gentleAction}`;
     
@@ -132,12 +132,29 @@ function weaveEmpathyAndAction(empathicCandidate, practicalCandidate, fingerprin
     };
 }
 
+// --- [NEW] Advanced weaving for two different protocols ---
+function advancedWeave(activeProtocolCandidate, newProtocolCandidate, fingerprint) {
+    if (DEBUG) console.log("MAESTRO: Engaging ADVANCED WEAVING between two protocols.");
+    const reply1 = `بخصوص ما كنا نتحدث عنه، ${firstSentence(activeProtocolCandidate.reply)}`;
+    const bridge = "ولاحظت أنك ذكرت أيضًا شيئًا جديدًا ومهمًا...";
+    const reply2 = firstSentence(newProtocolCandidate.reply);
+
+    return {
+        reply: `${reply1}\n\n${bridge}\n\n${reply2}`,
+        source: `maestro_weaver:advanced_multi_protocol`,
+        confidence: 0.99,
+        metadata: { strategy: 'advanced_weave', components: [activeProtocolCandidate.source, newProtocolCandidate.source] },
+        variants: []
+    };
+}
+
+
 /* =========================
-   API: synthesizeHybridResponse (THE FINAL UPGRADE)
+   API: synthesizeHybridResponse (The Final Upgrade)
    ========================= */
-function synthesizeHybridResponse(candidates = [], protocolPacket = {}, context = {}) {
+function synthesizeHybridResponse(candidates = [], briefing = {}, context = {}) {
   const { tracker = null, fingerprint = {} } = context;
-  const { strategicRecommendation, protocol_found } = protocolPacket;
+  const { activeProtocol, potentialNewProtocols } = briefing;
 
   const fallbackResponse = {
     reply: "أنا معاك، ممكن توضّح أكتر؟", source: "hybrid_composer_fallback",
@@ -156,29 +173,34 @@ function synthesizeHybridResponse(candidates = [], protocolPacket = {}, context 
   
   let finalDecision;
 
-  // --- [THE DEFINITIVE STRATEGIC FIX: SPECIFICITY PRIORITY RULE] ---
-  // First and most important rule: If a specific protocol is active, its candidate is king.
-  const protocolCandidate = analyzed.find(c => c.candidate.source.includes('protocol_engine') || c.candidate.source.includes('v9_engine'))?.candidate;
+  // --- [THE ULTIMATE STRATEGIC CORE] ---
+  const activeProtocolCandidate = candidates.find(c => activeProtocol && c.source.includes(activeProtocol.intent.tag));
+  const newProtocolCandidate = candidates.find(c => potentialNewProtocols[0] && c.source.includes(potentialNewProtocols[0].tag));
+  const empathicCandidate = candidates.find(c => c.source === 'empathic_safety_net');
 
-  if (protocol_found && protocolCandidate) {
-      if (DEBUG) console.log(`MAESTRO: Prioritizing specific response from active protocol "${protocolPacket.protocol_tag}".`);
-      
-      const empathicCandidate = analyzed.find(c => c.candidate.source === 'empathic_safety_net')?.candidate;
-
-      // Now, we ask: should we weave this specific, high-quality response with more empathy?
-      if (strategicRecommendation === 'WEAVE_EMPATHY_WITH_INTENT' && empathicCandidate) {
-          if (DEBUG) console.log("MAESTRO STRATEGY: Weaving specific protocol response with empathy.");
-          finalDecision = weaveEmpathyAndAction(empathicCandidate, protocolCandidate, fingerprint);
-      } else {
-          // If no weaving is needed, the specific protocol response is the final answer.
-          if (DEBUG) console.log("MAESTRO STRATEGY: Selecting direct protocol response.");
-          finalDecision = protocolCandidate;
-      }
-
-  } else {
-      // --- FALLBACK LOGIC (The Orchestra without a Protocol) ---
-      // This part only runs if the Strategic Planner found NO suitable protocol.
-      if (DEBUG) console.log("MAESTRO: No active protocol. Defaulting to best overall performer from orchestra.");
+  // STRATEGY 1: Advanced Multi-Protocol Weaving (The Dream)
+  // If we are in a conversation AND a new, different, relevant topic appears.
+  if (activeProtocolCandidate && newProtocolCandidate && activeProtocolCandidate.source !== newProtocolCandidate.source) {
+      if (DEBUG) console.log("MAESTRO: Activating ADVANCED WEAVE strategy.");
+      finalDecision = advancedWeave(activeProtocolCandidate, newProtocolCandidate, fingerprint);
+  }
+  // STRATEGY 2: Simple Weaving (Empathy + Action)
+  // If we are in an emotional context and have a single clear action.
+  else if (fingerprint?.primaryEmotion?.type !== 'neutral' && (activeProtocolCandidate || newProtocolCandidate) && empathicCandidate) {
+      if (DEBUG) console.log("MAESTRO: Activating simple EMPATHY WEAVE strategy.");
+      const practical = activeProtocolCandidate || newProtocolCandidate;
+      finalDecision = weaveEmpathyAndAction(empathicCandidate, practical, fingerprint);
+  }
+  // STRATEGY 3: Direct Protocol Execution
+  // If there's a clear protocol (active or new) and no strong emotional need for weaving.
+  else if (activeProtocolCandidate || newProtocolCandidate) {
+      if (DEBUG) console.log("MAESTRO: Activating DIRECT PROTOCOL strategy.");
+      finalDecision = activeProtocolCandidate || newProtocolCandidate;
+  }
+  // STRATEGY 4: Orchestra Fallback
+  // If no protocol is relevant, choose the best overall response.
+  else {
+      if (DEBUG) console.log("MAESTRO: No protocol. Defaulting to best orchestra performer.");
       const topCandidate = analyzed[0].candidate;
       finalDecision = {
             reply: `${topCandidate.reply}\n\n[ملحوظة: تم توليد الرد من مزيج متعدد الأصوات.]`,
@@ -188,14 +210,12 @@ function synthesizeHybridResponse(candidates = [], protocolPacket = {}, context 
   }
   
   // --- [THE FINAL MEMORY FIX: THE MEMORY PASSPORT] ---
-  // After making a decision, we check if the original protocol candidate had a `nextSessionContext`
-  // and we make sure to attach it to our final decision, no matter what it is.
-  const originalProtocolCandidate = candidates.find(c => c.source.includes('protocol_engine') || c.source.includes('v9_engine'));
-  if (originalProtocolCandidate && originalProtocolCandidate.metadata?.nextSessionContext) {
-      // Ensure metadata object exists before attaching to it
+  // Always attach the next step from the PRIMARY protocol candidate (the active one if it exists).
+  const primaryProtocolForMemory = activeProtocolCandidate || newProtocolCandidate;
+  if (primaryProtocolForMemory && primaryProtocolForMemory.metadata?.nextSessionContext) {
       finalDecision.metadata = finalDecision.metadata || {};
-      finalDecision.metadata.nextSessionContext = originalProtocolCandidate.metadata.nextSessionContext;
-      if (DEBUG) console.log("MAESTRO: Memory passport attached to final response.", finalDecision.metadata.nextSessionContext);
+      finalDecision.metadata.nextSessionContext = primaryProtocolForMemory.metadata.nextSessionContext;
+      if (DEBUG) console.log("MAESTRO: Memory passport attached.", finalDecision.metadata.nextSessionContext);
   }
   
   return finalDecision;
