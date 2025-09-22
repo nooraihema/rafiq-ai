@@ -1,6 +1,7 @@
-// intent_engine.js v16.0 - The Strategic Planner
-// Now features a meta-cognitive layer to generate full protocol packets, not just intents.
-// All original functions are preserved.
+// intent_engine.js v17.0 - The Flexible Strategic Planner
+// This version includes the final, robust logic for session-aware protocol management.
+// It prioritizes continuing an active conversation over starting a new one.
+// ALL ORIGINAL FUNCTIONS ARE PRESERVED.
 
 import fs from "fs";
 import path from "path";
@@ -390,8 +391,7 @@ function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) {
   return { breakdown, matchedTerms: [...matchedTerms], reasoning, score: breakdown.final };
 }
 
-// ------------------- MODIFICATION: Renamed for internal use -------------------
-// Your original getTopIntents function is preserved here but renamed.
+// --- MODIFICATION: Renamed for internal use. This is your original, powerful function. ---
 function getTopIntentsInternal(rawMessage, options = {}) {
   const topN = options.topN || DEFAULT_TOP_N;
   const context = options.context || null;
@@ -427,62 +427,85 @@ function getTopIntentsInternal(rawMessage, options = {}) {
   return results.filter(r => r.score >= minScore).slice(0, topN);
 }
 
-// ------------------- [THE GRAND UPGRADE: The Strategic Planner] -------------------
+
+// --- [THE GRAND UPGRADE: The Flexible Strategic Planner v3.0] ---
 /* ==================================================================
    NEW EXPORTED FUNCTION: findActiveProtocol
-   This is the new brain. It uses your powerful matching engine internally,
-   then adds a strategic layer to create a full "Protocol Packet".
+   This is the new brain. It uses your powerful matching engine and adds
+   a robust strategic layer that respects active conversations.
    ================================================================== */
 export function findActiveProtocol(rawMessage, fingerprint, context, userProfile) {
-    // 1. Run the powerful internal matching engine you built.
-    const topIntents = getTopIntentsInternal(rawMessage, { fingerprint, context, userProfile });
+    const msgTf = { tokens: tokenize(rawMessage) }; // Simplified for relevance check
 
-    const primaryEmotion = fingerprint?.primaryEmotion?.type || 'neutral';
-    const hasStrongEmotion = primaryEmotion !== 'neutral' && fingerprint.intensity > 0.4;
-    
-    // 2. Find the best candidate that represents a structured dialogue (a protocol).
+    // --- RULE 1: Prioritize the active conversation above all else ---
+    if (context && context.active_intent && context.state) {
+        if (DEBUG) console.log(`STRATEGIC PLANNER: Found active protocol in session: "${context.active_intent}".`);
+        
+        const activeProtocolIndex = tagToIdx[context.active_intent];
+        if (activeProtocolIndex !== undefined) {
+            const activeProtocolIntent = intentIndex[activeProtocolIndex];
+            
+            // We'll be "loyal" to the active conversation unless the user strongly signals a change.
+            const allNewIntents = getTopIntentsInternal(rawMessage, { fingerprint, context, userProfile });
+            const bestNewIntent = allNewIntents[0];
+            
+            // Condition to interrupt: A *different* intent has a *significantly higher* score.
+            const shouldInterrupt = bestNewIntent && 
+                                    bestNewIntent.tag !== context.active_intent && 
+                                    bestNewIntent.score > 0.75; // High threshold for interruption
+
+            if (!shouldInterrupt) {
+                if (DEBUG) console.log(`PLANNER DECISION: Continuing active protocol "${context.active_intent}" from state "${context.state}".`);
+                return {
+                    protocol_found: true,
+                    protocol_tag: context.active_intent,
+                    full_intent: activeProtocolIntent.full_intent,
+                    initial_context: {
+                        state: context.state,
+                        turn_counter: context.turn_counter || 0
+                    }
+                };
+            }
+        }
+    }
+
+    // --- RULE 2: If no conversation is active, find the best new protocol ---
+    if (DEBUG) console.log("STRATEGIC PLANNER: No active protocol or interruption triggered. Searching for a new one.");
+    const topIntents = getTopIntentsInternal(rawMessage, { fingerprint, context, userProfile });
     const bestProtocolCandidate = topIntents.find(i => i.score > 0.55 && i.full_intent.dialogue_flow);
 
-    // 3. Make a strategic decision based on all available data.
     if (bestProtocolCandidate) {
-        // We found a matching protocol! Now, let's determine the correct entry point.
         const protocol = bestProtocolCandidate.full_intent;
         let entryState = protocol.dialogue_flow.entry_point;
-
-        // If we are already in the middle of this conversation, continue from where we left off.
-        if (context?.active_intent === bestProtocolCandidate.tag && context?.state) {
-            entryState = context.state;
-        } 
-        // If the user is emotional, ALWAYS start with validation, overriding the default entry point.
-        else if (hasStrongEmotion && protocol.dialogue_flow.layers.L0_Validation) {
+        
+        const hasStrongEmotion = (fingerprint?.primaryEmotion?.type || 'neutral') !== 'neutral';
+        if (hasStrongEmotion && protocol.dialogue_flow.layers.L0_Validation) {
             entryState = 'L0_Validation';
         }
-
-        if (DEBUG) console.log(`STRATEGIC PLANNER: Protocol "${bestProtocolCandidate.tag}" activated. Entry state: "${entryState}"`);
         
+        if (DEBUG) console.log(`PLANNER DECISION: Activating NEW protocol "${bestProtocolCandidate.tag}" at state "${entryState}".`);
         return {
             protocol_found: true,
             protocol_tag: bestProtocolCandidate.tag,
             full_intent: protocol,
             initial_context: {
-                // Ensure we start fresh if it's a new protocol engagement
-                state: (context?.active_intent === bestProtocolCandidate.tag) ? entryState : protocol.dialogue_flow.entry_point,
-                turn_counter: (context?.active_intent === bestProtocolCandidate.tag) ? (context.turn_counter || 0) : 0
+                state: entryState,
+                turn_counter: 0
             }
         };
     }
     
-    // If no specific protocol was found, we signal this to the conductor.
-    if (DEBUG) console.log(`STRATEGIC PLANNER: No suitable protocol found. Recommending orchestra fallback.`);
+    // --- RULE 3: If nothing works, recommend the orchestra fallback ---
+    if (DEBUG) console.log(`PLANNER DECISION: No suitable protocol found. Recommending orchestra fallback.`);
+    const topIntentsForFallback = getTopIntentsInternal(rawMessage, { fingerprint, context, userProfile });
     return { 
         protocol_found: false,
-        // We can still provide the top raw intent for context
-        top_raw_intent: topIntents[0] || null 
+        top_raw_intent: topIntentsForFallback[0] || null 
     };
 }
 
 
-// ------------------- Feedback / Learning hooks -------------------
+// ------------------- Feedback / Learning hooks (Preserved) -------------------
 export function registerIntentSuccess(userProfile, tag) {
   if (!userProfile) return;
 
@@ -498,6 +521,5 @@ export function registerIntentSuccess(userProfile, tag) {
   saveAdaptiveWeights();
 }
 
-
-// --- MODIFICATION: The old export is kept for safety, but new code should use findActiveProtocol ---
+// --- MODIFICATION: The old export is kept for backward compatibility, but new code should use findActiveProtocol ---
 export { getTopIntentsInternal as getTopIntents };
