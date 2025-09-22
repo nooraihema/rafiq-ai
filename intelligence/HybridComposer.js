@@ -1,7 +1,6 @@
-// intelligence/HybridComposer.js v3.0 - The Final Conductor
-// This version is now fully integrated with the Strategic Planner and Protocol Executor.
-// It uses the strategic recommendations from the "Protocol Packet" to make its final decision.
-// ALL ORIGINAL LOGIC IS PRESERVED and used as part of the new strategic flow.
+// intelligence/HybridComposer.js v3.1 - The Final Conductor with Perfect Memory
+// This version includes the final fix to ensure `nextSessionContext` is always passed through,
+// solving the session memory loop. All original logic is preserved.
 
 const DEBUG = false;
 
@@ -135,10 +134,9 @@ function weaveEmpathyAndAction(empathicCandidate, practicalCandidate, fingerprin
 /* =========================
    API: synthesizeHybridResponse (THE UPGRADED MAESTRO'S PODIUM)
    ========================= */
-// --- MODIFICATION: The function now accepts the "protocolPacket" from the Strategic Planner ---
 function synthesizeHybridResponse(candidates = [], protocolPacket = {}, context = {}) {
   const { tracker = null, fingerprint = {} } = context;
-  const { strategicRecommendation } = protocolPacket; // Extract the strategy
+  const { strategicRecommendation } = protocolPacket;
 
   const fallbackResponse = {
     reply: "أنا معاك، ممكن توضّح أكتر؟", source: "hybrid_composer_fallback",
@@ -155,43 +153,57 @@ function synthesizeHybridResponse(candidates = [], protocolPacket = {}, context 
   const analyzed = analyzeCandidates(candidates, tracker, fingerprint);
   if (!analyzed || analyzed.length === 0) return fallbackResponse;
   
-  // --- [THE NEW STRATEGIC DECISION CORE] ---
-  // The Maestro now reads the strategic recommendation from the packet and executes it.
+  let finalDecision; // This will hold the chosen response object
+
   if (DEBUG) console.log(`MAESTRO: Executing strategy -> "${strategicRecommendation}"`);
 
   switch (strategicRecommendation) {
     case 'WEAVE_EMPATHY_WITH_INTENT':
       const empathicSource = analyzed.find(c => c.candidate.source === 'empathic_safety_net');
-      // Find the candidate that came from the protocol engine
-      const protocolCandidate = analyzed.find(c => c.candidate.source.includes('protocol_engine'));
+      const protocolCandidate = analyzed.find(c => c.candidate.source.includes('protocol_engine') || c.candidate.source.includes('v9_engine'));
       
       if (empathicSource && protocolCandidate) {
-          return weaveEmpathyAndAction(empathicSource.candidate, protocolCandidate.candidate, fingerprint);
+          finalDecision = weaveEmpathyAndAction(empathicSource.candidate, protocolCandidate.candidate, fingerprint);
+      } else {
+          finalDecision = protocolCandidate?.candidate || empathicSource?.candidate || analyzed[0].candidate;
       }
-      // Fallback if one is missing, prioritize the protocol response
-      return protocolCandidate?.candidate || empathicSource?.candidate || fallbackResponse;
+      break;
 
     case 'EMPATHY_FIRST':
       const bestEmpathic = analyzed.find(c => c.candidate.source === 'empathic_safety_net');
-      if (bestEmpathic) return bestEmpathic.candidate;
-      // Fallback to the highest-scored candidate if the safety net isn't there for some reason
-      return analyzed[0].candidate;
+      finalDecision = bestEmpathic ? bestEmpathic.candidate : analyzed[0].candidate;
+      break;
 
     case 'EXECUTE_INTENT_DIRECTLY':
-        const directCandidate = analyzed.find(c => c.candidate.source.includes('protocol_engine'));
-        if (directCandidate) return directCandidate.candidate;
-        return analyzed[0].candidate; // Fallback
+        const directCandidate = analyzed.find(c => c.candidate.source.includes('protocol_engine') || c.candidate.source.includes('v9_engine'));
+        finalDecision = directCandidate ? directCandidate.candidate : analyzed[0].candidate;
+        break;
         
     case 'EXPLORE_AND_CLARIFY':
-    default: // Default fallback strategy
+    default:
         if (DEBUG) console.log("MAESTRO: Defaulting to best single performer.");
         const topCandidate = analyzed[0].candidate;
-        return {
+        finalDecision = {
             reply: `${topCandidate.reply}\n\n[ملحوظة: تم توليد الرد من مزيج متعدد الأصوات.]`,
-            variants: [], // Simplified for now
+            variants: [],
             metadata: { source: `maestro_conductor:${topCandidate.source}` }
         };
+        break;
   }
+  
+  // --- [THE FINAL MEMORY FIX] ---
+  // After making a decision, we check if the original protocol candidate had a `nextSessionContext`
+  // and we make sure to attach it to our final decision.
+  const originalProtocolCandidate = candidates.find(c => c.source.includes('protocol_engine') || c.source.includes('v9_engine'));
+  if (originalProtocolCandidate && originalProtocolCandidate.metadata?.nextSessionContext) {
+      finalDecision.metadata = {
+          ...finalDecision.metadata,
+          nextSessionContext: originalProtocolCandidate.metadata.nextSessionContext
+      };
+      if (DEBUG) console.log("MAESTRO: Memory passport attached to final response.", finalDecision.metadata.nextSessionContext);
+  }
+  
+  return finalDecision;
 }
 
 export default { synthesizeHybridResponse };
