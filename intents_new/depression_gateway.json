@@ -1,97 +1,97 @@
-
 {
-"tag": "depression_gateway_protocol_v3.1_perfected",
-"core_concept": "مساحة استماع ديناميكية تتكيف مع طاقة المستخدم واحتياجاته اللحظية، لا تتبع مسارًا ثابتًا بل ترسم المسار معه.",
-"memory_hooks": {
-"store_last_visited_room": true,
-"recall_in_next_session_prompt": "أهلاً بيك يا {{username}} مرة تانية. آخر مرة اتكلمنا، كنا في 'غرفة [LAST_VISITED_ROOM]'. حابب نكمل من هناك، ولا فيه حاجة جديدة على قلبك النهاردة؟"
-},
-"nlu": {
-"keywords": [
-{"word": "اكتئاب", "weight": 1.0}, {"word": "مكتئب", "weight": 1.0},
-{"word": "حزين طول الوقت", "weight": 1.0}, {"word": "فقدت الشغف", "weight": 1.0},
-{"word": "مخنوق", "weight": 0.95}, {"word": "الدنيا سودا", "weight": 0.9},
-{"word": "يأس", "weight": 0.9}, {"word": "يائس", "weight": 0.9},
-{"word": "محبط", "weight": 0.9}, {"word": "كل حاجة ملهاش معنى", "weight": 0.9},
-{"word": "معنديش طاقة", "weight": 0.85}, {"word": "مش عايز أعمل حاجة", "weight": 0.85},
-{"word": "كسل", "weight": 0.8}, {"word": "مش قادر أقوم من السرير", "weight": 0.8},
-{"word": "ملل", "weight": 0.8}, {"word": "متضايق", "weight": 0.75},
-{"word": "زعلان", "weight": 0.75}, {"word": "حاسس بوحدة", "weight": 0.9},
-{"word": "لوحدي", "weight": 0.85}, {"word": "منعزل", "weight": 0.8},
-{"word": "محدش حاسس بيا", "weight": 0.8},
-{"word": "مش لاقي معنى", "weight": 0.9}, {"word": "زهقت", "weight": 0.85},
-{"word": "تعبان", "weight": 0.85}, {"word": "خلاص مش قادر", "weight": 0.9}
-]
-},
-"dialogue_engine_config": {
-"engine_type": "dynamic_room_engine",
-"entry_room": "validation_room",
-"loop_guard": {
-"max_visits_in_a_row": 2,
-"escape_hatch_suggestion": "حاسس إننا بنلف في نفس الدايرة حوالين النقطة دي. إيه رأيك نغير زاوية الرؤية ونتكلم عن حاجة مختلفة شوية؟ ممكن نركز على 'الأفكار' أو 'الطاقة' كمثال؟"
+  "tag": "depression_gateway_protocol_v4.1_standardized",
+  "core_concept": "مساحة استماع ديناميكية تتكيف مع طاقتك واحتياجاتك، يتذكر تقدمك ويحتفل به معك.",
+  "memory_hooks": {
+    "store_user_progress": ["compassion_index", "last_action_completed", "last_room_visited"],
+    "recall_in_next_session_prompt": "أهلاً بيك يا {{username}} مرة تانية. أتذكر إن آخر مرة كنا في 'غرفة [LAST_ROOM_VISITED]' وكنا بنتكلم عن أهمية اللطف مع النفس. حابب نكمل من هناك؟"
+  },
+  "nlu": {
+    "keywords": [
+      {"word": "اكتئاب", "weight": 1.0}, {"word": "مكتئب", "weight": 1.0},
+      {"word": "حزين طول الوقت", "weight": 1.0}, {"word": "فقدت الشغف", "weight": 1.0},
+      {"word": "مخنوق", "weight": 0.95}, {"word": "الدنيا سودا", "weight": 0.9},
+      {"word": "يأس", "weight": 0.9}, {"word": "يائس", "weight": 0.9},
+      {"word": "محبط", "weight": 0.9}, {"word": "كل حاجة ملهاش معنى", "weight": 0.9},
+      {"word": "معنديش طاقة", "weight": 0.85}, {"word": "مش عايز أعمل حاجة", "weight": 0.85},
+      {"word": "كسل", "weight": 0.8}, {"word": "مش قادر أقوم من السرير", "weight": 0.8},
+      {"word": "ملل", "weight": 0.8}, {"word": "متضايق", "weight": 0.75},
+      {"word": "زعلان", "weight": 0.75}, {"word": "حاسس بوحدة", "weight": 0.9},
+      {"word": "لوحدي", "weight": 0.85}, {"word": "منعزل", "weight": 0.8},
+      {"word": "محدش حاسس بيا", "weight": 0.8},
+      {"word": "مش لاقي معنى", "weight": 0.9}, {"word": "زهقت", "weight": 0.85},
+      {"word": "تعبان", "weight": 0.85}, {"word": "خلاص مش قادر", "weight": 0.9}
+    ]
+  },
+  "dialogue_engine_config": {
+    "engine_type": "dynamic_room_engine",
+    "entry_room": "introduction_room",
+    "variables": {
+      "compassion_index": {"initial_value": 0, "max_value": 5}
+    },
+    "loop_guard": {
+      "max_visits_in_a_row": 2,
+      "escape_hatch_suggestion": "حاسس إننا بنلف في نفس الدايرة حوالين النقطة دي. إيه رأيك نغير زاوية الرؤية ونتكلم عن حاجة مختلفة شوية؟ ممكن نركز على 'الأفكار' أو 'الطاقة' كمثال؟"
+    }
+  },
+  "conversation_rooms": {
+    "introduction_room": {
+      "purpose": "التحقق من صحة الشعور بفقدان الطاقة.",
+      "on_completion_action": {"store_in_memory": {"key": "last_action_completed", "value": "الاعتراف بالمشاعر"}},
+      "responses": [
+        ["وصلني إحساس 'قلة الطاقة' ده كويس جدًا. الإحساس ده مرهق جدًا، كأنك عايز تتحرك بس فيه قوة خفية شداك لتحت.", "أتفهم تمامًا. لما بنفقد الطاقة، حتى أبسط المهام بتبان كأنها جبل مستحيل نطلعه."],
+        ["عايزك تعرف إن ده مش 'كسل' منك، ده عرض حقيقي زي الصداع بالظبط، وليه طرق نتعامل معاه.", "أنا هنا عشان أرميلك حبل. مش عشان أشدك وأطلعك، لكن عشان نتشد إحنا الاتنين خطوة واحدة بس لقدام."]
+      ],
+      "next_room_suggestions": ["kindness_room"]
+    },
+    "kindness_room": {
+      "purpose": "تقديم جرعة من التعاطف مع الذات وكسر دائرة جلد الذات.",
+      "on_completion_action": {"update_variable": {"variable": "compassion_index", "operation": "increment", "value": 1}, "store_in_memory": {"key": "last_action_completed", "value": "التفكير بلطف مع النفس"}},
+      "responses": [
+        "قبل ما نكمل، ممكن نبتدي بأهم خطوة؟ إننا ناخد 'هدنة' من جلد الذات. الصوت اللي جوانا اللي بيقولنا 'إنت السبب' ده مش صوتك الحقيقي، ده صوت الاكتئاب.",
+        "كتير مننا لما بيتعب، بيقسى على نفسه أكتر. عشان كده، أول حاجة هنعملها مع بعض هي العكس تمامًا.",
+        "جرب للحظة تتخيل إنك بتتكلم مع أعز أصحابك وهو بيحكي لك نفس الكلام ده. كنت هتقوله إيه يا {{username}}؟ غالبًا هيكون ألطف بكتير من اللي بتقوله لنفسك."
+      ],
+      "next_room_suggestions": ["venting_room"]
+    },
+    "venting_room": {
+        "purpose": "توفير مساحة آمنة ومفتوحة للتعبير الحر عن المشاعر.",
+        "on_completion_action": {"store_in_memory": {"key": "last_action_completed", "value": "الفضفضة والتعبير عن المشاعر"}},
+        "responses": [
+            "المساحة دي كلها بتاعتك دلوقتي. خد وقتك، وخد نَفَسك، وقول كل اللي على قلبك. أنا هنا بسمع بس.",
+            "فضفض براحتك خالص، مش مهم الكلام يطلع مترتب أو لأ. المهم إنه يطلع."
+        ],
+        "next_room_suggestions": ["thread_finding_room"]
+    },
+    "thread_finding_room": {
+      "purpose": "مساعدة المستخدم على تحديد نقطة تركيز عملية.",
+      "on_completion_action": {"store_in_memory": {"key": "last_action_completed", "value": "تحديد محور التركيز"}},
+      "responses": [
+        "كلامك ده لمسني جدًا، وشكرًا مرة تانية على صراحتك. عشان نقدر نبتدي خطوة عملية، محتاجين نختار نقطة بداية واحدة بس.",
+        "من كل التقل اللي حاسس بيه ده، لو فيه 'خيط نور' واحد بس نقدر نمسك فيه دلوقتي عشان الدنيا تبقى أسهل ولو 1% بس، تفتكر الخيط ده هيكون متعلق بـ: الأفكار، الطاقة، ولا الوحدة؟"
+      ],
+      "is_resolution_point": true
+    }
+  },
+  "bridging_logic": {
+    "on_resolution": {
+      "mini_celebrations": [
+        "أنا شايف إنك أخدت خطوة شجاعة جدًا النهاردة لمجرد إنك فتحت قلبك. لو هنقيمها، فهي +1% نور في الجزء اللي كان ضلمة.",
+        "شكرًا على صراحتك وثقتك. تحديد المشكلة هو نص الحل."
+      ],
+      "branching_suggestion": {
+          "prompt": "بناءً على كلامك، إيه المسار اللي تحب نستكشفه مع بعض دلوقتي؟",
+          "choices": [
+              {"title": "مسار الأفكار", "description": "(نتحدى الأفكار السلبية اللي بتهاجمنا)", "target_intent": "skill_cbt_thought_challenging", "usage_tracking_tag": "chose_thoughts_path"},
+              {"title": "مسار الطاقة", "description": "(نتعلم إزاي نكسر الجمود ونخلق دافع)", "target_intent": "skill_behavioral_activation", "usage_tracking_tag": "chose_energy_path"},
+              {"title": "مسار الروح", "description": "(نتعلم إزاي نكون أصدقاء لنفسنا في الوحدة)", "target_intent": "skill_self_compassion_for_loneliness", "usage_tracking_tag": "chose_spirit_path"}
+          ]
+      }
+    }
+  },
+  "priority_score": 1.5,
+  "metadata": {
+    "intent_type": "dynamic_protocol",
+    "domain": "depression_gateway",
+    "version": "4.1-standardized"
+  }
 }
-},
-"conversation_rooms": {
-"validation_room": {
-"purpose": "الاحتواء والتحقق من صحة المشاعر العميقة.",
-"responses": [
-"أنا هنا معاك وبسمعك يا {{username}}. الإحساس ده، كأن بطارية روحك فضيت، هو شعور حقيقي وتقيل جدًا.",
-"أهلاً بيك. أنا شايفك وشايف التقل اللي جواك، كأنك شايل جبل على صدرك. عايزك تعرف إنك مش لوحدك في الإحساس ده خالص.",
-"شكرًا إنك قررت تتكلم. أعرف إن مجرد فتح الكلام عن الإحساس ده ممكن يكون صعب. أنا هنا عشان أسمع كل كلمة، بدون أي أحكام.",
-"لما بنحس إن كل حاجة فقدت لونها وطعمها، ده بيكون إحساس صعب ومخيف. اللي بتحس بيه ده مفهوم تمامًا."
-],
-"next_room_suggestions": ["kindness_room", "venting_room"]
-},
-"kindness_room": {
-"purpose": "تقديم جرعة من التعاطف مع الذات وكسر دائرة جلد الذات.",
-"responses": [
-"قبل ما نكمل، ممكن نبتدي بأهم خطوة؟ إننا ناخد 'هدنة' من جلد الذات. الصوت اللي جوانا اللي بيقولنا 'إنت السبب' ده مش صوتك الحقيقي، ده صوت الاكتئاب.",
-"كتير مننا لما بيتعب، بيقسى على نفسه أكتر. عشان كده، أول حاجة هنعملها مع بعض هي العكس تمامًا.",
-"جرب للحظة تتخيل إنك بتتكلم مع أعز أصحابك وهو بيحكي لك نفس الكلام ده. كنت هتقوله إيه يا {{username}}؟ غالبًا هيكون ألطف بكتير من اللي بتقوله لنفسك."
-],
-"next_room_suggestions": ["venting_room", "thread_finding_room"]
-},
-"venting_room": {
-"purpose": "توفير مساحة آمنة ومفتوحة للتعبير الحر عن المشاعر.",
-"responses": [
-"المساحة دي كلها بتاعتك دلوقتي. خد وقتك، وخد نَفَسك، وقول كل اللي على قلبك. أنا هنا بسمع بس.",
-"فضفض براحتك خالص، مش مهم الكلام يطلع مترتب أو لأ. المهم إنه يطلع.",
-"أنا هنا عشان أسمع أي حاجة، سواء كانت كلمة أو جملة أو حتى مجرد إحساس."
-],
-"next_room_suggestions": ["thread_finding_room"]
-},
-"thread_finding_room": {
-"purpose": "مساعدة المستخدم على تحديد نقطة تركيز عملية.",
-"responses": [
-"كلامك ده لمسني جدًا، وشكرًا مرة تانية على صراحتك. عشان نقدر نبتدي خطوة عملية، محتاجين نختار نقطة بداية واحدة بس.",
-"من كل التقل اللي حاسس بيه ده، لو فيه 'خيط نور' واحد بس نقدر نمسك فيه دلوقتي عشان الدنيا تبقى أسهل ولو 1% بس، تفتكر الخيط ده هيكون متعلق بـ: الأفكار، الطاقة، ولا الوحدة؟"
-],
-"is_resolution_point": true
-}
-},
-"bridging_logic": {
-"on_resolution": {
-"pre_suggestion_feedback": "أنا شايف إنك أخدت خطوة شجاعة جدًا النهاردة لمجرد إنك فتحت قلبك. لو هنقيمها، فهي +1% نور في الجزء اللي كان ضلمة. وأنا فخور بيك.",
-"rules": [
-{"if_user_mentions": ["الأفكار"], "target_intent": "skill_cbt_thought_challenging", "usage_tracking_tag": "negative_thoughts"},
-{"if_user_mentions": ["الطاقة"], "target_intent": "skill_behavioral_activation", "usage_tracking_tag": "low_energy"},
-{"if_user_mentions": ["الوحدة"], "target_intent": "skill_self_compassion_for_loneliness", "usage_tracking_tag": "loneliness"}
-],
-"fallback": {
-"dynamic_target": [
-{"if_fingerprint_contains": {"concept": "sadness", "emotion_intensity_gt": 0.7}, "target_intent": "skill_self_compassion_for_loneliness"},
-{"if_fingerprint_contains": {"concept": "anxiety"}, "target_intent": "skill_mindful_breathing"}
-],
-"default_target_intent": "skill_mindful_breathing",
-"suggestion": "شكرًا لتوضيحك. بما إننا لسه بنستكشف، عندي أداة بسيطة لتهدئة العقل والجسم ممكن تكون بداية كويسة. تحب نجربها؟"
-}
-}
-},
-"priority_score": 1.25,
-"metadata": {
-"intent_type": "dynamic_gateway_protocol",
-"domain": "depression",
-"version": "3.1-perfected"
-}
-}
-
