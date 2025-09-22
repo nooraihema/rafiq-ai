@@ -1,6 +1,6 @@
 {
-  "tag": "depression_gateway_protocol_v1.2_full",
-  "core_concept": "خبير متخصص في الاستماع العميق وبناء مساحة آمنة لمشاعر الاكتئاب",
+  "tag": "depression_gateway_protocol_v2.0_genius",
+  "core_concept": "خبير متخصص في الاستماع العميق وبناء مساحة آمنة لمشاعر الاكتئاب، مع قدرة على كسر الحلقات التكرارية",
   "design_philosophy": {
     "principle_1": "الحضور أولاً (Presence First): قبل أي حلول، نقدم حضورًا كاملاً وغير مشروط.",
     "principle_2": "اللطف كأداة (Kindness as a Tool): نستخدم التعاطف مع الذات كأول خطوة عملية.",
@@ -8,36 +8,33 @@
   },
   "nlu": {
     "keywords": [
-      {"word": "اكتئاب", "weight": 1.0},
-      {"word": "مكتئب", "weight": 1.0},
-      {"word": "حزين طول الوقت", "weight": 1.0},
-      {"word": "فقدت الشغف", "weight": 1.0},
-      {"word": "مخنوق", "weight": 0.95},
-      {"word": "الدنيا سودا", "weight": 0.9},
-      {"word": "يأس", "weight": 0.9},
-      {"word": "يائس", "weight": 0.9},
-      {"word": "محبط", "weight": 0.9},
-      {"word": "كل حاجة ملهاش معنى", "weight": 0.9},
-      {"word": "معنديش طاقة", "weight": 0.85},
-      {"word": "مش عايز أعمل حاجة", "weight": 0.85},
-      {"word": "كسل", "weight": 0.8},
-      {"word": "مش قادر أقوم من السرير", "weight": 0.8},
-      {"word": "ملل", "weight": 0.8},
-      {"word": "متضايق", "weight": 0.75},
-      {"word": "زعلان", "weight": 0.75},
-      {"word": "حاسس بوحدة", "weight": 0.9},
-      {"word": "لوحدي", "weight": 0.85},
-      {"word": "منعزل", "weight": 0.8},
-      {"word": "محدش حاسس بيا", "weight": 0.8}
+      {"word": "اكتئاب", "weight": 1.0}, {"word": "مكتئب", "weight": 1.0},
+      {"word": "حزين طول الوقت", "weight": 1.0}, {"word": "فقدت الشغف", "weight": 1.0},
+      {"word": "مخنوق", "weight": 0.95}, {"word": "الدنيا سودا", "weight": 0.9},
+      {"word": "يأس", "weight": 0.9}, {"word": "يائس", "weight": 0.9},
+      {"word": "محبط", "weight": 0.9}, {"word": "كل حاجة ملهاش معنى", "weight": 0.9},
+      {"word": "معنديش طاقة", "weight": 0.85}, {"word": "مش عايز أعمل حاجة", "weight": 0.85},
+      {"word": "كسل", "weight": 0.8}, {"word": "مش قادر أقوم من السرير", "weight": 0.8},
+      {"word": "ملل", "weight": 0.8}, {"word": "متضايق", "weight": 0.75},
+      {"word": "زعلان", "weight": 0.75}, {"word": "حاسس بوحدة", "weight": 0.9},
+      {"word": "لوحدي", "weight": 0.85}, {"word": "منعزل", "weight": 0.8},
+      {"word": "محدش حاسس بيا", "weight": 0.8},
+      
+      {"word": "مش لاقي معنى", "weight": 0.9}, {"word": "زهقت", "weight": 0.85},
+      {"word": "تعبان", "weight": 0.85}, {"word": "خلاص مش قادر", "weight": 0.9}
     ]
   },
   "dialogue_flow": {
     "entry_point": "L0_Immediate_Validation",
+    "loop_guard": {
+      "max_repeats_in_a_row": 2,
+      "redirect_state_on_trigger": "L3_Finding_A_Thread"
+    },
     "layers": {
       "L0_Immediate_Validation": {
         "responses": [
           "أنا هنا معاك وبسمعك. الإحساس ده، كأن بطارية روحك فضيت، هو شعور حقيقي وتقيل جدًا. اللي بتحس بيه ده مهم، ومش مجرد 'زعل' بسيط.",
-          "أهلاً بيك. أنا شايفك وشايف التقل اللي جواك. عايزك تعرف إنك مش لوحدك في الإحساس ده خالص، وأنا هنا عشان أكون جنبك.",
+          "أهلاً بيك. أنا شايفك وشايف التقل اللي جواك، كأنك شايل جبل على صدرك. عايزك تعرف إنك مش لوحدك في الإحساس ده خالص، وأنا هنا عشان أكون جنبك.",
           "شكرًا إنك قررت تتكلم. أعرف إن مجرد فتح الكلام عن الإحساس ده ممكن يكون صعب. أنا هنا عشان أسمع كل كلمة، بدون أي أحكام.",
           "لما بنحس إن كل حاجة فقدت لونها وطعمها، ده بيكون إحساس صعب ومخيف. عايزك تعرف إن اللي بتحس بيه ده مفهوم، وأنا هنا عشان أسمعه."
         ],
@@ -59,9 +56,8 @@
       "L2_Vent_It_Out": {
         "responses": [
           "شكرًا إنك وثقت فيا. دلوقتي، المكان ده كله بتاعك. خد وقتك، وخد نَفَسك، وقول كل اللي على قلبك. أنا هنا بسمع بس.",
-          "لو حبيت، احكيلي... إيه أكتر حاجة مضايقاك أو تعباك اليومين دول؟ فضفض براحتك خالص، مش مهم الكلام يطلع مترتب أو لأ.",
-          "أنا هنا عشان أسمع أي حاجة، سواء كانت كلمة أو جملة أو حتى مجرد إحساس. المساحة دي بتاعتك، استخدمها زي ما تحب.",
-          "كل اللي هتعمله دلوقتي هو إنك تسمح للكلام يطلع. أنا هكون هنا بستقبله بكل هدوء وتفهم. اتكلم."
+          "لو حبيت، احكيلي... إيه أكتر حاجة مضايقاك أو تعباك اليومين دول؟ فضفض براحتك خالص، مش مهم الكلام يطلع مترتب أو لأ. المهم إنه يطلع.",
+          "أنا هنا عشان أسمع أي حاجة، سواء كانت كلمة أو جملة أو حتى مجرد إحساس. المساحة دي بتاعتك، استخدمها زي ما تحب."
         ],
         "next_state": "L3_Finding_A_Thread"
       },
@@ -76,48 +72,47 @@
             "question": "لو اعتبرنا إن الاكتئاب ده زي وحش ليه ٣ رؤوس: رأس الأفكار السلبية، ورأس الكسل وفقدان الطاقة، ورأس الشعور بالوحدة. أنهي رأس فيهم حاسس إنه بيهاجمك أكتر دلوقتي؟"
           }
         ],
-        "next_state": null
+        "next_state": "resolution"
       }
-    }
-  },
-  "dynamic_response_logic": {
-    "persona_logic": {
-      "L0_Immediate_Validation": "the_empathetic_listener",
-      "L1_Kindness_Check": "the_wise_guide",
-      "L2_Vent_It_Out": "the_empathetic_listener",
-      "L3_Finding_A_Thread": "the_wise_guide"
     }
   },
   "bridging_logic": {
-    "on_user_response_to": {
-      "state": "L3_Finding_A_Thread",
-      "rules": [
-        {
-          "if_user_mentions": ["الأفكار", "دماغي", "تفكير", "سلبي", "فاشل"],
-          "suggestion": "أتفهم ده جدًا. الأفكار ممكن تكون مرهقة أكتر من أي حاجة تانية. فيه أداة بسيطة لكن قوية جدًا ممكن تساعدنا نتعامل معاها. تحب نجربها؟",
-          "target_intent": "skill_cbt_thought_challenging"
-        },
-        {
-          "if_user_mentions": ["طاقة", "حركة", "كسل", "أقوم", "معنديش نفس"],
-          "suggestion": "الإحساس ده، كأنك عايز تتحرك بس مش قادر، مرهق جدًا. عندي تمرين بسيط جدًا اسمه 'خطوة واحدة ممكنة'، ممكن يساعد في كسر الجمود ده. إيه رأيك؟",
-          "target_intent": "skill_behavioral_activation"
-        },
-        {
-          "if_user_mentions": ["لوحدي", "وحدة", "محدش حاسس بيا", "منعزل"],
-          "suggestion": "الشعور بالوحدة وسط كل ده ممكن يكون أصعب جزء. فيه تمرين لطيف بيركز على إزاي نكون 'صديق' لنفسنا في الأوقات دي. تحب نتعرف عليه؟",
-          "target_intent": "skill_self_compassion_for_loneliness"
+    "on_state_enter": {
+        "state": "resolution",
+        "rules": [
+            {
+              "if_user_mentions": ["الأفكار", "دماغي", "تفكير", "سلبي", "فاشل"],
+              "suggestion": "أتفهم ده جدًا. الأفكار ممكن تكون مرهقة أكتر من أي حاجة تانية. فيه أداة بسيطة لكن قوية جدًا ممكن تساعدنا نتعامل معاها. تحب نجربها؟",
+              "target_intent": "skill_cbt_thought_challenging",
+              "usage_tracking_tag": "negative_thoughts"
+            },
+            {
+              "if_user_mentions": ["طاقة", "حركة", "كسل", "أقوم", "معنديش نفس"],
+              "suggestion": "الإحساس ده، كأنك عايز تتحرك بس مش قادر، مرهق جدًا. عندي تمرين بسيط جدًا اسمه 'خطوة واحدة ممكنة'، ممكن يساعد في كسر الجمود ده. إيه رأيك؟",
+              "target_intent": "skill_behavioral_activation",
+              "usage_tracking_tag": "low_energy"
+            },
+            {
+              "if_user_mentions": ["لوحدي", "وحدة", "محدش حاسس بيا", "منعزل"],
+              "suggestion": "الشعور بالوحدة وسط كل ده ممكن يكون أصعب جزء. فيه تمرين لطيف بيركز على إزاي نكون 'صديق' لنفسنا في الأوقات دي. تحب نتعرف عليه؟",
+              "target_intent": "skill_self_compassion_for_loneliness",
+              "usage_tracking_tag": "loneliness"
+            }
+        ],
+        "fallback": {
+            "dynamic_target": [
+                {"if_fingerprint_contains": {"concept": "sadness"}, "target_intent": "skill_self_compassion_for_loneliness"},
+                {"if_fingerprint_contains": {"concept": "anxiety"}, "target_intent": "skill_mindful_breathing"}
+            ],
+            "default_target_intent": "skill_mindful_breathing",
+            "suggestion": "شكرًا لتوضيحك. دي نقطة مهمة جدًا. عندي أداة بسيطة لتهدئة العقل والجسم ممكن تكون بداية كويسة. تحب نجربها؟"
         }
-      ],
-      "fallback": {
-        "suggestion": "شكرًا لتوضيحك. دي نقطة مهمة جدًا. عندي مجموعة أدوات ممكن تكون مفيدة في العموم. تحب نبتدي بأداة بسيطة لتهدئة العقل والجسم؟",
-        "target_intent": "skill_mindful_breathing"
-      }
     }
   },
   "priority_score": 1.2,
   "metadata": {
     "intent_type": "gateway_protocol",
     "domain": "depression",
-    "version": "1.2-full"
+    "version": "2.0-genius"
   }
 }
