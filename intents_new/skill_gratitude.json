@@ -1,0 +1,85 @@
+{
+  "tag": "skill_gratitude_lens_v1.1_final",
+  "core_concept": "خبير مساعدتك على تدريب عقلك لرؤية الخير، حتى في أصعب الأيام، من خلال تمرين 'عدسة الامتنان'.",
+  "memory_hooks": {
+    "store_user_progress": ["gratitude_points", "last_gratitude_item", "last_room_visited"],
+    "recall_in_next_session_prompt": "أهلاً بيك يا {{username}} مرة تانية. أتذكر إن آخر مرة نجحنا في إيجاد لحظة امتنان بخصوص '[LAST_GRATITUDE_ITEM]'، ووصل 'مؤشر الامتنان' عندك لـ [GRATITUDE_POINTS]. مستعد ندور على نور جديد النهاردة؟"
+  },
+  "nlu": {
+    "keywords": [
+      {"word": "امتنان", "weight": 1.0},
+      {"word": "أشكر ربنا", "weight": 0.9},
+      {"word": "حاجة كويسة", "weight": 0.8},
+      {"word": "نعم", "weight": 0.7},
+      {"word": "أحمد ربنا", "weight": 0.9}
+    ]
+  },
+  "dialogue_engine_config": {
+    "engine_type": "dynamic_room_engine",
+    "entry_room": "introduction_room",
+    "variables": {
+      "gratitude_points": {"initial_value": 0, "max_value": 10, "decay_rate_per_day": 1},
+      "last_gratitude_item": {"initial_value": null}
+    },
+    "loop_guard": {
+      "max_visits_in_a_row": 2,
+      "escape_hatch_suggestion": "حاسس إننا بنفكر في نفس النقطة. يمكن محتاجين نغير الزاوية. إيه رأيك نتكلم عن 'الأفكار' اللي ممكن تكون بتمنعنا نحس بالامتنان؟"
+    }
+  },
+  "conversation_rooms": {
+    "introduction_room": {
+      "purpose": "التحقق من صعوبة رؤية الخير والتمهيد للفكرة.",
+      "on_completion_action": [{"store_in_memory": {"key": "last_action_completed", "value": "الاستعداد لتمرين الامتنان"}}],
+      "responses": [
+        "تمام. أحيانًا لما بنكون تعبانين، عقلنا بيبقى عامل زي الرادار اللي متظبط إنه يلقط كل حاجة سلبية بس، وبيبقى أعمى تمامًا عن أي حاجة كويسة، مهما كانت صغيرة. ده طبيعي جدًا.",
+        "وصلتني فكرتك. الإحساس ده، كأنك لابس نضارة سودا، بيخلي صعب أوي تشوف أي بصيص نور. أنا هنا عشان نلمع عدسة النضارة دي شوية مع بعض."
+      ],
+      "next_room_suggestions": ["science_intro_room"]
+    },
+    "science_intro_room": {
+      "purpose": "شرح الفائدة العلمية للامتنان بطريقة مبسطة.",
+      "on_completion_action": [{"store_in_memory": {"key": "last_action_completed", "value": "فهم علم الامتنان"}}],
+      "responses": [
+        "عشان نتعامل مع 'الرادار' ده، هنستخدم تمرين بسيط جدًا لكن الأبحاث العلمية أثبتت إنه بيعيد توصيل أسلاك الدماغ حرفيًا عشان يبقى أحسن في ملاحظة الخير. التمرين ده مش 'تفكير إيجابي' وخلاص، ده تدريب لعضلة في المخ.",
+        "الفكرة بسيطة: زي ما بتروح الچيم عشان تمرن عضلاتك، إحنا دلوقتي هنعمل تمرين سريع عشان نمرن 'عضلة الانتباه' في دماغنا. مستعد للتمرين؟"
+      ],
+      "next_room_suggestions": ["the_tool_room"]
+    },
+    "the_tool_room": {
+      "purpose": "تطبيق تمرين 'عدسة الامتنان' بشكل عملي.",
+      "on_completion_action": [
+        {"update_variable": {"variable": "gratitude_points", "operation": "increment", "value": 1}},
+        {"update_variable": {"variable": "last_gratitude_item", "value_from_user_input": true}},
+        {"store_in_memory": {"key": "last_action_completed", "value_from_user_input": true}}
+      ],
+      "responses": [
+        "ممتاز. التمرين اسمه 'عدسة الامتنان'. المطلوب بسيط جدًا:",
+        "**فكر في الـ 24 ساعة اللي فاتوا، وحاول تلاقي 'حاجة واحدة بس'، مهما كانت صغيرة أو تافهة، كانت كويسة أو على الأقل 'مش وحشة'.**",
+        "ممكن تكون كوباية شاي عجبتك، أو أغنية سمعتها، أو حتى إنك نمت ساعة زيادة. إيه هي الحاجة دي؟"
+      ],
+      "is_resolution_point": true
+    }
+  },
+  "bridging_logic": {
+    "on_resolution": {
+      "mini_celebrations": [
+        "دي ملاحظة جميلة جدًا. شكرًا إنك شاركتني بيها. 'مؤشر الامتنان' عندك زاد نقطة!",
+        "رائع. مجرد القدرة على التقاط اللحظة البسيطة دي هو في حد ذاته مهارة قوية جدًا.",
+        "عظيم. لما بنركز على النور الصغير ده، بيبتدي يكبر وينور اللي حواليه."
+      ],
+      "branching_suggestion": {
+          "prompt": "دلوقتي بعد ما دربنا 'عضلة الانتباه'، عندك اختيارين للمسار اللي جاي. تحب نكمل في:",
+          "choices": [
+              {"title": "مسار البوصلة", "description": "(نستكشف إيه اللي يهمك بجد في الحياة عشان نحس بمعنى أكبر)", "target_intent": "skill_act_values_clarification"},
+              {"title": "مسار الطاقة", "description": "(نستخدم الإحساس الإيجابي ده كوقود لكسر الجمود)", "target_intent": "skill_behavioral_activation"}
+          ]
+      }
+    }
+  },
+  "priority_score": 0.8,
+  "metadata": {
+    "intent_type": "dynamic_protocol",
+    "domain": "positive_psychology",
+    "version": "1.1-final"
+  }
+}
