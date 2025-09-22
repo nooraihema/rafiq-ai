@@ -1,7 +1,11 @@
-// intelligence/HybridComposer.js v6.0 - The Decisive & Conscious Maestro
-// This final version implements the strict, hierarchical decision-making logic.
-// It prioritizes active protocols, understands context, and eliminates chaotic merging.
-// ALL ORIGINAL FUNCTIONS AND LOGIC ARE PRESERVED.
+// intelligence/HybridComposer.js v6.1 - The Decisive, Conscious & Robust Maestro
+// Backwards-compatible upgrade of v6.0
+// - Keeps original design & functions
+// - Fixes candidate selection (uses analyzeCandidates scores)
+// - Improves smartWeave with persona-aware merging rules
+// - Adds anti-redundancy (dedupe sentences) and safety/robustness checks
+// - Attaches clean, well-formed metadata and memory passport
+// Author: iterative upgrade for Rafiq system
 
 const DEBUG = false;
 
@@ -19,7 +23,7 @@ const MAX_FRAGMENTS = 4;
 const NOVELTY_DECAY_WINDOW = 6;
 
 /* =========================
-   Helpers (Preserved)
+   Helpers (Preserved + new)
    ========================= */
 function safeStr(s) { return (s === null || s === undefined) ? "" : String(s); }
 function clamp(v, a = 0, b = 1) { return Math.max(a, Math.min(b, v)); }
@@ -44,6 +48,29 @@ function firstSentence(text) {
   if (!text) return "";
   const m = text.split(/(?<=[.؟!?])\s+/);
   return m[0] || text;
+}
+
+/* dedupe sentences, preserve order */
+function dedupeSentences(text) {
+  if (!text) return text;
+  const parts = text.split(/(?<=[.؟!?])\s+/).map(s => s.trim()).filter(Boolean);
+  const seen = new Set();
+  const out = [];
+  for (const p of parts) {
+    const key = p.replace(/\s+/g, ' ').toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(p);
+    }
+  }
+  return out.join(' ');
+}
+
+/* truncate very long reply safely */
+function safeTruncateText(text, maxChars = 2000) {
+  if (!text) return text;
+  if (text.length <= maxChars) return text;
+  return text.slice(0, maxChars - 3) + '...';
 }
 
 /* =========================
@@ -82,7 +109,7 @@ function safetyCheck(fingerprint, candidates) {
 }
 
 /* =========================
-   Fusion Core (Preserved)
+   Fusion Core (Preserved + improvement)
    ========================= */
 function analyzeCandidates(candidates = [], tracker = null, fingerprint = {}) {
   const history = tracker?.getHistory ? tracker.getHistory() : [];
@@ -100,117 +127,285 @@ function analyzeCandidates(candidates = [], tracker = null, fingerprint = {}) {
     const maxSim = recent.reduce((m, r) => Math.max(m, jaccardSim(c.reply || "", r || "")), 0);
     const novelty = 1 - maxSim;
     const calibrated = clamp(baseConf * 0.7 + personaAvg * 0.2 + novelty * 0.1, 0, 1);
-    return { candidate: c, calibratedScore: calibrated, personaAvg, novelty };
+    return { candidate: c, calibratedScore: calibrated, personaAvg, novelty, baseConf };
   }).sort((a, b) => b.calibratedScore - a.calibratedScore);
 }
 
+/* helper: pick best candidate matching a protocol tag (by calibrated score) */
+function pickBestForProtocol(scoredCandidates, protocolTag) {
+  if (!protocolTag) return null;
+  // protocolTag might be like "cbt_act_choice_point_v9.1" or "cbt_act_choice_point"
+  const matches = scoredCandidates.filter(s => safeStr(s.candidate.source).includes(protocolTag) || safeStr(s.candidate.metadata?.intentTag || '').includes(protocolTag));
+  if (matches.length === 0) return null;
+  matches.sort((a,b) => b.calibratedScore - a.calibratedScore);
+  return matches[0].candidate;
+}
 
 /* =================================================
-   THE MAESTRO'S WEAVING ROOM (Preserved for specific use)
+   THE MAESTRO'S WEAVING ROOM (Preserved & enhanced)
    ================================================= */
 function createEmpathyBridge() {
     const bridges = [
-        "أتفهم أنك تتعامل مع أكثر من شيء في نفس الوقت. دعنا نبدأ بالجزء الأكثر إلحاحًا، ثم ننظر في الباقي.",
-        "شكرًا لمشاركة كل هذا. يبدو أن هناك جانبًا عاطفيًا وجانبًا عمليًا للموقف. ما رأيك أن نبدأ بالجانب العاطفي أولاً لتهدأ الأمور؟"
+        "أتفهم أنك تتعامل مع أكثر من شيء في نفس الوقت. دعنا نبدأ بالالذي يبدو الأكثر إلحاحًا، ثم ننظر في الباقي.",
+        "شكرًا لمشاركة كل هذا. يبدو أن هناك جانبًا عاطفيًا وجانبًا عمليًا للموقف. ما رأيك أن نبدأ بالجانب العاطفي لتهدأ الأمور قليلاً؟"
     ];
     return sample(bridges);
 }
 
-// --- [NEW] A smarter, more contextual weave function ---
-function smartWeave(activeCandidate, newCandidate, fingerprint) {
+// --- [ENHANCED] A smarter, persona-aware weave function ---
+function smartWeave(activeCandidate, newCandidate, fingerprint, scoredCandidates) {
     if (DEBUG) console.log("MAESTRO: Engaging SMART WEAVING.");
-    
-    // Acknowledge the interruption gracefully
-    const acknowledgement = `أتفهم أننا كنا نتحدث عن ${activeCandidate.metadata?.intentTag?.split('_')[1] || 'موضوع سابق'}، ولكن يبدو أن هناك شيئًا جديدًا ومهمًا ظهر الآن وهو '${newCandidate.metadata?.intentTag?.split('_')[1] || 'موضوع جديد'}'.`;
-    const bridge = "دعنا نركز على هذا الآن.";
-    const newResponse = firstSentence(newCandidate.reply);
 
-    return {
-        reply: `${acknowledgement}\n\n${bridge}\n\n${newResponse}`,
-        source: `maestro_weaver:smart_weave`,
-        confidence: 0.99,
-        metadata: { 
-            strategy: 'smart_weave',
-            components: [activeCandidate.source, newCandidate.source] 
+    // Safety nets for missing inputs
+    activeCandidate = activeCandidate || {};
+    newCandidate = newCandidate || {};
+
+    // gather persona profiles for each candidate
+    const activeProfiles = Object.keys(PERSONA_FUNCS).map(pid => ({ pid, res: PERSONA_FUNCS[pid](activeCandidate) }));
+    const newProfiles = Object.keys(PERSONA_FUNCS).map(pid => ({ pid, res: PERSONA_FUNCS[pid](newCandidate) }));
+
+    // detect dominant persona type heuristics (which persona segment aligns best)
+    function dominantPersona(candidate) {
+      let best = { pid: null, score: -1 };
+      for (const pid of Object.keys(PERSONA_FUNCS)) {
+        const res = PERSONA_FUNCS[pid](candidate);
+        const align = jaccardSim(candidate.reply || "", res.segment || "");
+        const score = (res.score || 0) * 0.7 + align * 0.3;
+        if (score > best.score) { best = { pid, score }; }
+      }
+      return best.pid || 'logical';
+    }
+
+    const activePersona = dominantPersona(activeCandidate);
+    const newPersona = dominantPersona(newCandidate);
+
+    // Compose according to persona pair
+    // 1) empathic + empathic => choose stronger empathic and add concise bridge
+    if (activePersona === 'empathic' && newPersona === 'empathic') {
+        const chosen = scoredCandidates && scoredCandidates.length ? scoredCandidates[0].candidate : (activeCandidate || newCandidate);
+        const bridge = createEmpathyBridge();
+        const reply = `${firstSentence(chosen.reply)}\n\n${bridge}`;
+        return {
+            reply: dedupeSentences(reply),
+            source: 'maestro_weaver:empathic_choice',
+            confidence: 0.98,
+            metadata: { strategy: 'choose_strong_empathic', components: [activeCandidate.source, newCandidate.source] }
+        };
+    }
+
+    // 2) empathic + pragmatic (or vice versa) => empathic intro + pragmatic steps (ideal merge)
+    if ((activePersona === 'empathic' && newPersona === 'pragmatic') || (activePersona === 'pragmatic' && newPersona === 'empathic')) {
+        // determine which is empathic and which is pragmatic
+        const empathic = (activePersona === 'empathic') ? activeCandidate : newCandidate;
+        const pragmatic = (activePersona === 'pragmatic') ? activeCandidate : newCandidate;
+        const intro = firstSentence(empathic.reply) || "أرى أن هذا الوضع صعب.";
+        // try to extract a short practical fragment from pragmatic
+        const practical = firstSentence(pragmatic.reply).length > 20 ? firstSentence(pragmatic.reply) : PERSONA_FUNCS.pragmatic(pragmatic).segment;
+        const reply = `${intro}\n\n${practical}\n\n${createEmpathyBridge()}`;
+        return {
+            reply: dedupeSentences(reply),
+            source: 'maestro_weaver:empathic_pragmatic_merge',
+            confidence: 0.995,
+            metadata: { strategy: 'empathic_then_practical', components: [empathic.source, pragmatic.source] }
+        };
+    }
+
+    // 3) both pragmatic => merge practical steps cautiously (prefer higher-calibrated candidate)
+    if (activePersona === 'pragmatic' && newPersona === 'pragmatic') {
+        // pick top-two practical fragments (avoid long duplication)
+        const aFrag = firstSentence(activeCandidate.reply) || PERSONA_FUNCS.pragmatic(activeCandidate).segment;
+        const bFrag = firstSentence(newCandidate.reply) || PERSONA_FUNCS.pragmatic(newCandidate).segment;
+        // order by scoredCandidates calibratedScore if available
+        let ordered = [activeCandidate, newCandidate];
+        if (Array.isArray(scoredCandidates) && scoredCandidates.length) {
+          // find their scores
+          const mapScore = (c) => (scoredCandidates.find(s => s.candidate === c)?.calibratedScore ?? 0);
+          ordered = [activeCandidate, newCandidate].sort((x,y) => mapScore(y) - mapScore(x));
         }
+        const reply = `قِم بتجربة صغيرة:\n- ${firstSentence(ordered[0].reply)}\n- ${firstSentence(ordered[1].reply)}\n\nبعد 24 ساعة قِس النتيجة.`;
+        return {
+            reply: dedupeSentences(reply),
+            source: 'maestro_weaver:pragmatic_merge',
+            confidence: 0.97,
+            metadata: { strategy: 'pragmatic_merge', components: [activeCandidate.source, newCandidate.source] }
+        };
+    }
+
+    // 4) logical + anything => present succinct reasoning then step (safe default merge)
+    if (activePersona === 'logical' || newPersona === 'logical') {
+        const logical = (activePersona === 'logical') ? activeCandidate : newCandidate;
+        const other = (activePersona === 'logical') ? newCandidate : activeCandidate;
+        const logicSeed = firstSentence(logical.reply) || PERSONA_FUNCS.logical(logical).segment;
+        const otherSeed = firstSentence(other.reply) || '';
+        const reply = `${logicSeed}\n\n${otherSeed}`;
+        return {
+            reply: dedupeSentences(reply),
+            source: 'maestro_weaver:logical_bridge',
+            confidence: 0.94,
+            metadata: { strategy: 'logical_bridge', components: [logical.source, other.source] }
+        };
+    }
+
+    // 5) fallback: simple acknowledgment + the new response
+    const acknowledgement = `أرى أن هناك تغييرًا مهمًا في الموضوع؛ سأتناول النقطة الجديدة بسرعة.`;
+    const reply = `${acknowledgement}\n\n${firstSentence(newCandidate.reply)}`;
+    return {
+        reply: dedupeSentences(reply),
+        source: 'maestro_weaver:fallback_bridge',
+        confidence: 0.9,
+        metadata: { strategy: 'fallback_bridge', components: [activeCandidate.source, newCandidate.source] }
     };
 }
 
 
 /* =========================
    API: synthesizeHybridResponse (The Final, Decisive Logic)
+   v6.1 improvements:
+   - use analyzed (scored) candidates for reliable choices
+   - persona-aware smartWeave merging
+   - dedupe and safe truncation
+   - robust metadata fields
    ========================= */
 function synthesizeHybridResponse(candidates = [], briefing = {}, context = {}) {
   const { tracker = null, fingerprint = {} } = context;
-  const { activeProtocol, potentialNewProtocols } = briefing;
+  const { activeProtocol, potentialNewProtocols } = briefing || {};
 
   const fallbackResponse = {
-    reply: "أنا معاك، ممكن توضّح أكتر؟", source: "hybrid_composer_fallback",
-    variants: [], metadata: { reason: "no_candidates_or_analysis_failed" }
+    reply: "أنا معاك، ممكن توضّح أكتر؟",
+    source: "hybrid_composer_fallback",
+    variants: [],
+    metadata: { reason: "no_candidates_or_analysis_failed", ts: nowISO() }
   };
 
-  if (!Array.isArray(candidates) || candidates.length === 0) return fallbackResponse;
-  
-  const safety = safetyCheck(fingerprint, candidates);
-  if (!safety.ok) {
-    return { reply: "لاحظت إشارات للخطر...", source: "hybrid_safety", variants: [], metadata: { safetyFlags: safety.flags } };
-  }
+  try {
+    if (!Array.isArray(candidates) || candidates.length === 0) return fallbackResponse;
 
-  let finalDecision;
+    // Safety first
+    const safety = safetyCheck(fingerprint, candidates);
+    if (!safety.ok) {
+      return {
+        reply: "لقد لاحظت إشارات للخطر في كلامك. لو أنت في خطر فورًا اتصل بخط الطوارئ المحلي أو اطلب مساعدة عاجلة.",
+        source: "hybrid_safety",
+        variants: [],
+        metadata: { safetyFlags: safety.flags, ts: nowISO() }
+      };
+    }
 
-  // --- [THE DECISIVE MAESTRO'S HIERARCHY OF RULES] ---
-  const activeCandidate = candidates.find(c => activeProtocol && c.source.includes(activeProtocol.intent.tag));
-  const newCandidate = candidates.find(c => potentialNewProtocols && potentialNewProtocols[0] && c.source.includes(potentialNewProtocols[0].tag));
-  const empathicCandidate = candidates.find(c => c.source === 'empathic_safety_net');
+    // 1) analyze candidates to get calibrated ordering and scores
+    const scored = analyzeCandidates(candidates, tracker, fingerprint); // array sorted desc
+    if (DEBUG) console.log("[HybridComposer] scored:", scored.map(s => ({ src: s.candidate.source, score: s.calibratedScore.toFixed(3) })));
 
-  // RULE 1: HANDLE CONVERSATION INTERRUPTIONS (The most complex case)
-  // If we are in an active conversation AND a new, different, strong protocol appears.
-  if (activeCandidate && newCandidate && activeCandidate.source !== newCandidate.source) {
-      if (DEBUG) console.log("MAESTRO: Rule 1 - Handling conversation interruption.");
-      finalDecision = smartWeave(activeCandidate, newCandidate, fingerprint);
-  }
-  // RULE 2: TRUST THE ACTIVE PROTOCOL
-  // If we are continuing a conversation and there's no strong interruption.
-  else if (activeCandidate) {
-      if (DEBUG) console.log("MAESTRO: Rule 2 - Trusting the active protocol's expert response.");
-      finalDecision = activeCandidate;
-  }
-  // RULE 3: TRUST THE NEW PROTOCOL
-  // If we are starting a new conversation.
-  else if (newCandidate) {
-      if (DEBUG) console.log("MAESTRO: Rule 3 - Trusting the new protocol's expert response.");
-      finalDecision = newCandidate;
-  }
-  // RULE 4: FALLBACK TO THE ORCHESTRA
-  // If no protocol was found at all.
-  else {
-      if (DEBUG) console.log("MAESTRO: Rule 4 - No protocol found, defaulting to the safest empathic response.");
-      finalDecision = empathicCandidate || candidates[0]; // Prioritize the safety net
-  }
-  
-  // --- [THE FINAL MEMORY FIX: THE MEMORY PASSPORT] ---
-  // The memory passport always comes from the protocol that is NOW active.
-  const primaryProtocolForMemory = newCandidate || activeCandidate; // The new one takes precedence
-  if (primaryProtocolForMemory && primaryProtocolForMemory.metadata?.nextSessionContext) {
+    // 2) determine activeCandidate & newCandidate using scored results (best match for protocol)
+    let activeCandidate = null;
+    let newCandidate = null;
+
+    if (activeProtocol && activeProtocol.intent && activeProtocol.intent.tag) {
+      activeCandidate = pickBestForProtocol(scored, activeProtocol.intent.tag);
+    }
+    // if not found by tag, attempt to choose highest-calibrated candidate that mentions the intent id
+    if (!activeCandidate && activeProtocol && activeProtocol.intent && activeProtocol.intent.tag) {
+      const alt = scored.find(s => safeStr(s.candidate.source).includes(activeProtocol.intent.tag));
+      activeCandidate = alt ? alt.candidate : null;
+    }
+
+    if (potentialNewProtocols && potentialNewProtocols[0] && potentialNewProtocols[0].tag) {
+      newCandidate = pickBestForProtocol(scored, potentialNewProtocols[0].tag);
+    }
+    if (!newCandidate && potentialNewProtocols && potentialNewProtocols[0]) {
+      const alt2 = scored.find(s => safeStr(s.candidate.source).includes(potentialNewProtocols[0].tag));
+      newCandidate = alt2 ? alt2.candidate : null;
+    }
+
+    // as a safe default, define topScoredCandidate = scored[0].candidate
+    const topScored = (scored && scored.length) ? scored[0].candidate : candidates[0];
+
+    // empathic fallback candidate (by source name)
+    const empathicCandidate = candidates.find(c => c.source === 'empathic_safety_net') || candidates.find(c => safeStr(c.source).includes('empathic'));
+
+    // RULES HIERARCHY (preserved semantics, improved selection)
+    let finalDecision = null;
+
+    // RULE 1: If interruption (both active and new present and are different)
+    if (activeCandidate && newCandidate && (safeStr(activeCandidate.source) !== safeStr(newCandidate.source))) {
+      if (DEBUG) console.log("MAESTRO: Rule 1 - Interruption detected. Performing smart weave.");
+      finalDecision = smartWeave(activeCandidate, newCandidate, fingerprint, scored);
+    }
+    // RULE 2: Trust active protocol (choose the best candidate representing it)
+    else if (activeCandidate) {
+      if (DEBUG) console.log("MAESTRO: Rule 2 - Trust active protocol (selected by score).");
+      // ensure we pick the best-scored representative for the active protocol
+      const rep = scored.find(s => s.candidate === activeCandidate) || scored.find(s => safeStr(s.candidate.source).includes(activeProtocol.intent.tag));
+      finalDecision = rep ? rep.candidate : activeCandidate;
+      // attach metadata if missing
+      finalDecision = {
+        ...finalDecision,
+        metadata: { ...(finalDecision.metadata || {}), selected_by: 'active_protocol', ts: nowISO() }
+      };
+    }
+    // RULE 3: Trust new protocol (starting fresh)
+    else if (newCandidate) {
+      if (DEBUG) console.log("MAESTRO: Rule 3 - Trust new protocol (selected by score).");
+      const rep = scored.find(s => s.candidate === newCandidate) || scored[0];
+      finalDecision = rep ? rep.candidate : newCandidate;
+      finalDecision = {
+        ...finalDecision,
+        metadata: { ...(finalDecision.metadata || {}), selected_by: 'new_protocol', ts: nowISO() }
+      };
+    }
+    // RULE 4: fallback to empathic or top candidate
+    else {
+      if (DEBUG) console.log("MAESTRO: Rule 4 - No protocol found, fallback.");
+      finalDecision = empathicCandidate || topScored;
+      finalDecision = {
+        ...finalDecision,
+        metadata: { ...(finalDecision.metadata || {}), selected_by: 'fallback', ts: nowISO() }
+      };
+    }
+
+    // Ensure finalDecision is an object and has reply
+    if (!finalDecision || typeof finalDecision !== 'object' || !finalDecision.reply) {
+      // safe fallback
+      return { reply: "أنا هنا معاك — ممكن توضّح أكتر؟", source: "hybrid_composer_safe_fallback", metadata: { ts: nowISO() } };
+    }
+
+    // Attach memory passport if available on primaryProtocolForMemory
+    const primaryProtocolForMemory = newCandidate || activeCandidate;
+    if (primaryProtocolForMemory && primaryProtocolForMemory.metadata?.nextSessionContext) {
       finalDecision.metadata = finalDecision.metadata || {};
-      finalDecision.metadata.nextSession_context = primaryProtocolForMemory.metadata.nextSessionContext;
-      if (DEBUG) console.log("MAESTRO: Memory passport attached.", finalDecision.metadata.nextSessionContext);
-  }
-  
-  // Ensure the final object is well-formed
-  if (!finalDecision.metadata) {
-    finalDecision = {
-      ...finalDecision, // Keep reply, source, etc.
-      metadata: { source: finalDecision.source || 'maestro_final_decision' }
+      finalDecision.metadata.nextSessionContext = primaryProtocolForMemory.metadata.nextSessionContext;
+      if (DEBUG) console.log("MAESTRO: attached memory passport.");
+    }
+
+    // Add multi-voice note if not a weaver product (preserve original behavior)
+    const src = safeStr(finalDecision.source || '');
+    if (!src.includes('weaver') && !src.includes('maestro_weaver')) {
+      finalDecision.reply = `${finalDecision.reply}\n\n[ملحوظة: تم توليد الرد من مزيج متعدد الأصوات.]`;
+    }
+
+    // Anti-redundancy: de-duplicate sentences and safe-truncate
+    finalDecision.reply = dedupeSentences(finalDecision.reply);
+    finalDecision.reply = safeTruncateText(finalDecision.reply, 2500);
+
+    // Ensure metadata cleanliness
+    finalDecision.metadata = finalDecision.metadata || {};
+    finalDecision.metadata.produced_at = finalDecision.metadata.produced_at || nowISO();
+    finalDecision.metadata.produced_by = finalDecision.metadata.produced_by || 'hybridcomposer_v6.1';
+
+    return finalDecision;
+
+  } catch (err) {
+    // In case anything goes wrong, don't break the app — return safe empathic fallback
+    if (DEBUG) console.error("HybridComposer synth error:", err);
+    return {
+      reply: "أنا هنا — ممكن توضّح أكتر؟",
+      source: "hybrid_composer_error_fallback",
+      metadata: { error: String(err), ts: nowISO() }
     };
   }
-
-  // Add the final note if it's a simple selection, not a complex weave
-  if (!finalDecision.source.includes('weaver')) {
-      finalDecision.reply = `${finalDecision.reply}\n\n[ملحوظة: تم توليد الرد من مزيج متعدد الأصوات.]`;
-  }
-
-  return finalDecision;
 }
 
+/* =========================
+   Default export
+   ========================= */
 export default { synthesizeHybridResponse };
+
