@@ -1,15 +1,14 @@
-// chat.js v14.0 - The Stable Protocol Conductor
-// Final version with corrected parameter passing and robust session management.
-// The Conscious Orchestra is fully restored as the creative fallback.
+// chat.js v15.0 - The Fully Integrated Conductor
+// Final version that ensures the Protocol Engine and the Creative Orchestra always work together.
 // Author: For Rafiq system
 
-// =أو================================================================
+// =================================================================
 // SECTION 1: CORE & HIPPOCAMPUS IMPORTS
 // =================================================================
 import { DEBUG } from '../shared/config.js';
 import { detectCritical, criticalSafetyReply, tokenize } from '../shared/utils.js';
 import { loadUsers, saveUsers, makeUserId } from '../shared/storage.js';
-// --- MODIFICATION: Using the final, correct function names ---
+// Using the final, correct function names
 import { buildIndexSync, findActiveProtocol } from '../perception/intent_engine.js';
 import { executeV9Engine } from '../core/dynamic_logic_engine.js'; // We will call V9 directly
 import { composeInferentialResponse } from '../core/composition_engine.js';
@@ -20,7 +19,7 @@ import { atomize } from '../hippocampus/knowledgeAtomizer.js';
 import { memoryGraph } from '../hippocampus/MemoryGraph.js';
 import { InferenceEngine } from '../hippocampus/InferenceEngine.js';
 
-// --- Preserved imports for the orchestra fallback ---
+// Preserved imports for the orchestra
 import ResponseSynthesizer from '../intelligence/ResponseSynthesizer.js';
 import HybridComposer from '../intelligence/HybridComposer.js';
 
@@ -29,52 +28,21 @@ import HybridComposer from '../intelligence/HybridComposer.js';
 // =================================================================
 buildIndexSync();
 const CONTEXT_TRACKERS = new Map();
-const CONFIDENCE_THRESHOLD = 0.45;
+const CONFIDENCE_THRESHOLD = 0.45; // This is now a legacy threshold, but kept for safety.
 
 // =================================================================
-// SECTION 2: THE CONSCIOUS ORCHESTRA (Restored to its full power)
-// =================================================================
+// SECTION 2: THE CONSCIOUS ORCHESTRA (This function is now retired)
+// Its logic is now integrated directly into the main handler.
+// We are keeping it here commented out, as a sign of respect for the work done.
+/*
 async function conductOrchestra(props) {
-  const { cognitiveProfile, fingerprint, topIntents, sessionContext, userProfile, tracker } = props;
-
-  if (DEBUG) console.log("🎼 Orchestra Fallback: No specific protocol found. Generating creative response.");
-
-  // a) The Soloist (Direct & Logical Candidate from V9)
-  // We call the original executeV9Engine as it was designed to be called.
-  const logicalCandidate = executeV9Engine(topIntents[0]?.full_intent, fingerprint, userProfile, sessionContext);
-
-  // b) The Pianist (Artistic & Fused Candidate)
-  const artisticCandidate = ResponseSynthesizer.synthesizeResponse(
-      [logicalCandidate].filter(Boolean),
-      { cognitiveProfile, fingerprint }, 
-      {}, 
-      tracker
-  );
-
-  // c) The Heartbeat (Empathic Safety Net)
-  const empathicCandidate = {
-    reply: `أتفهم أن هذا الموقف يسبب لك الكثير من المشاعر الصعبة. أنا هنا لأسمعك، ومثل هذه المشاعر طبيعية تمامًا.`,
-    source: 'empathic_safety_net',
-    confidence: 0.95,
-    metadata: { isSafetyNet: true }
-  };
-  
-  const allCandidates = [logicalCandidate, artisticCandidate, empathicCandidate].filter(Boolean);
-  if (DEBUG) console.log(`🎶 Fallback Audition produced ${allCandidates.length} candidates.`);
-
-  // The Music Arranger (HybridComposer) makes the final selection.
-  const finalResponse = HybridComposer.synthesizeHybridResponse(
-      allCandidates,
-      // We pass the new protocol packet structure, signaling this is a fallback.
-      { protocol_found: false, strategicRecommendation: 'EXPLORE_AND_CLARIFY' },
-      { fingerprint, tracker }
-  );
-
-  return finalResponse;
+  // ... (previous logic)
 }
+*/
+// =================================================================
 
 // =================================================================
-// SECTION 3: MAIN HANDLER (With Corrected Protocol Logic)
+// SECTION 3: MAIN HANDLER (The Final Integrated Logic)
 // =================================================================
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -123,45 +91,59 @@ export default async function handler(req, res) {
     const fingerprint = generateFingerprint(rawMessage, { ...tracker.generateContextualSummary(), cognitiveProfile });
     
     // =================================================================
-    // SECTION 4: STRATEGIC EXECUTION (Corrected)
+    // SECTION 4: STRATEGIC EXECUTION (The New Integrated Flow)
     // =================================================================
     let finalReply = "";
     let responsePayload = {};
 
-    // 1. The Strategic Planner finds a protocol.
+    // 1. The Strategic Planner creates the "Case File" for this turn.
     const protocolPacket = findActiveProtocol(rawMessage, fingerprint, sessionContext, profile);
 
+    // 2. The Orchestra's musicians prepare their performances in parallel.
+    let protocolCandidate = null;
     if (protocolPacket.protocol_found) {
-        if (DEBUG) console.log(`STRATEGY: Protocol "${protocolPacket.protocol_tag}" is active. Engaging V9 Engine directly.`);
-        
-        // --- [THE CRITICAL FIX] ---
-        // 2. We call the powerful V9 engine DIRECTLY with the correct parameters.
-        // We are no longer using a faulty wrapper function.
-        responsePayload = executeV9Engine(
+        if (DEBUG) console.log(`STRATEGY: Protocol "${protocolPacket.protocol_tag}" is active. Engaging V9 Engine.`);
+        // The expert soloist plays the main melody from the protocol.
+        protocolCandidate = executeV9Engine(
             protocolPacket.full_intent,
             fingerprint,
             profile,
             protocolPacket.initial_context
         );
     } else {
-        // 3. If no protocol is found, we fall back to the creative Conscious Orchestra.
-        if (DEBUG) console.log(`STRATEGY: No protocol found. Engaging Conscious Orchestra as fallback.`);
-        
-        // The orchestra needs the results of the old intent engine to function.
-        const topIntents = [protocolPacket.top_raw_intent].filter(Boolean);
-
-        responsePayload = await conductOrchestra({
-            cognitiveProfile,
-            fingerprint,
-            topIntents, // Pass the raw intent found
-            sessionContext,
-            userProfile: profile,
-            tracker
-        });
+        if (DEBUG) console.log(`STRATEGY: No protocol found. The orchestra will improvise.`);
     }
 
-    // This handles the case where an engine might fail and return null
-    if (!responsePayload) {
+    // The creative pianist adds harmony, using the protocol's melody as inspiration if available.
+    const artisticCandidate = ResponseSynthesizer.synthesizeResponse(
+        [protocolCandidate].filter(Boolean),
+        { cognitiveProfile, fingerprint },
+        {},
+        tracker
+    );
+
+    // The empathic heartbeat is always ready with a safety net.
+    const empathicCandidate = {
+        reply: `أتفهم أن هذا الموقف يسبب لك الكثير من المشاعر الصعبة. أنا هنا لأسمعك، ومثل هذه المشاعر طبيعية تمامًا.`,
+        source: 'empathic_safety_net',
+        confidence: 0.95,
+        metadata: { isSafetyNet: true }
+    };
+
+    // 3. All musicians present their work to the Maestro.
+    const allCandidates = [protocolCandidate, artisticCandidate, empathicCandidate].filter(Boolean);
+    if (DEBUG) console.log(`MAESTRO'S DESK: Received ${allCandidates.length} candidates for final review.`);
+
+    // 4. The Maestro (HybridComposer) makes the final, strategic decision
+    // using the "Case File" to guide its choice.
+    responsePayload = HybridComposer.synthesizeHybridResponse(
+        allCandidates,
+        protocolPacket, // The full strategic packet
+        { fingerprint, tracker }
+    );
+    
+    // Safety net for any unexpected failure in the composition process
+    if (!responsePayload || !responsePayload.reply) {
         responsePayload = {
             reply: "أنا أفكر في كلماتك بعمق. هل يمكنك أن تشرح لي أكثر؟",
             source: 'critical_fallback',
@@ -177,8 +159,8 @@ export default async function handler(req, res) {
     if (responsePayload.metadata?.nextSessionContext) {
         if(DEBUG) console.log(`SESSION: Updating context for ${userId} to state:`, responsePayload.metadata.nextSessionContext);
         tracker.updateSessionContext(responsePayload.metadata.nextSessionContext);
-    } else {
-       if(DEBUG) console.log(`SESSION: No next context provided. Resetting state for ${userId}.`);
+    } else if (protocolPacket.protocol_found) {
+       if(DEBUG) console.log(`SESSION: Protocol may have ended or failed to provide next state. Resetting for safety.`);
        tracker.updateSessionContext({ active_intent: null, state: null });
     }
 
