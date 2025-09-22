@@ -119,7 +119,8 @@ function createEmpathyBridge(fingerprint) {
 function weaveEmpathyAndAction(empathicCandidate, practicalCandidate, fingerprint) {
     const validation = firstSentence(empathicCandidate.reply);
     const bridge = createEmpathyBridge(fingerprint);
-    const gentleAction = `وبخصوص ${practicalCandidate.metadata?.concept || 'الجزء العملي'}، ${firstSentence(practicalCandidate.reply).replace(/اقتراح عملي:|قائمة سريعة:/gi, "").trim()}`;
+    const practicalConcept = practicalCandidate.metadata?.intentTag?.split('_')[1] || 'الجزء العملي'; // Extracts "act" from "cbt_act_choice_point"
+    const gentleAction = `وبخصوص ${practicalConcept}، ${firstSentence(practicalCandidate.reply).replace(/اقتراح عملي:|قائمة سريعة:/gi, "").trim()}`;
 
     const finalReplyText = `${validation}\n\n${bridge}\n\n${gentleAction}`;
     
@@ -175,30 +176,26 @@ function synthesizeHybridResponse(candidates = [], briefing = {}, context = {}) 
 
   // --- [THE ULTIMATE STRATEGIC CORE] ---
   const activeProtocolCandidate = candidates.find(c => activeProtocol && c.source.includes(activeProtocol.intent.tag));
-  const newProtocolCandidate = candidates.find(c => potentialNewProtocols[0] && c.source.includes(potentialNewProtocols[0].tag));
+  const newProtocolCandidate = candidates.find(c => potentialNewProtocols && potentialNewProtocols[0] && c.source.includes(potentialNewProtocols[0].tag));
   const empathicCandidate = candidates.find(c => c.source === 'empathic_safety_net');
 
   // STRATEGY 1: Advanced Multi-Protocol Weaving (The Dream)
-  // If we are in a conversation AND a new, different, relevant topic appears.
   if (activeProtocolCandidate && newProtocolCandidate && activeProtocolCandidate.source !== newProtocolCandidate.source) {
       if (DEBUG) console.log("MAESTRO: Activating ADVANCED WEAVE strategy.");
       finalDecision = advancedWeave(activeProtocolCandidate, newProtocolCandidate, fingerprint);
   }
   // STRATEGY 2: Simple Weaving (Empathy + Action)
-  // If we are in an emotional context and have a single clear action.
   else if (fingerprint?.primaryEmotion?.type !== 'neutral' && (activeProtocolCandidate || newProtocolCandidate) && empathicCandidate) {
       if (DEBUG) console.log("MAESTRO: Activating simple EMPATHY WEAVE strategy.");
       const practical = activeProtocolCandidate || newProtocolCandidate;
       finalDecision = weaveEmpathyAndAction(empathicCandidate, practical, fingerprint);
   }
   // STRATEGY 3: Direct Protocol Execution
-  // If there's a clear protocol (active or new) and no strong emotional need for weaving.
   else if (activeProtocolCandidate || newProtocolCandidate) {
       if (DEBUG) console.log("MAESTRO: Activating DIRECT PROTOCOL strategy.");
       finalDecision = activeProtocolCandidate || newProtocolCandidate;
   }
   // STRATEGY 4: Orchestra Fallback
-  // If no protocol is relevant, choose the best overall response.
   else {
       if (DEBUG) console.log("MAESTRO: No protocol. Defaulting to best orchestra performer.");
       const topCandidate = analyzed[0].candidate;
@@ -210,8 +207,9 @@ function synthesizeHybridResponse(candidates = [], briefing = {}, context = {}) 
   }
   
   // --- [THE FINAL MEMORY FIX: THE MEMORY PASSPORT] ---
-  // Always attach the next step from the PRIMARY protocol candidate (the active one if it exists).
-  const primaryProtocolForMemory = activeProtocolCandidate || newProtocolCandidate;
+  // Always attach the next step from the PRIMARY protocol candidate, which is the
+  // NEW one if it exists, otherwise the ACTIVE one. This ensures the conversation flows forward.
+  const primaryProtocolForMemory = newProtocolCandidate || activeProtocolCandidate;
   if (primaryProtocolForMemory && primaryProtocolForMemory.metadata?.nextSessionContext) {
       finalDecision.metadata = finalDecision.metadata || {};
       finalDecision.metadata.nextSessionContext = primaryProtocolForMemory.metadata.nextSessionContext;
