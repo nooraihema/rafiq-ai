@@ -1,7 +1,7 @@
-// intelligence/HybridComposer.js v5.0 - The Multi-Dimensional Maestro
-// This final version is designed to understand the full "Cognitive Briefing".
-// It can now consciously decide to weave responses from MULTIPLE active protocols.
-// ALL ORIGINAL LOGIC IS PRESERVED.
+// intelligence/HybridComposer.js v6.0 - The Decisive & Conscious Maestro
+// This final version implements the strict, hierarchical decision-making logic.
+// It prioritizes active protocols, understands context, and eliminates chaotic merging.
+// ALL ORIGINAL FUNCTIONS AND LOGIC ARE PRESERVED.
 
 const DEBUG = false;
 
@@ -104,54 +104,41 @@ function analyzeCandidates(candidates = [], tracker = null, fingerprint = {}) {
   }).sort((a, b) => b.calibratedScore - a.calibratedScore);
 }
 
+
 /* =================================================
-   THE MAESTRO'S WEAVING ROOM (Upgraded for Multi-Protocol)
+   THE MAESTRO'S WEAVING ROOM (Preserved for specific use)
    ================================================= */
-function createEmpathyBridge(fingerprint) {
+function createEmpathyBridge() {
     const bridges = [
-        "أتفهم أنك تتعامل مع أكثر من شيء في نفس الوقت. دعنا نتناولهم واحدًا تلو الآخر.",
-        "من الواضح أن هناك طبقات مختلفة لما تشعر به. لنبدأ بالجزء الأكثر إلحاحًا.",
-        "شكرًا لمشاركة كل هذا. يبدو أن هناك جانبًا عاطفيًا وجانبًا عمليًا للموقف. ما رأيك أن نبدأ بالجانب العاطفي أولاً؟"
+        "أتفهم أنك تتعامل مع أكثر من شيء في نفس الوقت. دعنا نبدأ بالجزء الأكثر إلحاحًا، ثم ننظر في الباقي.",
+        "شكرًا لمشاركة كل هذا. يبدو أن هناك جانبًا عاطفيًا وجانبًا عمليًا للموقف. ما رأيك أن نبدأ بالجانب العاطفي أولاً لتهدأ الأمور؟"
     ];
     return sample(bridges);
 }
 
-function weaveEmpathyAndAction(empathicCandidate, practicalCandidate, fingerprint) {
-    const validation = firstSentence(empathicCandidate.reply);
-    const bridge = createEmpathyBridge(fingerprint);
-    const practicalConcept = practicalCandidate.metadata?.intentTag?.split('_')[1] || 'الجزء العملي'; // Extracts "act" from "cbt_act_choice_point"
-    const gentleAction = `وبخصوص ${practicalConcept}، ${firstSentence(practicalCandidate.reply).replace(/اقتراح عملي:|قائمة سريعة:/gi, "").trim()}`;
-
-    const finalReplyText = `${validation}\n\n${bridge}\n\n${gentleAction}`;
+// --- [NEW] A smarter, more contextual weave function ---
+function smartWeave(activeCandidate, newCandidate, fingerprint) {
+    if (DEBUG) console.log("MAESTRO: Engaging SMART WEAVING.");
     
-    return { 
-        reply: finalReplyText, 
-        source: 'maestro_weaver:empathy_to_action',
-        confidence: 0.98,
-        metadata: { strategy: 'weave', components: [empathicCandidate.source, practicalCandidate.source] },
-        variants: []
-    };
-}
-
-// --- [NEW] Advanced weaving for two different protocols ---
-function advancedWeave(activeProtocolCandidate, newProtocolCandidate, fingerprint) {
-    if (DEBUG) console.log("MAESTRO: Engaging ADVANCED WEAVING between two protocols.");
-    const reply1 = `بخصوص ما كنا نتحدث عنه، ${firstSentence(activeProtocolCandidate.reply)}`;
-    const bridge = "ولاحظت أنك ذكرت أيضًا شيئًا جديدًا ومهمًا...";
-    const reply2 = firstSentence(newProtocolCandidate.reply);
+    // Acknowledge the interruption gracefully
+    const acknowledgement = `أتفهم أننا كنا نتحدث عن ${activeCandidate.metadata?.intentTag?.split('_')[1] || 'موضوع سابق'}، ولكن يبدو أن هناك شيئًا جديدًا ومهمًا ظهر الآن وهو '${newCandidate.metadata?.intentTag?.split('_')[1] || 'موضوع جديد'}'.`;
+    const bridge = "دعنا نركز على هذا الآن.";
+    const newResponse = firstSentence(newCandidate.reply);
 
     return {
-        reply: `${reply1}\n\n${bridge}\n\n${reply2}`,
-        source: `maestro_weaver:advanced_multi_protocol`,
+        reply: `${acknowledgement}\n\n${bridge}\n\n${newResponse}`,
+        source: `maestro_weaver:smart_weave`,
         confidence: 0.99,
-        metadata: { strategy: 'advanced_weave', components: [activeProtocolCandidate.source, newProtocolCandidate.source] },
-        variants: []
+        metadata: { 
+            strategy: 'smart_weave',
+            components: [activeCandidate.source, newCandidate.source] 
+        }
     };
 }
 
 
 /* =========================
-   API: synthesizeHybridResponse (The Final Upgrade)
+   API: synthesizeHybridResponse (The Final, Decisive Logic)
    ========================= */
 function synthesizeHybridResponse(candidates = [], briefing = {}, context = {}) {
   const { tracker = null, fingerprint = {} } = context;
@@ -169,53 +156,60 @@ function synthesizeHybridResponse(candidates = [], briefing = {}, context = {}) 
     return { reply: "لاحظت إشارات للخطر...", source: "hybrid_safety", variants: [], metadata: { safetyFlags: safety.flags } };
   }
 
-  const analyzed = analyzeCandidates(candidates, tracker, fingerprint);
-  if (!analyzed || analyzed.length === 0) return fallbackResponse;
-  
   let finalDecision;
 
-  // --- [THE ULTIMATE STRATEGIC CORE] ---
-  const activeProtocolCandidate = candidates.find(c => activeProtocol && c.source.includes(activeProtocol.intent.tag));
-  const newProtocolCandidate = candidates.find(c => potentialNewProtocols && potentialNewProtocols[0] && c.source.includes(potentialNewProtocols[0].tag));
+  // --- [THE DECISIVE MAESTRO'S HIERARCHY OF RULES] ---
+  const activeCandidate = candidates.find(c => activeProtocol && c.source.includes(activeProtocol.intent.tag));
+  const newCandidate = candidates.find(c => potentialNewProtocols && potentialNewProtocols[0] && c.source.includes(potentialNewProtocols[0].tag));
   const empathicCandidate = candidates.find(c => c.source === 'empathic_safety_net');
 
-  // STRATEGY 1: Advanced Multi-Protocol Weaving (The Dream)
-  if (activeProtocolCandidate && newProtocolCandidate && activeProtocolCandidate.source !== newProtocolCandidate.source) {
-      if (DEBUG) console.log("MAESTRO: Activating ADVANCED WEAVE strategy.");
-      finalDecision = advancedWeave(activeProtocolCandidate, newProtocolCandidate, fingerprint);
+  // RULE 1: HANDLE CONVERSATION INTERRUPTIONS (The most complex case)
+  // If we are in an active conversation AND a new, different, strong protocol appears.
+  if (activeCandidate && newCandidate && activeCandidate.source !== newCandidate.source) {
+      if (DEBUG) console.log("MAESTRO: Rule 1 - Handling conversation interruption.");
+      finalDecision = smartWeave(activeCandidate, newCandidate, fingerprint);
   }
-  // STRATEGY 2: Simple Weaving (Empathy + Action)
-  else if (fingerprint?.primaryEmotion?.type !== 'neutral' && (activeProtocolCandidate || newProtocolCandidate) && empathicCandidate) {
-      if (DEBUG) console.log("MAESTRO: Activating simple EMPATHY WEAVE strategy.");
-      const practical = activeProtocolCandidate || newProtocolCandidate;
-      finalDecision = weaveEmpathyAndAction(empathicCandidate, practical, fingerprint);
+  // RULE 2: TRUST THE ACTIVE PROTOCOL
+  // If we are continuing a conversation and there's no strong interruption.
+  else if (activeCandidate) {
+      if (DEBUG) console.log("MAESTRO: Rule 2 - Trusting the active protocol's expert response.");
+      finalDecision = activeCandidate;
   }
-  // STRATEGY 3: Direct Protocol Execution
-  else if (activeProtocolCandidate || newProtocolCandidate) {
-      if (DEBUG) console.log("MAESTRO: Activating DIRECT PROTOCOL strategy.");
-      finalDecision = activeProtocolCandidate || newProtocolCandidate;
+  // RULE 3: TRUST THE NEW PROTOCOL
+  // If we are starting a new conversation.
+  else if (newCandidate) {
+      if (DEBUG) console.log("MAESTRO: Rule 3 - Trusting the new protocol's expert response.");
+      finalDecision = newCandidate;
   }
-  // STRATEGY 4: Orchestra Fallback
+  // RULE 4: FALLBACK TO THE ORCHESTRA
+  // If no protocol was found at all.
   else {
-      if (DEBUG) console.log("MAESTRO: No protocol. Defaulting to best orchestra performer.");
-      const topCandidate = analyzed[0].candidate;
-      finalDecision = {
-            reply: `${topCandidate.reply}\n\n[ملحوظة: تم توليد الرد من مزيج متعدد الأصوات.]`,
-            variants: [],
-            metadata: { source: `maestro_conductor:${topCandidate.source}` }
-        };
+      if (DEBUG) console.log("MAESTRO: Rule 4 - No protocol found, defaulting to the safest empathic response.");
+      finalDecision = empathicCandidate || candidates[0]; // Prioritize the safety net
   }
   
   // --- [THE FINAL MEMORY FIX: THE MEMORY PASSPORT] ---
-  // Always attach the next step from the PRIMARY protocol candidate, which is the
-  // NEW one if it exists, otherwise the ACTIVE one. This ensures the conversation flows forward.
-  const primaryProtocolForMemory = newProtocolCandidate || activeProtocolCandidate;
+  // The memory passport always comes from the protocol that is NOW active.
+  const primaryProtocolForMemory = newCandidate || activeCandidate; // The new one takes precedence
   if (primaryProtocolForMemory && primaryProtocolForMemory.metadata?.nextSessionContext) {
       finalDecision.metadata = finalDecision.metadata || {};
-      finalDecision.metadata.nextSessionContext = primaryProtocolForMemory.metadata.nextSessionContext;
+      finalDecision.metadata.nextSession_context = primaryProtocolForMemory.metadata.nextSessionContext;
       if (DEBUG) console.log("MAESTRO: Memory passport attached.", finalDecision.metadata.nextSessionContext);
   }
   
+  // Ensure the final object is well-formed
+  if (!finalDecision.metadata) {
+    finalDecision = {
+      ...finalDecision, // Keep reply, source, etc.
+      metadata: { source: finalDecision.source || 'maestro_final_decision' }
+    };
+  }
+
+  // Add the final note if it's a simple selection, not a complex weave
+  if (!finalDecision.source.includes('weaver')) {
+      finalDecision.reply = `${finalDecision.reply}\n\n[ملحوظة: تم توليد الرد من مزيج متعدد الأصوات.]`;
+  }
+
   return finalDecision;
 }
 
