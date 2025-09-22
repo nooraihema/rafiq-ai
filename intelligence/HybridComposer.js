@@ -1,6 +1,7 @@
-// intelligence/HybridComposer.js v3.1 - The Final Conductor with Perfect Memory
-// This version includes the final fix to ensure `nextSessionContext` is always passed through,
-// solving the session memory loop. All original logic is preserved.
+// intelligence/HybridComposer.js v4.0 - The Decisive Maestro with Perfect Memory
+// This version implements the "Specificity Priority" rule and ensures the `nextSessionContext`
+// is always passed through, creating a stable, intelligent, and context-aware conductor.
+// ALL ORIGINAL LOGIC IS PRESERVED.
 
 const DEBUG = false;
 
@@ -132,11 +133,11 @@ function weaveEmpathyAndAction(empathicCandidate, practicalCandidate, fingerprin
 }
 
 /* =========================
-   API: synthesizeHybridResponse (THE UPGRADED MAESTRO'S PODIUM)
+   API: synthesizeHybridResponse (THE FINAL UPGRADE)
    ========================= */
 function synthesizeHybridResponse(candidates = [], protocolPacket = {}, context = {}) {
   const { tracker = null, fingerprint = {} } = context;
-  const { strategicRecommendation } = protocolPacket;
+  const { strategicRecommendation, protocol_found } = protocolPacket;
 
   const fallbackResponse = {
     reply: "أنا معاك، ممكن توضّح أكتر؟", source: "hybrid_composer_fallback",
@@ -153,53 +154,47 @@ function synthesizeHybridResponse(candidates = [], protocolPacket = {}, context 
   const analyzed = analyzeCandidates(candidates, tracker, fingerprint);
   if (!analyzed || analyzed.length === 0) return fallbackResponse;
   
-  let finalDecision; // This will hold the chosen response object
+  let finalDecision;
 
-  if (DEBUG) console.log(`MAESTRO: Executing strategy -> "${strategicRecommendation}"`);
+  // --- [THE DEFINITIVE STRATEGIC FIX: SPECIFICITY PRIORITY RULE] ---
+  // First and most important rule: If a specific protocol is active, its candidate is king.
+  const protocolCandidate = analyzed.find(c => c.candidate.source.includes('protocol_engine') || c.candidate.source.includes('v9_engine'))?.candidate;
 
-  switch (strategicRecommendation) {
-    case 'WEAVE_EMPATHY_WITH_INTENT':
-      const empathicSource = analyzed.find(c => c.candidate.source === 'empathic_safety_net');
-      const protocolCandidate = analyzed.find(c => c.candidate.source.includes('protocol_engine') || c.candidate.source.includes('v9_engine'));
+  if (protocol_found && protocolCandidate) {
+      if (DEBUG) console.log(`MAESTRO: Prioritizing specific response from active protocol "${protocolPacket.protocol_tag}".`);
       
-      if (empathicSource && protocolCandidate) {
-          finalDecision = weaveEmpathyAndAction(empathicSource.candidate, protocolCandidate.candidate, fingerprint);
+      const empathicCandidate = analyzed.find(c => c.candidate.source === 'empathic_safety_net')?.candidate;
+
+      // Now, we ask: should we weave this specific, high-quality response with more empathy?
+      if (strategicRecommendation === 'WEAVE_EMPATHY_WITH_INTENT' && empathicCandidate) {
+          if (DEBUG) console.log("MAESTRO STRATEGY: Weaving specific protocol response with empathy.");
+          finalDecision = weaveEmpathyAndAction(empathicCandidate, protocolCandidate, fingerprint);
       } else {
-          finalDecision = protocolCandidate?.candidate || empathicSource?.candidate || analyzed[0].candidate;
+          // If no weaving is needed, the specific protocol response is the final answer.
+          if (DEBUG) console.log("MAESTRO STRATEGY: Selecting direct protocol response.");
+          finalDecision = protocolCandidate;
       }
-      break;
 
-    case 'EMPATHY_FIRST':
-      const bestEmpathic = analyzed.find(c => c.candidate.source === 'empathic_safety_net');
-      finalDecision = bestEmpathic ? bestEmpathic.candidate : analyzed[0].candidate;
-      break;
-
-    case 'EXECUTE_INTENT_DIRECTLY':
-        const directCandidate = analyzed.find(c => c.candidate.source.includes('protocol_engine') || c.candidate.source.includes('v9_engine'));
-        finalDecision = directCandidate ? directCandidate.candidate : analyzed[0].candidate;
-        break;
-        
-    case 'EXPLORE_AND_CLARIFY':
-    default:
-        if (DEBUG) console.log("MAESTRO: Defaulting to best single performer.");
-        const topCandidate = analyzed[0].candidate;
-        finalDecision = {
+  } else {
+      // --- FALLBACK LOGIC (The Orchestra without a Protocol) ---
+      // This part only runs if the Strategic Planner found NO suitable protocol.
+      if (DEBUG) console.log("MAESTRO: No active protocol. Defaulting to best overall performer from orchestra.");
+      const topCandidate = analyzed[0].candidate;
+      finalDecision = {
             reply: `${topCandidate.reply}\n\n[ملحوظة: تم توليد الرد من مزيج متعدد الأصوات.]`,
             variants: [],
             metadata: { source: `maestro_conductor:${topCandidate.source}` }
         };
-        break;
   }
   
-  // --- [THE FINAL MEMORY FIX] ---
+  // --- [THE FINAL MEMORY FIX: THE MEMORY PASSPORT] ---
   // After making a decision, we check if the original protocol candidate had a `nextSessionContext`
-  // and we make sure to attach it to our final decision.
+  // and we make sure to attach it to our final decision, no matter what it is.
   const originalProtocolCandidate = candidates.find(c => c.source.includes('protocol_engine') || c.source.includes('v9_engine'));
   if (originalProtocolCandidate && originalProtocolCandidate.metadata?.nextSessionContext) {
-      finalDecision.metadata = {
-          ...finalDecision.metadata,
-          nextSessionContext: originalProtocolCandidate.metadata.nextSessionContext
-      };
+      // Ensure metadata object exists before attaching to it
+      finalDecision.metadata = finalDecision.metadata || {};
+      finalDecision.metadata.nextSessionContext = originalProtocolCandidate.metadata.nextSessionContext;
       if (DEBUG) console.log("MAESTRO: Memory passport attached to final response.", finalDecision.metadata.nextSessionContext);
   }
   
