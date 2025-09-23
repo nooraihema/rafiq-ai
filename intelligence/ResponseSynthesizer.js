@@ -1,7 +1,6 @@
-// intelligence/ResponseSynthesizer.js v1.3 (Production Ready)
+// intelligence/ResponseSynthesizer.js v1.2 (FINAL CORRECTED VERSION v3)
 // SUPREME FUSION (all-in-one, no external libs)
 // New in v1.2: generate alternative variants (concise, formal, bullet, empathic, action-first)
-// New in v1.3: Bulletproofed against empty/invalid inputs to prevent silent crashes.
 // Exports: synthesizeResponse(candidates, selfState, anticipations, tracker)
 // Author: Assistant for Rafiq system
 
@@ -24,7 +23,7 @@ const FUSION_WEIGHTS = {
   noveltyBoost: 0.20
 };
 
-const MAX_FRAGMENTS = 3;
+const MAX_FRAGMENTS = 3; // micro-segments in final reply
 const MAX_VARIANTS = 5;
 
 /* =========================
@@ -37,7 +36,6 @@ function clamp(v, a = 0, b = 1) { return Math.max(a, Math.min(b, v)); }
 function jaccardSim(a = '', b = '') {
   const s1 = new Set(a.split(/\s+/).filter(Boolean));
   const s2 = new Set(b.split(/\s+/).filter(Boolean));
-  if (s1.size === 0 && s2.size === 0) return 1;
   const inter = [...s1].filter(x => s2.has(x)).length;
   const union = new Set([...s1, ...s2]).size || 1;
   return inter / union;
@@ -50,8 +48,10 @@ function sentenceFirstFragment(text) {
 }
 
 /* =========================
-   Persona modules
+   Persona modules (each returns { voice, score, segment })
+   These heuristics are lightweight and deterministic.
    ========================= */
+
 function personaLogical(candidate, context) {
   const r = safeStr(candidate.reply);
   const reasonSeed = r.match(/لأن|بسبب|السبب|because|due to/gi) ? sentenceFirstFragment(r) : 'لأن هناك عوامل متعددة تؤثر هنا.';
@@ -60,7 +60,7 @@ function personaLogical(candidate, context) {
 }
 
 function personaEmpathic(candidate, context) {
-  const seed = sentenceFirstFragment(candidate.reply) || "يبدو أن هذا الموقف صعب.";
+  const seed = sentenceFirstFragment(candidate.reply);
   const seg = `${seed}\nأنا معاك — مشاعرك مفهومة وطبيعية. مش ضروري تكون قوي في كل لحظة.`.trim();
   return { voice: 'empathic', score: 0.98, segment: seg };
 }
@@ -101,6 +101,7 @@ const PERSONA_FUNCS = {
 /* =========================
    Scoring & novelty detection
    ========================= */
+
 function scoreCandidates(candidates, tracker) {
   const history = (tracker && typeof tracker.getHistory === 'function') ? tracker.getHistory() : [];
   const recentReplies = history.slice(-8).map(t => (t.ai_response && t.ai_response.reply) || '');
@@ -109,6 +110,7 @@ function scoreCandidates(candidates, tracker) {
     const personaVotes = PERSONALITIES.map(p => {
       const pRes = PERSONA_FUNCS[p.id](c, { tracker });
       const overlap = jaccardSim(c.reply || '', pRes.segment || '');
+      // persona likes candidate if segment complements it (some overlap) but not identical (diversity)
       const personaScore = pRes.score * (1 - 0.4 * overlap) + 0.4 * overlap;
       return { persona: p.id, personaScore, segment: pRes.segment };
     });
@@ -129,8 +131,9 @@ function scoreCandidates(candidates, tracker) {
 }
 
 /* =========================
-   Self-dialogue fusion
+   Self-dialogue fusion (multi-persona debate)
    ========================= */
+
 function selfDialogueFusion(topScored, context) {
   const engines = topScored.slice(0, 3).map(e => e.candidate);
   const personaContributions = {};
@@ -145,125 +148,259 @@ function selfDialogueFusion(topScored, context) {
       const score = (res.score || 0.5) * 0.6 + align * 0.4;
       if (score > bestScore) { bestScore = score; best = { eng, res }; }
     }
-    if (best) {
-        personaContributions[p.id] = {
-          persona: p.id,
-          chosenEngine: best.eng?.source || null,
-          segment: best.res?.segment || '',
-          personaWeight: p.weight * bestScore
-        };
-    }
+    personaContributions[p.id] = {
+      persona: p.id,
+      chosenEngine: best?.eng?.source || null,
+      segment: best?.res?.segment || '',
+      personaWeight: p.weight * (bestScore || 0.1)
+    };
   }
 
   const ordered = Object.values(personaContributions).sort((a, b) => b.personaWeight - a.personaWeight);
-  const fragments = ordered.slice(0, MAX_FRAGMENTS).map(o => o.segment);
-  return { fragments, personaContributions };
+  const fragments = ordered.slice(0, MAX_FRAGMENTS).map((o, idx) => {
+    const realityLabels = ['(قلبك)', '(دماغك)', '(الصورة المستقبلية)'];
+    const prefix = realityLabels[idx] || `(طبقة ${idx + 1})`;
+    // ensure short fragments
+    const frag = o.segment.length > 220 ? o.segment.split(/[.،]/)[0] + '...' : o.segment;
+    return `${prefix} ${frag}`.trim();
+  });
+
+  const seeds = ordered.slice(0, 3).map((o, i) => {
+    const seedTemplates = [
+      "احكيلي أكتر عن السبب الرئيسي.",
+      "تريد خطوات عملية دلوقتي؟",
+      "هل جربت حل مشابه قبل كده؟"
+    ];
+    return seedTemplates[i] || `اكشف المزيد عن: ${o.segment.split(' ').slice(0, 6).join(' ')}`;
+  });
+
+  const meta = `هذا الرد مُركّب من زوايا عاطفية، تحليلية، وتطبيقية لتغطية مشاعرك وبدائلك.`;
+  const topPersona = ordered[0]?.persona || 'empathic';
+  const toneDecor = (topPersona === 'playful') ? ' 😉' : (topPersona === 'pragmatic') ? ' ✔️' : '';
+
+  const fused = `${fragments.join('\n\n')}\n\n${meta}${toneDecor}`;
+
+  return { fusedReply: fused, fragments, seeds, meta, personaContributions };
 }
 
 /* =========================
-   Surface realizer & other helpers
+   Surface realizer - unify style with connectors & transitions
    ========================= */
+
 function surfaceRealizer(fragments) {
   if (!fragments || fragments.length === 0) return '';
-  if (fragments.length === 1) return fragments[0];
   const connectors = ["من زاوية أخرى،", "وبالجانب العملي،", "أما على المدى البعيد،"];
-  return fragments.map((f, i) => i === 0 ? f : `${connectors[(i - 1) % connectors.length]} ${f}`).join('\n\n');
+  return fragments.map((f, i) => `${connectors[i % connectors.length]} ${f}`).join(' ');
 }
 
+/* =========================
+   Contradiction detector & resolver
+   ========================= */
+
 function detectContradictionText(a = '', b = '') {
-  const opposites = [['ابدأ', 'انتظر'], ['افعل', 'لا تفعل'], ['فوراً', 'لاحقاً']];
-  return opposites.some(([x, y]) => (a.includes(x) && b.includes(y)) || (a.includes(y) && b.includes(x)));
+  // simple heuristics: opposing verbs/keywords pairs
+  const opposites = [
+    ['ابدأ', 'انتظر'], ['ابدأ', 'لا تبدأ'], ['افعل', 'لا تفعل'],
+    ['تسارع', 'تريث'], ['فوراً', 'لاحقاً'], ['لا تفعل', 'جرب']
+  ];
+  const Al = a || '', Bl = b || '';
+  return opposites.some(([x, y]) => Al.includes(x) && Bl.includes(y));
 }
 
 function contradictionResolver(a = '', b = '') {
-  return `يظهر هنا خياران مختلفان:\n- ${a}\n- ${b}\nكل خيار له مزاياه وعيوبه؛ يمكننا تجربة أحدهما بطريقة مصغرة كاختبار.`;
+  // produce reconciled phrasing
+  const resolved = `يظهر هنا خياران مختلفان:\n- ${a}\n- ${b}\nكل خيار له مزاياه وعيوبه؛ يمكننا تجربة أحدهما بطريقة مصغرة كاختبار.`;
+  return resolved;
 }
+
+/* =========================
+   Tone harmonizer
+   ========================= */
+
+function toneHarmonizer(reply, personaContributions) {
+  const personaCount = Object.keys(personaContributions || {}).length;
+  if (personaCount > 2) {
+    return `${reply}\n\n(ملاحظة: تم الموازنة بين أكثر من أسلوب — عملي وعاطفي وتحليلي)`;
+  }
+  return reply;
+}
+
+/* =========================
+   Micro-story constructor (builds ascent: empathize->analyze->act)
+   ========================= */
+
+function microStory(fragments) {
+  if (!fragments || fragments.length === 0) return '';
+  if (fragments.length === 1) return fragments[0];
+  const first = fragments[0];
+  const middle = fragments[1] || '';
+  const last = fragments[2] || '';
+  return `في البداية: ${first}\nثم: ${middle}\nوأخيرًا: ${last}`;
+}
+
+/* =========================
+   Fractal seeds (dynamic quick-replies based on keywords)
+   ========================= */
 
 function dynamicSeeds(reply) {
   const kws = ['خوف', 'قرار', 'راحة', 'خطوة', 'قلق', 'تردد'];
   const seeds = [];
   for (const k of kws) {
-    if (reply.includes(k) && seeds.length < 3) seeds.push(`هل تود التحدث أكثر عن "${k}"؟`);
+    if (reply.includes(k) && seeds.length < 6) seeds.push(`تحب تحكيلي أكتر عن "${k}"؟`);
   }
-  if (seeds.length === 0) seeds.push("ما هي أهم نقطة تود التركيز عليها الآن؟");
+  if (seeds.length === 0) seeds.push("إيه أهم حاجة حابب تركز عليها دلوقتي؟");
   return seeds;
 }
 
 /* =========================
-   [FIXED] Smart merge fallback
+   Alternative variants generator
    ========================= */
-function mergeCandidatesSmart(bestA, bestB) {
-  if (!bestA?.candidate?.reply) return safeStr(bestB?.candidate?.reply);
-  if (!bestB?.candidate?.reply) return safeStr(bestA?.candidate?.reply);
-  
-  const main = bestA.candidate.reply;
-  const addonText = bestB.candidate.reply;
-  const addon = (addonText.split(/[.؟!]\s*/).find(s => s.length > 25 && !main.includes(s)) || addonText);
 
-  if (main.includes(addon)) return main;
-  return `${main}\n\nإضافةً إلى ذلك: ${addon}`.trim();
+function variant_concise(reply) {
+  // keep essential idea only: first sentence + one practical hint if present
+  const first = sentenceFirstFragment(reply);
+  const hint = reply.match(/(?:خطوة|اقتراح|معلومة)/i) ? 'اقتراح عملي: ابدأ بخطوة صغيرة.' : '';
+  return `${first}${hint ? '\n' + hint : ''}`;
+}
+
+function variant_formal(reply) {
+  return `بشكل موجز ورسمي:\n${reply.split(/\n/).map(s => s.trim()).filter(Boolean).join(' ')}\n\nإن احتجت توضيحات إضافية سأقدّمها.`;
+}
+
+function variant_bulleted(reply) {
+  // extract short actionable fragments and return as bullets
+  const parts = reply.split(/[.،\n]/).map(p => p.trim()).filter(Boolean);
+  const bullets = parts.slice(0, 5).map(p => `• ${p}`);
+  return bullets.join('\n');
+}
+
+function variant_empathic(reply) {
+  return `أنا شايفك وفاهمك: ${sentenceFirstFragment(reply)}\nخليك فاكر إن التردد طبيعي، ومهم أخد خطوة صغيرة دلوقتي.`;
+}
+
+function variant_action_first(reply) {
+  // find any 'خطوة' or generate a direct action
+  const match = reply.match(/(خطوة [^\n.؟!]*)/i);
+  const action = match ? match[0] : 'ابدأ بخطوة صغيرة: جرّب شيء صغير لمدة يوم واحد.';
+  return `${action}\nبعد كده نراجع تأثيرها مع بعض.`;
+}
+
+/* =========================
+   Smart merge fallback (naive)
+   ========================= */
+
+// --- MODIFICATION: Added defensive checks to prevent TypeError ---
+function mergeCandidatesSmart(bestA, bestB) {
+  // Handle cases where bestA or its candidate might be missing or null
+  if (!bestA || !bestA.candidate) return ''; 
+  // If only one valid candidate exists, return its reply safely
+  if (!bestB) return bestA.candidate.reply || ''; 
+
+  const a = bestA.candidate;
+  const b = bestB.candidate || bestB; // Fallback for b
+  const main = a.reply || '';
+  const addonText = b.reply || '';
+  const addon = (addonText.split(/[.؟!]\s*/).find(s => s.length > 25) || addonText);
+  return `${main}\n\nمعلومة إضافية: ${addon}`.trim();
 }
 
 /* =========================
    Public API: synthesizeResponse
    ========================= */
+
 function synthesizeResponse(candidates = [], selfState = {}, anticipations = {}, tracker = null) {
-  const cleanCandidates = (candidates || []).filter(c => c && c.reply).map(c => ({
+  const cleanCandidates = (candidates || []).map(c => ({
     reply: safeStr(c.reply),
     source: c.source || 'unknown',
-    confidence: clamp(Number(c.confidence ?? 0.6), 0, 1),
+    confidence: clamp(Number(c.confidence ?? c.eval ?? 0.6), 0, 1),
     metadata: c.metadata || {}
   }));
 
-  // [FIXED] If only one or zero candidates, return it/them directly without synthesis.
-  if (cleanCandidates.length <= 1) {
-    return cleanCandidates[0] || null;
+  if (cleanCandidates.length === 0) {
+    return {
+      reply: "أنا هنا — ممكن توضّح أكثر؟",
+      source: 'response_synthesizer_v1.2',
+      metadata: { reason: 'no_candidates' }
+    };
   }
 
   // 1) Score candidates
   const scored = scoreCandidates(cleanCandidates, tracker);
-  
-  // [FIXED] Another safety check after scoring
+  if (DEBUG) console.log('[_synth] scored candidates:', scored.map(s => ({ src: s.candidate.source, raw: s.rawScore.toFixed(2) })));
+
+  // --- MODIFICATION: Handle the case of zero scored candidates ---
   if (!scored || scored.length === 0) {
-    return null;
+    return {
+        reply: "أفكر بعمق في ما قلته. هل يمكنك إعادة صياغة سؤالك؟",
+        source: 'response_synthesizer_v1.2',
+        metadata: { reason: 'no_valid_scored_candidates' }
+    };
   }
 
   // 2) Self-dialogue fusion across top candidates
   const fusion = selfDialogueFusion(scored, { selfState, anticipations, tracker });
 
-  // 3) Contradiction check between top two candidates
-  let finalReply;
-  const topOneReply = scored[0].candidate.reply;
-  const topTwoReply = scored[1] ? scored[1].candidate.reply : '';
-
-  if (detectContradictionText(topOneReply, topTwoReply)) {
-    finalReply = contradictionResolver(sentenceFirstFragment(topOneReply), sentenceFirstFragment(topTwoReply));
+  // 3) Contradiction check between top two fragments (raw engine outputs)
+  const topTwoEngines = scored.slice(0, 2).map(s => s.candidate.reply);
+  let fusedReply = fusion.fusedReply;
+  if (topTwoEngines.length >= 2 && detectContradictionText(topTwoEngines[0], topTwoEngines[1])) {
+    fusedReply = contradictionResolver(sentenceFirstFragment(topTwoEngines[0]), sentenceFirstFragment(topTwoEngines[1]));
   } else {
-    finalReply = surfaceRealizer(fusion.fragments);
-  }
-  
-  // 4) Ensure finalReply is not empty
-  if (!finalReply) {
-      finalReply = mergeCandidatesSmart(scored[0], scored[1]);
+    // refine surface style
+    fusedReply = surfaceRealizer(fusion.fragments);
   }
 
-  // 5) Seeds & Provenance
-  const seeds = dynamicSeeds(finalReply);
+  // 4) Micro-story overlay to give emotional arc
+  const story = microStory(fusion.fragments);
+  // combine story + fusedReply but prefer story as lead for ascent
+  let combined = story ? `${story}\n\n${fusedReply}` : fusedReply;
+
+  // 5) Tone harmonizer
+  combined = toneHarmonizer(combined, fusion.personaContributions);
+
+  // 6) Seeds & meta
+  const seeds = dynamicSeeds(combined);
+  const metaTwist = "في داخلي كان ممكن يكون في رد آخر؛ اخترت هذا المزيج لأنه يوازن بين مشاعرك والحلول العملية.";
+  
+  // --- MODIFICATION: Added a safe check to prevent slice on undefined ---
+  const mergedSnippet = mergeCandidatesSmart(scored[0], scored[1] || null) || '';
+
   const provenance = {
     chosen_engines: scored.slice(0, 3).map(s => ({ source: s.candidate.source, score: s.rawScore.toFixed(3) })),
     persona_contributions: fusion.personaContributions,
+    novelty_scores: scored.map(s => ({ src: s.candidate.source, novelty: s.novelty })),
+    mergedAlternativeSnippet: mergedSnippet.slice(0, 400)
   };
 
-  // 6) Package final output
-  return {
-    reply: finalReply,
-    source: 'response_synthesizer_v1.3_fused',
+  // 7) Generate variants
+  const baseText = `${combined}\n\n${metaTwist}`;
+  const variants = {
+    concise: variant_concise(baseText),
+    formal: variant_formal(baseText),
+    bulleted: variant_bulleted(baseText),
+    empathic: variant_empathic(baseText),
+    action_first: variant_action_first(baseText)
+  };
+
+  // 8) Package final output
+  const final = {
+    reply: baseText,
+    source: 'response_synthesizer_v1.2',
     metadata: {
       fragments: fusion.fragments,
       followUpSeeds: seeds,
+      metaReflection: fusion.meta,
       provenance,
+      variants,
+      personaContributions: fusion.personaContributions,
+      metaTwist
     }
   };
+
+  if (DEBUG) console.log('[synthesizer] Final reply prepared, top persona:', Object.keys(fusion.personaContributions || {})[0] || 'n/a');
+
+  return final;
 }
 
+// --- MODIFICATION: Kept the default export for consistency ---
 export default { synthesizeResponse };
