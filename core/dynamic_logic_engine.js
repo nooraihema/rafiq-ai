@@ -1,6 +1,7 @@
-// dynamic_logic_engine.js v11.1-protocol-upgraded
+// dynamic_logic_engine.js v11.2-diagnostic-mode
 // Full upgrade: universal intent reader, V5 + V9 harmonized, memory + persona + feedback
 // NEW in v11.1: Added Dynamic Room Engine to support new conversational protocols.
+// NEW in v11.2: Added diagnostic console logs to trace execution flow.
 
 // =================================================================
 // START: IMPORTS & CONFIG
@@ -324,14 +325,27 @@ function executeDynamicRoomEngine(fullIntent, fingerprint, userProfile, sessionC
 // =================================================================
 export function executeProtocolStep(protocolPacket, fingerprint, userProfile, sessionContext) {
     const { full_intent, initial_context } = protocolPacket;
-    if (!full_intent) return { reply: "أنا أفكر في ذلك...", source: "protocol_error", metadata: {} };
+
+    // DEBUG: Checkpoint at the very entrance of the main router
+    console.log("--- DEBUG CHECKPOINT 5: Executor received protocol:", full_intent ? full_intent.tag : "UNDEFINED");
+
+    if (!full_intent) {
+        console.log("--- DEBUG EXECUTOR: full_intent is missing! Returning error. ---");
+        return { reply: "أنا أفكر في ذلك...", source: "protocol_error", metadata: {} };
+    }
 
     // [NEW] Check for the Dynamic Room Engine protocol first
     if (full_intent.dialogue_engine_config?.engine_type === 'dynamic_room_engine' && full_intent.conversation_rooms) {
-        if (DEBUG) console.log(`PROTOCOL EXECUTOR: Using NEW Dynamic Room Engine for intent "${full_intent.tag}".`);
+        // DEBUG: The most critical checkpoint. Will it enter this block?
+        console.log("--- DEBUG CHECKPOINT 6: SUCCESS! Matched dynamic_room_engine. Executing now... ---");
         return executeDynamicRoomEngine(full_intent, fingerprint, userProfile, initial_context);
     }
     
+    // DEBUG: If it didn't match the first block, log the reason why.
+    console.log("--- DEBUG EXECUTOR: Did NOT match dynamic room engine. Checking other engines... ---");
+    console.log("--- DEBUG REASON: dialogue_engine_config was:", JSON.stringify(full_intent.dialogue_engine_config, null, 2));
+
+
     // Check for V9 Engine (No changes here)
     if (full_intent.dialogue_flow?.layers || full_intent.service_hooks || full_intent.bridging_logic) {
         if (DEBUG) console.log(`PROTOCOL EXECUTOR: Using V9 Engine for intent "${full_intent.tag}" at state "${initial_context.state}".`);
@@ -346,6 +360,8 @@ export function executeProtocolStep(protocolPacket, fingerprint, userProfile, se
 
     // Fallback if no engine matches (No changes here)
     if (DEBUG) console.log(`PROTOCOL EXECUTOR: No executable parts for intent "${full_intent.tag}".`);
+    // DEBUG: Log if it reached the end without any match
+    console.log("--- DEBUG CHECKPOINT 7: No engine matched. Returning fallback. ---");
     return { reply: "هناك فكرة لدي، لكن دعني أنظمها أولاً. ماذا يدور في ذهنك الآن؟", source: "protocol_no_action", metadata: {} };
 }
 
