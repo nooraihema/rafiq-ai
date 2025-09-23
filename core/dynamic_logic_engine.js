@@ -1,150 +1,190 @@
-// dynamic_logic_engine.js v11.3-production
-// Full upgrade: universal intent reader, V5 + V9 harmonized, memory + persona + feedback
-// NEW in v11.1: Added Dynamic Room Engine to support new conversational protocols.
-// NEW in v11.3: Fixed export structure for robust module resolution.
+// dynamic_logic_engine.js v10.0-protocol - The Protocol-Aware Expert Executor
+// This version introduces a new top-level function `executeProtocolStep` to orchestrate
+// the powerful V9 engine, while keeping all V5 and V9 legacy code intact.
 
 // =================================================================
-// START: IMPORTS & CONFIG
+// START: PATH UPDATES & IMPORTS
 // =================================================================
 import { DEBUG, AI_SETTINGS } from '../shared/config.js';
 import * as knowledgeBase from '../knowledge/knowledge_base.js';
 // =================================================================
-// END: IMPORTS & CONFIG
+// END: PATH UPDATES & IMPORTS
 // =================================================================
 
 
-// =================================================================
-// SECTION 1: CORE UTILITIES
-// =================================================================
+/* ========================================================================== */
+/* SECTION 1: CORE UTILITIES & HELPERS                                        */
+/* ========================================================================== */
+
+// [V9 UPGRADE] Renamed from 'safe' to avoid conflicts.
 function safeGet(obj, path, fallback = null) {
-    try {
-        return path.split('.').reduce((s, k) => (s && s[k] !== undefined) ? s[k] : undefined, obj) ?? fallback;
-    } catch (e) {
-        return fallback;
-    }
+  try {
+    return path.split('.').reduce((s, k) => (s && s[k] !== undefined) ? s[k] : undefined, obj) ?? fallback;
+  } catch (e) {
+    return fallback;
+  }
 }
 
 function selectRandom(arr) {
-    if (!Array.isArray(arr) || arr.length === 0) return null;
-    return arr[Math.floor(Math.random() * arr.length)];
+  if (!Array.isArray(arr) || arr.length === 0) return null;
+  return arr[Math.floor(Math.random() * arr.length)];
 }
 
 function clamp(v, a = 0, b = 1) {
-    return Math.max(a, Math.min(b, v));
+  return Math.max(a, Math.min(b, v));
 }
 
 function softmax(arr) {
-    if (!Array.isArray(arr) || arr.length === 0) return [];
-    const max = Math.max(...arr);
-    const exps = arr.map(v => Math.exp(v - max));
-    const sum = exps.reduce((s, x) => s + x, 0) || 1;
-    return exps.map(e => e / sum);
+  if (!Array.isArray(arr) || arr.length === 0) return [];
+  const max = Math.max(...arr);
+  const exps = arr.map(v => Math.exp(v - max));
+  const sum = exps.reduce((s, x) => s + x, 0) || 1;
+  return exps.map(e => e / sum);
 }
 
-function getIntentLayer(fullIntent, layerKey) {
-    return safeGet(fullIntent, `dialogue_flow.layers.${layerKey}`, {});
-}
 
 // =================================================================
-// SECTION 2: LEGACY V5 ENGINE (FULL)
+// START: [V5 ENGINE CODE RESTORATION]
+// All the original code from the V5 engine is restored here to be exported.
 // =================================================================
+
+/* ========================================================================== */
+/* V5 SECTION 2: THE EXPERIMENTAL SELECTION ENGINE (BANDIT LOGIC)             */
+/* ========================================================================== */
 function V5_ensureDynamicStats(userProfile) {
-    if (!userProfile) return {};
-    userProfile.dynamicStats = userProfile.dynamicStats || {};
-    return userProfile.dynamicStats;
+  if (!userProfile) return {};
+  userProfile.dynamicStats = userProfile.dynamicStats || {};
+  return userProfile.dynamicStats;
 }
-
 function V5_chooseSuggestionHybrid(candidates = [], userProfile = {}, fingerprint = {}) {
-    if (!Array.isArray(candidates) || candidates.length === 0) return null;
-    const stats = V5_ensureDynamicStats(userProfile);
-    const scores = candidates.map((c, i) => {
-        const sid = c.id || c.suggestion || `idx_${i}`;
-        const s = stats[sid] || { tries: 0, successes: 0 };
-        const est = (s.successes + 1) / (s.tries + 2);
-        const base = typeof c.baseScore === 'number' ? clamp(c.baseScore, 0, 1) : 0.5;
-        let intensityBoost = 0;
-        const intensity = safeGet(fingerprint, 'intensity', 0);
-        if (intensity >= 0.8 && safeGet(c, 'logic', '').includes('قلق')) intensityBoost = 0.35;
-        const exploration = 1 / (1 + s.tries);
-        const raw = (est * 0.6) + (base * 0.2) + (exploration * 0.15) + intensityBoost;
-        return clamp(raw, 0, 2);
-    });
-    if (AI_SETTINGS && AI_SETTINGS.CHANCES && Math.random() < AI_SETTINGS.CHANCES.EPSILON_GREEDY) {
-        return { choice: selectRandom(candidates), policy: 'epsilon_random' };
-    }
-    const probs = softmax(scores);
-    let cum = 0;
-    const r = Math.random();
-    for (let i = 0; i < probs.length; i++) {
-        cum += probs[i];
-        if (r <= cum) return { choice: candidates[i], policy: 'softmax' };
-    }
-    return { choice: candidates[candidates.length - 1], policy: 'fallback' };
+  if (!Array.isArray(candidates) || candidates.length === 0) return null;
+  const stats = V5_ensureDynamicStats(userProfile);
+  const scores = candidates.map((c, i) => {
+    const sid = c.id || c.suggestion || `idx_${i}`;
+    const s = stats[sid] || { tries: 0, successes: 0 };
+    const est = (s.successes + 1) / (s.tries + 2);
+    const base = typeof c.baseScore === 'number' ? clamp(c.baseScore, 0, 1) : 0.5;
+    let intensityBoost = 0;
+    const intensity = safeGet(fingerprint, 'intensity', 0);
+    if (intensity >= 0.8 && safeGet(c, 'logic', '').includes('قلق')) intensityBoost = 0.35;
+    const exploration = 1 / (1 + s.tries);
+    const raw = (est * 0.6) + (base * 0.2) + (exploration * 0.15) + intensityBoost;
+    return clamp(raw, 0, 2);
+  });
+  if (AI_SETTINGS && AI_SETTINGS.CHANCES && Math.random() < AI_SETTINGS.CHANCES.EPSILON_GREEDY) {
+    return { choice: selectRandom(candidates), policy: 'epsilon_random' };
+  }
+  const probs = softmax(scores);
+  const r = Math.random();
+  let cum = 0;
+  for (let i = 0; i < probs.length; i++) {
+    cum += probs[i];
+    if (r <= cum) return { choice: candidates[i], policy: 'softmax' };
+  }
+  return { choice: candidates[candidates.length - 1], policy: 'fallback' };
 }
-
-// V5 Pipeline Steps
+/* ========================================================================== */
+/* V5 SECTION 3: THE COGNITIVE PIPELINE STEPS                                 */
+/* ========================================================================== */
 const V5_emotionalPreambleStep = (ctx) => {
     const { fingerprint } = ctx;
     const emotionType = safeGet(fingerprint, 'primaryEmotion.type', null);
     const intensity = safeGet(fingerprint, 'intensity', 0);
     let preamble = null;
-    if (AI_SETTINGS?.INTENSITY_THRESHOLDS) {
-        if (emotionType === 'sadness' && intensity > AI_SETTINGS.INTENSITY_THRESHOLDS.SADNESS) 
-            preamble = "💜 أعلم أن هذا الشعور قد يكون ثقيلاً على قلبك الآن، لكن تذكر أنك لست وحدك.";
-        else if (emotionType === 'anxiety' && intensity > AI_SETTINGS.INTENSITY_THRESHOLDS.ANXIETY) 
-            preamble = "أشعر بقوة قلقك من خلال كلماتك. دعنا نأخذ نفسًا عميقًا معًا، كل شيء سيكون على ما يرام.";
+    if (AI_SETTINGS && AI_SETTINGS.INTENSITY_THRESHOLDS) {
+        if (emotionType === 'sadness' && intensity > AI_SETTINGS.INTENSITY_THRESHOLDS.SADNESS) preamble = "💜 أعلم أن هذا الشعور قد يكون ثقيلاً على قلبك الآن، لكن تذكر أنك لست وحدك.";
+        else if (emotionType === 'anxiety' && intensity > AI_SETTINGS.INTENSITY_THRESHOLDS.ANXIETY) preamble = "أشعر بقوة قلقك من خلال كلماتك. دعنا نأخذ نفسًا عميقًا معًا، كل شيء سيكون على ما يرام.";
     }
-    if (preamble) ctx.responseParts.unshift(preamble);
+    if (preamble) {
+        const newResponseParts = [preamble, ...ctx.responseParts];
+        return { ...ctx, responseParts: newResponseParts };
+    }
     return ctx;
 };
-
 const V5_counterfactualStep = (ctx) => {
-    const intensity = safeGet(ctx.fingerprint, 'intensity', 0);
-    if (AI_SETTINGS?.CHANCES?.COUNTERFACTUAL && intensity < 0.8 && Math.random() < AI_SETTINGS.CHANCES.COUNTERFACTUAL) {
-        ctx.responseParts.push("دعنا نجرب تمريناً عقلياً سريعاً: لو أنك في موقف مشابه، قررت أن تفعل العكس تماماً، ماذا تتخيل أن تكون النتيجة؟");
-        ctx.stopProcessing = true;
+    const { fingerprint } = ctx;
+    const intensity = safeGet(fingerprint, 'intensity', 0);
+    const isGoodCandidate = intensity < 0.8;
+    if (AI_SETTINGS && AI_SETTINGS.CHANCES && isGoodCandidate && Math.random() < AI_SETTINGS.CHANCES.COUNTERFACTUAL) {
+        const question = "دعنا نجرب تمريناً عقلياً سريعاً: لو أنك في موقف مشابه، قررت أن تفعل العكس تماماً، ماذا تتخيل أن تكون النتيجة؟";
+        const newResponseParts = [...ctx.responseParts, question];
+        return { ...ctx, responseParts: newResponseParts, stopProcessing: true };
     }
     return ctx;
 };
-
 const V5_coreSuggestionStep = (ctx) => {
     const { fullIntent, fingerprint, userProfile } = ctx;
     const candidates = (fullIntent.actionable_suggestions || []).map((s, i) => ({ ...s, id: s.suggestion || `act_${i}` }));
     const pick = V5_chooseSuggestionHybrid(candidates, userProfile, fingerprint);
-    if (pick?.choice) {
-        ctx.responseParts.push(pick.choice.suggestion);
-        ctx.metadata.chosenSuggestion = { id: pick.choice.id, text: pick.choice.suggestion };
-    } else ctx.responseParts.push("أنا هنا أسمعك. أخبرني المزيد.");
-    return ctx;
+    let finalChoice = pick ? pick.choice : null;
+    if (finalChoice) {
+        const newResponseParts = [...ctx.responseParts, finalChoice.suggestion];
+        const newMetadata = { ...ctx.metadata, chosenSuggestion: { id: finalChoice.id, text: finalChoice.suggestion } };
+        return { ...ctx, responseParts: newResponseParts, metadata: newMetadata };
+    } else {
+        const newResponseParts = [...ctx.responseParts, "أنا هنا أسمعك. أخبرني المزيد."];
+        return { ...ctx, responseParts: newResponseParts };
+    }
 };
-
 const V5_selfDoubtStep = (ctx) => {
-    if (AI_SETTINGS?.CHANCES?.SELF_DOUBT && ctx.metadata.chosenSuggestion && Math.random() < AI_SETTINGS.CHANCES.SELF_DOUBT) {
-        ctx.responseParts.push("\n---\nبصراحة، لست متأكدًا تمامًا إذا كان هذا هو أفضل طريق. ما رأيك أنت؟ هل تشعر أننا على الطريق الصحيح؟");
+    if (AI_SETTINGS && AI_SETTINGS.CHANCES && ctx.metadata.chosenSuggestion && Math.random() < AI_SETTINGS.CHANCES.SELF_DOUBT) {
+        const doubtQuestion = "\n---\nبصراحة، لست متأكدًا تمامًا إذا كان هذا هو أفضل طريق. ما رأيك أنت؟ هل تشعر أننا على الطريق الصحيح؟";
+        const newResponseParts = [...ctx.responseParts, doubtQuestion];
+        return { ...ctx, responseParts: newResponseParts };
     }
     return ctx;
 };
-
-const V5_cognitivePipeline = [V5_emotionalPreambleStep, V5_counterfactualStep, V5_coreSuggestionStep, V5_selfDoubtStep];
-
-function executeMetacognitiveCore(fullIntent = {}, fingerprint = {}, userProfile = {}, sessionGoal = 'explore') {
-    if (!fullIntent?.core_concept) return null;
-    let ctx = { responseParts: [], metadata: { intentTag: fullIntent.tag, sessionGoal, persona: 'the_listener' }, fingerprint, userProfile, fullIntent, stopProcessing: false };
-    for (const step of V5_cognitivePipeline) if (!ctx.stopProcessing) ctx = step(ctx);
-    if (ctx.responseParts.length === 0) return null;
-    const finalReply = ctx.responseParts.join('\n\n');
-    return { reply: finalReply, source: 'metacognitive_core_v5', metadata: { ...ctx.metadata, feedback_request: { prompt: "هل كان هذا مفيدًا في تحقيق هدفك لهذا الحديث؟", goal: sessionGoal, suggestionId: ctx.metadata.chosenSuggestion?.id || null } } };
+/* ========================================================================== */
+/* V5 SECTION 4: THE META-COGNITIVE PIPELINE DEFINITION                       */
+/* ========================================================================== */
+const V5_cognitivePipeline = [
+    V5_emotionalPreambleStep,
+    V5_counterfactualStep,
+    V5_coreSuggestionStep,
+    V5_selfDoubtStep
+];
+/* ========================================================================== */
+/* V5 SECTION 5: THE V5 EXECUTION CORE                                        */
+/* ========================================================================== */
+export function executeMetacognitiveCore(fullIntent = {}, fingerprint = {}, userProfile = {}, sessionGoal = 'explore') {
+    if (!fullIntent || !fullIntent.core_concept) return null;
+    let responseContext = {
+        responseParts: [],
+        metadata: { intentTag: fullIntent.tag, sessionGoal: sessionGoal, persona: 'the_listener' },
+        fingerprint, userProfile, fullIntent, stopProcessing: false
+    };
+    for (const step of V5_cognitivePipeline) {
+        if (responseContext.stopProcessing) break;
+        responseContext = step(responseContext);
+    }
+    if (responseContext.responseParts.length === 0) {
+        if (DEBUG) console.log("Metacognitive Core: Pipeline resulted in no response. Falling back.");
+        return null;
+    }
+    let finalReply = responseContext.responseParts.join('\n\n');
+    const newMetadata = {
+        ...responseContext.metadata,
+        feedback_request: {
+            prompt: "هل كان هذا مفيدًا في تحقيق هدفك لهذا الحديث؟",
+            goal: sessionGoal,
+            suggestionId: responseContext.metadata.chosenSuggestion?.id || null
+        }
+    };
+    return { reply: finalReply, source: `metacognitive_core_v5`, metadata: newMetadata };
 }
-
-function V5_consolidateDailySummary(userProfile) {
-    if (!userProfile?.shortMemory?.length) return userProfile;
+/* ========================================================================== */
+/* V5 SECTION 6: MEMORY & GOAL-ORIENTED LEARNING                              */
+/* ========================================================================== */
+export function V5_consolidateDailySummary(userProfile) {
+    if (!userProfile || !Array.isArray(userProfile.shortMemory) || userProfile.shortMemory.length === 0) return userProfile;
     const today = new Date().toISOString().split('T')[0];
-    const uniqueNeeds = [...new Set(userProfile.shortMemory.map(t => safeGet(t, 'user_fingerprint.chosenPrimaryNeed', null)).filter(Boolean))];
+    const recentTurns = userProfile.shortMemory;
+    const uniqueNeeds = [...new Set(recentTurns.map(turn => safeGet(turn, 'user_fingerprint.chosenPrimaryNeed', null)).filter(Boolean))];
     const summary = `Session focused on: [${uniqueNeeds.join(', ')}].`;
-    return { ...userProfile, dailySummaries: { ...(userProfile.dailySummaries || {}), [today]: summary }, shortMemory: [] };
+    const newDailySummaries = { ...(userProfile.dailySummaries || {}), [today]: summary };
+    return { ...userProfile, dailySummaries: newDailySummaries, shortMemory: [] };
 }
-
-function V5_updateUserProfileWithFeedback(userProfile, feedback) {
+export function V5_updateUserProfileWithFeedback(userProfile, feedback) {
     const { suggestionId, wasHelpful } = feedback;
     const stats = { ...(userProfile.dynamicStats || {}) };
     if (suggestionId) {
@@ -155,16 +195,24 @@ function V5_updateUserProfileWithFeedback(userProfile, feedback) {
     }
     return { ...userProfile, dynamicStats: stats };
 }
+// =================================================================
+// END: [V5 ENGINE CODE RESTORATION]
+// =================================================================
+
 
 // =================================================================
-// SECTION 3: V9 ENGINE (FULL UPGRADE)
+// START: [V9 ENGINE CODE]
+// The new engine code from our previous step.
 // =================================================================
+
+/* ========================================================================== */
+/* V9 SECTION 2: THE ADAPTIVE SELECTION ENGINE (UPGRADED BANDIT)              */
+/* ========================================================================== */
 function V9_ensureDynamicStats(userProfile) {
     if (!userProfile) return {};
     userProfile.dynamicStats = userProfile.dynamicStats || {};
     return userProfile.dynamicStats;
 }
-
 function V9_chooseSuggestionHybrid(candidates = [], userProfile = {}, fingerprint = {}, intent = {}) {
     if (!Array.isArray(candidates) || candidates.length === 0) return null;
     const personalization = safeGet(userProfile, 'personalization', {});
@@ -173,188 +221,197 @@ function V9_chooseSuggestionHybrid(candidates = [], userProfile = {}, fingerprin
     const scores = candidates.map((c, i) => {
         const sid = c.id || `idx_${i}`;
         const s = stats[sid] || { tries: 0, successes: 0 };
-        let score = (s.successes + 1) / (s.tries + 2) * 0.7 + 0.3 / (1 + s.tries);
+        const est = (s.successes + 1) / (s.tries + 2);
+        let score = (est * 0.7) + (0.3 / (1 + s.tries));
         if (personalization.favorite_tool_id === sid) score += 0.5;
         if (personalization.avoid_tool_id === sid) score -= 0.5;
         if (predictiveLogic.if_successful_tool_used_twice && s.successes >= 2) score += 0.3;
         return clamp(score, 0, 2);
     });
-    if (AI_SETTINGS?.CHANCES?.EPSILON_GREEDY && Math.random() < AI_SETTINGS.CHANCES.EPSILON_GREEDY) return { choice: selectRandom(candidates), policy: 'epsilon_random' };
+    if (AI_SETTINGS && AI_SETTINGS.CHANCES && Math.random() < AI_SETTINGS.CHANCES.EPSILON_GREEDY) {
+        return { choice: selectRandom(candidates), policy: 'epsilon_random' };
+    }
     const probs = softmax(scores);
-    let cum = 0;
     const r = Math.random();
+    let cum = 0;
     for (let i = 0; i < probs.length; i++) {
         cum += probs[i];
         if (r <= cum) return { choice: candidates[i], policy: 'softmax' };
     }
     return { choice: candidates[candidates.length - 1], policy: 'fallback' };
 }
-
-// V9 Pipeline Steps
+/* ========================================================================== */
+/* V9 SECTION 3: THE NEW V9 COGNITIVE PIPELINE STEPS                          */
+/* ========================================================================== */
 const V9_dialogueFlowStep = (ctx) => {
-    const layer = getIntentLayer(ctx.fullIntent, ctx.sessionContext.state);
-    if (layer?.responses) {
-        const resp = selectRandom(layer.responses);
-        const responseText = (typeof resp === 'object') ? [resp.opener, resp.question].filter(Boolean).join('\n') : resp;
+    const { fullIntent, sessionContext } = ctx;
+    const sessionState = sessionContext.state;
+    // --- MODIFICATION: Logic simplified to handle any layer based on sessionContext ---
+    const layerKey = sessionState; // The state from sessionContext IS the layer key.
+    const layer = safeGet(fullIntent, `dialogue_flow.layers.${layerKey}`);
+
+    if(layer && layer.responses) {
+        const response = selectRandom(layer.responses);
+        const responseText = (typeof response === 'object') ? [response.opener, response.question].filter(Boolean).join('\n') : response;
         if (responseText) {
-            ctx.responseParts.push(responseText);
-            ctx.stopProcessing = layer.next_state === 'L3_Tool_Selection';
+            const newResponseParts = [responseText];
+            // If this layer's purpose is just to talk, we might stop here.
+            const stopHere = layer.next_state === "L3_Tool_Selection"; // Example logic
+            return { ...ctx, responseParts: newResponseParts, stopProcessing: stopHere };
         }
     }
     return ctx;
 };
-
 const V9_serviceHookStep = (ctx) => {
-    const calmingHook = safeGet(ctx.fullIntent, 'service_hooks.calming_service');
+    const { fullIntent, fingerprint } = ctx;
+    const calmingHook = safeGet(fullIntent, 'service_hooks.calming_service');
     if (calmingHook) {
-        const intensity = safeGet(ctx.fingerprint, 'intensity', 0);
-        if (intensity > 0.8 && ctx.sessionContext.state !== 'L0_Validation') {
-            ctx.responseParts.push(calmingHook.suggestion_prompt);
-            ctx.metadata.request_service_intent = calmingHook.target_intent;
-            ctx.stopProcessing = true;
+        const emotionIntensity = safeGet(fingerprint, 'intensity', 0); // Corrected path
+        if (emotionIntensity > 0.8 && ctx.sessionContext.state !== 'L0_Validation') {
+             const newResponseParts = [calmingHook.suggestion_prompt];
+             const newMetadata = { ...ctx.metadata, request_service_intent: calmingHook.target_intent };
+             return { ...ctx, responseParts: newResponseParts, metadata: newMetadata, stopProcessing: true };
         }
     }
     return ctx;
 };
-
 const V9_coreSuggestionStep = (ctx) => {
-    if (ctx.sessionContext.state !== 'L3_Tool_Selection') return ctx;
-    const candidates = safeGet(ctx.fullIntent, 'actionable_suggestions', []);
-    const pick = V9_chooseSuggestionHybrid(candidates, ctx.userProfile, ctx.fingerprint, ctx.fullIntent);
-    if (pick?.choice) {
-        const suggestionText = pick.choice.suggestion_prompt || pick.choice.suggestion;
-        ctx.responseParts.push(suggestionText);
-        ctx.metadata.chosenSuggestion = { id: pick.choice.id, text: suggestionText };
-    } else ctx.responseParts.push("أنا هنا أسمعك. أخبرني المزيد.");
-    return ctx;
-};
+    const { fullIntent, fingerprint, userProfile, sessionContext } = ctx;
+    
+    // This step now only triggers if we are specifically in a state that requires tool selection.
+    if (sessionContext.state !== 'L3_Tool_Selection') {
+        return ctx;
+    }
 
+    const candidates = safeGet(fullIntent, 'actionable_suggestions', []);
+    const pick = V9_chooseSuggestionHybrid(candidates, userProfile, fingerprint, fullIntent);
+    
+    if (pick && pick.choice) {
+        const finalChoice = pick.choice;
+        const suggestionText = finalChoice.suggestion_prompt || finalChoice.suggestion;
+        const newResponseParts = [...ctx.responseParts, suggestionText];
+        const newMetadata = { ...ctx.metadata, chosenSuggestion: { id: finalChoice.id, text: suggestionText } };
+        return { ...ctx, responseParts: newResponseParts, metadata: newMetadata };
+    }
+    const fallbackResponse = "أنا هنا أسمعك. أخبرني المزيد.";
+    return { ...ctx, responseParts: [...ctx.responseParts, fallbackResponse] };
+};
 const V9_bridgingLogicStep = (ctx) => {
-    if (ctx.sessionContext.state === 'resolved') {
+    if (ctx.sessionContext.state === 'resolved') { // Example state
         const bridge = selectRandom(safeGet(ctx.fullIntent, 'bridging_logic.on_successful_resolution'));
         if (bridge) {
-            ctx.responseParts.push(bridge.suggestion);
-            ctx.metadata.request_bridge_intent = bridge.target_intent;
+            const newResponseParts = [...ctx.responseParts, bridge.suggestion];
+            const newMetadata = { ...ctx.metadata, request_bridge_intent: bridge.target_intent };
+            return { ...ctx, responseParts: newResponseParts, metadata: newMetadata };
         }
     }
     return ctx;
 };
+/* ========================================================================== */
+/* V9 SECTION 4: THE NEW V9 META-COGNITIVE PIPELINE                           */
+/* ========================================================================== */
+const cognitivePipelineV9 = [
+    V9_dialogueFlowStep,
+    V9_serviceHookStep,
+    V9_coreSuggestionStep,
+    V9_bridgingLogicStep,
+];
+/* ========================================================================== */
+/* V9 SECTION 5: THE V9 EXECUTION CORE                                        */
+/* ========================================================================== */
+export function executeV9Engine(fullIntent = {}, fingerprint = {}, userProfile = {}, sessionContext = {}) {
+    if (!fullIntent || !fullIntent.core_concept) return null;
 
-const cognitivePipelineV9 = [V9_dialogueFlowStep, V9_serviceHookStep, V9_coreSuggestionStep, V9_bridgingLogicStep];
-
-function executeV9Engine(fullIntent = {}, fingerprint = {}, userProfile = {}, sessionContext = {}) {
-    if (!fullIntent?.core_concept) return null;
-
+    // --- MODIFICATION: The sessionContext is now the single source of truth ---
     const currentSessionContext = {
-        state: sessionContext.state || fullIntent.dialogue_flow?.entry_point || 'L0_Validation',
+        state: sessionContext.state || fullIntent.dialogue_flow.entry_point, // Start from entry point if no state
         turn_counter: sessionContext.turn_counter || 0
     };
 
-    let ctx = { responseParts: [], metadata: { intentTag: fullIntent.tag }, fingerprint, userProfile, fullIntent, sessionContext: currentSessionContext, stopProcessing: false };
-
-    for (const step of cognitivePipelineV9) if (!ctx.stopProcessing) ctx = step(ctx);
-
-    let finalReply = ctx.responseParts.join('\n\n');
-    const personaKey = safeGet(fullIntent, `dynamic_response_logic.persona_logic.${currentSessionContext.state}`, 'the_empathetic_listener');
-    const persona = safeGet(knowledgeBase, `PERSONA_PROFILES.${personaKey}`, {});
-    if (persona.prefix) finalReply = `${persona.prefix} ${finalReply}`;
-
-    const currentLayer = getIntentLayer(fullIntent, currentSessionContext.state);
-    const nextState = currentLayer.next_state || null;
-    const nextSessionContext = { ...currentSessionContext, active_intent: fullIntent.tag, state: nextState, turn_counter: currentSessionContext.turn_counter + 1 };
-
-    return { reply: finalReply, source: `v9_engine:${fullIntent.tag}:${currentSessionContext.state}`, metadata: { ...ctx.metadata, nextSessionContext, feedback_request: { prompt: "هل كان هذا مفيدًا؟", suggestionId: ctx.metadata.chosenSuggestion?.id || null } } };
-}
-
-
-// =================================================================
-// SECTION 4: [NEW] DYNAMIC ROOM ENGINE
-// =================================================================
-function executeDynamicRoomEngine(fullIntent, fingerprint, userProfile, sessionContext) {
-    const config = fullIntent.dialogue_engine_config;
-    const rooms = fullIntent.conversation_rooms;
-    const userName = safeGet(userProfile, 'name', 'صديقي'); // Get user name safely
-
-    // 1. Determine the current room
-    const currentRoomKey = sessionContext.state || config.entry_room;
-    const currentRoom = rooms[currentRoomKey];
-
-    if (!currentRoom) {
-        // Error case: The room doesn't exist in the protocol
-        return { reply: "يبدو أنني فقدت تسلسل أفكاري. أين كنا؟", source: "room_engine_error_room_not_found", metadata: { triedRoom: currentRoomKey } };
+    let responseContext = {
+        responseParts: [],
+        metadata: { intentTag: fullIntent.tag },
+        fingerprint, userProfile, fullIntent,
+        sessionContext: currentSessionContext,
+        stopProcessing: false,
+    };
+    for (const step of cognitivePipelineV9) {
+        if (responseContext.stopProcessing) break;
+        responseContext = step(responseContext);
     }
-
-    // 2. Select a random reply from the current room's responses
-    // The .flat() method handles nested arrays like [["a"], ["b", "c"]] => ["a", "b", "c"]
-    const possibleReplies = (currentRoom.responses || []).flat();
-    let chosenReply = selectRandom(possibleReplies);
-
-    if (!chosenReply) {
-         // Fallback if a room has no replies defined
-        chosenReply = "أخبرني المزيد عن هذا الأمر.";
+    if (responseContext.responseParts.length === 0) {
+        if (DEBUG) console.log("V9 Engine: Pipeline resulted in no response. Falling back.");
+        return { reply: "أنا أفكر في كلماتك. هل يمكنك أن تخبرني المزيد؟", source: 'v9_engine_fallback', metadata: {} };
     }
     
-    // 3. Personalize the reply by replacing placeholders like {{username}}
-    chosenReply = chosenReply.replace(/\{\{username\}\}/g, userName);
+    // --- MODIFICATION: Persona logic now uses the current state ---
+    const personaKey = safeGet(fullIntent, `dynamic_response_logic.persona_logic.${currentSessionContext.state}`, 'the_empathetic_listener');
+    const persona = safeGet(knowledgeBase, `PERSONA_PROFILES.${personaKey}`, {});
+    
+    let finalReply = responseContext.responseParts.join('\n\n');
+    if (persona.prefix) {
+        finalReply = `${persona.prefix} ${finalReply}`;
+    }
+    
+    // --- MODIFICATION: State transition logic is now explicit ---
+    const currentLayer = safeGet(fullIntent, `dialogue_flow.layers.${currentSessionContext.state}`, {});
+    const nextState = currentLayer.next_state || null; // If null, the protocol ends.
 
-    // 4. Prepare the session context for the next turn
-    const nextRoom = selectRandom(currentRoom.next_room_suggestions) || 'resolved';
-    const nextSessionContext = {
-        active_intent: fullIntent.tag,
-        state: nextRoom, // The 'state' is now the key for the next room
-        layer: 'dynamic_room_engine',
-        last_suggestion_id: null,
-        turn_counter: (sessionContext.turn_counter || 0) + 1,
+    const nextSessionContext = { 
+        ...currentSessionContext,
+        active_intent: fullIntent.tag, // Keep the protocol active
+        state: nextState,
+        turn_counter: currentSessionContext.turn_counter + 1
     };
 
-    // 5. Build and return the final candidate packet
-    return {
-        reply: chosenReply,
-        source: `dynamic_room_engine:${fullIntent.tag}:${currentRoomKey}`,
-        confidence: 0.98, // High confidence as it's a direct protocol execution
-        metadata: {
-            intentTag: fullIntent.tag,
-            nextSessionContext: nextSessionContext, // This is crucial for the Maestro to update the session
+    const newMetadata = {
+        ...responseContext.metadata,
+        nextSessionContext,
+        feedback_request: { 
+            prompt: "هل كان هذا مفيدًا؟",
+            suggestionId: responseContext.metadata.chosenSuggestion?.id || null
         }
     };
+    return { reply: finalReply, source: `v9_engine:${fullIntent.tag}:${currentSessionContext.state}`, metadata: newMetadata };
 }
-
-
 // =================================================================
-// SECTION 5: PROTOCOL EXECUTOR (THE MAIN ROUTER)
+// END: [V9 ENGINE CODE]
 // =================================================================
-function executeProtocolStep(protocolPacket, fingerprint, userProfile, sessionContext) {
+
+// --- [THE GRAND UPGRADE: The Protocol Executor] ---
+/* ==================================================================
+   NEW EXPORTED FUNCTION: executeProtocolStep
+   This is the new, clean entry point. It decides whether to use the
+   powerful V9 engine for protocol-based intents or the legacy V5
+   engine for simpler ones, based on the intent's structure.
+   ================================================================== */
+export function executeProtocolStep(protocolPacket, fingerprint, userProfile, sessionContext) {
     const { full_intent, initial_context } = protocolPacket;
 
     if (!full_intent) {
+        if (DEBUG) console.warn("executeProtocolStep called with an empty protocol packet.");
         return { reply: "أنا أفكر في ذلك...", source: "protocol_error", metadata: {} };
     }
 
-    // [NEW] Check for the Dynamic Room Engine protocol first
-    if (full_intent.dialogue_engine_config?.engine_type === 'dynamic_room_engine' && full_intent.conversation_rooms) {
-        return executeDynamicRoomEngine(full_intent, fingerprint, userProfile, initial_context);
-    }
-    
-    // Check for V9 Engine (No changes here)
-    if (full_intent.dialogue_flow?.layers || full_intent.service_hooks || full_intent.bridging_logic) {
+    // --- Strategic Decision: Check if the intent is a modern V9 protocol ---
+    if (full_intent.dialogue_flow && full_intent.dialogue_flow.layers) {
+        if (DEBUG) console.log(`PROTOCOL EXECUTOR: Engaging V9 Engine for protocol "${full_intent.tag}" at state "${initial_context.state}".`);
+        // Use the powerful V9 engine for structured dialogues
         return executeV9Engine(full_intent, fingerprint, userProfile, initial_context);
-    }
-
-    // Check for legacy V5 Engine (No changes here)
+    } 
+    
+    // --- Fallback: Use the legacy V5 engine for older, simpler intents ---
     if (full_intent.actionable_suggestions) {
+        if (DEBUG) console.log(`PROTOCOL EXECUTOR: Engaging legacy V5 Engine for simple intent "${full_intent.tag}".`);
         return executeMetacognitiveCore(full_intent, fingerprint, userProfile);
     }
 
-    // Fallback if no engine matches
+    // --- Final Fallback ---
+    if (DEBUG) console.log(`PROTOCOL EXECUTOR: Intent "${full_intent.tag}" has no executable parts. Falling back.`);
     return { reply: "هناك فكرة لدي، لكن دعني أنظمها أولاً. ماذا يدور في ذهنك الآن؟", source: "protocol_no_action", metadata: {} };
 }
 
 
-// =================================================================
-// SECTION 6: EXPORT ALL ENGINE FUNCTIONS [FIXED]
-// =================================================================
-export default {
-    executeProtocolStep,
-    consolidateDailySummary: V5_consolidateDailySummary,
-    updateUserProfileWithFeedback: V5_updateUserProfileWithFeedback
-};
+// [V9 UPGRADE] Renaming the old memory functions to avoid export conflicts.
+export { V5_consolidateDailySummary as consolidateDailySummary }
+export { V5_updateUserProfileWithFeedback as updateUserProfileWithFeedback }
