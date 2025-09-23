@@ -1,9 +1,7 @@
-// chat.js v16.3 - Module Resolution Fix
+// chat.js v16.3-production
 // This version introduces the "Strategy Room" concept, allowing the system
 // to process multiple relevant protocols in parallel and enabling true response merging.
-// v16.1 FIX: Calls the main protocol router (executeProtocolStep) instead of a specific engine.
-// v16.2 adds diagnostic checkpoints to trace execution flow.
-// v16.3 changes import method to default for robust module resolution.
+// v16.3 uses the robust default import method for the logic engine.
 // Author: For Rafiq system
 
 // =================================================================
@@ -101,7 +99,6 @@ export default async function handler(req, res) {
     // 2. The Strategy Room gathers all relevant experts for a parallel performance.
     let candidates = [];
 
-    // --- [MODIFIED] ---
     // Expert 1: The Active Protocol Expert (Continues the ongoing conversation)
     if (briefing.activeProtocol) {
         if (DEBUG) console.log(`STRATEGY ROOM: Inviting active protocol "${briefing.activeProtocol.intent.tag}" to perform.`);
@@ -115,14 +112,10 @@ export default async function handler(req, res) {
         if (candidate) candidates.push(candidate);
     }
 
-    // --- [MODIFIED WITH DIAGNOSTICS] ---
     // Expert 2: The Best New Protocol Expert (Responds to the new topic)
     const bestNewProtocol = briefing.potentialNewProtocols[0];
     if (bestNewProtocol && bestNewProtocol.tag !== briefing.activeProtocol?.intent.tag) {
         if (DEBUG) console.log(`STRATEGY ROOM: Inviting new protocol "${bestNewProtocol.tag}" to perform.`);
-
-        // DEBUG: Checkpoint to confirm entry into this logic block.
-        console.log("--- DEBUG CHECKPOINT 1: Preparing to call protocol executor. ---");
 
         const protocolPacket = {
             full_intent: bestNewProtocol.full_intent,
@@ -131,20 +124,9 @@ export default async function handler(req, res) {
                 turn_counter: 0
             }
         };
-
-        // DEBUG: Print the packet being sent to see its contents.
-        console.log("--- DEBUG CHECKPOINT 2: Sending this packet's config to executor: ---", JSON.stringify(protocolPacket.full_intent.dialogue_engine_config, null, 2));
-
         const newCandidate = executeProtocolStep(protocolPacket, fingerprint, profile, protocolPacket.initial_context);
 
-        // DEBUG: Print what returns from the function. Is it a valid object or null?
-        console.log("--- DEBUG CHECKPOINT 3: Received this candidate from executor: ---", newCandidate);
-
-        if (newCandidate) {
-            // DEBUG: Print to confirm the condition was met.
-            console.log("--- DEBUG CHECKPOINT 4: Candidate is valid. Adding to list. ---");
-            candidates.push(newCandidate);
-        }
+        if (newCandidate) candidates.push(newCandidate);
     }
     
     // Expert 3: The Creative Synthesizer (Adds a different flavor)
