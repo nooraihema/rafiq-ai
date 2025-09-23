@@ -4,16 +4,15 @@
 // Author: For Rafiq system
 
 // =================================================================
-// SECTION 1: CORE & HIPPOCAMPUS IMPORTS
+// SECTION 1: CORE & HIPPocampus IMPORTS
 // =================================================================
 import { DEBUG } from '../shared/config.js';
 import { detectCritical, criticalSafetyReply, tokenize } from '../shared/utils.js';
 import { loadUsers, saveUsers, makeUserId } from '../shared/storage.js';
 // --- UPGRADE: Using the new multi-protocol planner ---
 import { buildIndexSync, createCognitiveBriefing } from '../perception/intent_engine.js';
-// --- <<< START: FINAL FIX - Using the correct strategic entry point >>> ---
+// --- Using the correct strategic entry point from the logic engine ---
 import { executeProtocolStep } from '../core/dynamic_logic_engine.js';
-// --- <<< END: FINAL FIX >>> ---
 import { composeInferentialResponse } from '../core/composition_engine.js';
 import { processMeta } from '../coordination/meta_router.js';
 import { ContextTracker } from '../shared/context_tracker.js';
@@ -27,10 +26,11 @@ import ResponseSynthesizer from '../intelligence/ResponseSynthesizer.js';
 import HybridComposer from '../intelligence/HybridComposer.js';
 
 // =================================================================
-// SECTION 1B: INITIALIZATION & SESSION MEMORY
+// SECTION 1B: INITIALIZATION & CONFIG
 // =================================================================
 buildIndexSync();
 const CONTEXT_TRACKERS = new Map();
+const MAX_NEW_PROTOCOLS_TO_INVITE = 3; // <-- يمكنك تعديل هذا الرقم (الحد الأقصى للخبراء الجدد)
 
 // =================================================================
 // SECTION 2: THE CONSCIOUS ORCHESTRA (This function is now retired)
@@ -101,47 +101,51 @@ export default async function handler(req, res) {
     // Expert 1: The Active Protocol Expert (Continues the ongoing conversation)
     if (briefing.activeProtocol) {
         if (DEBUG) console.log(`STRATEGY ROOM: Inviting active protocol "${briefing.activeProtocol.intent.tag}" to perform.`);
-        // --- <<< START: FINAL FIX - Using the correct protocol executor >>> ---
         const candidate = executeProtocolStep(
             { full_intent: briefing.activeProtocol.intent.full_intent, initial_context: briefing.activeProtocol.context },
             fingerprint, profile, briefing.activeProtocol.context
         );
-        // --- <<< END: FINAL FIX >>> ---
         if (candidate) candidates.push(candidate);
     }
 
-    // Expert 2: The Best New Protocol Expert (Responds to the new topic)
-    const bestNewProtocol = briefing.potentialNewProtocols[0];
-    if (bestNewProtocol && bestNewProtocol.tag !== briefing.activeProtocol?.intent.tag) {
-        if (DEBUG) console.log(`STRATEGY ROOM: Inviting new protocol "${bestNewProtocol.tag}" with score ${bestNewProtocol.score.toFixed(3)} to perform.`);
-        
-        // --- <<< START: FINAL FIX - Using the correct protocol executor >>> ---
-        const newCandidate = executeProtocolStep(
-            { full_intent: bestNewProtocol.full_intent, initial_context: { state: null, turn_counter: 0 } },
-            fingerprint, profile, { state: null, turn_counter: 0 }
-        );
-        // --- <<< END: FINAL FIX >>> ---
-        if (newCandidate) candidates.push(newCandidate);
+    // --- <<< START: FINAL FIX - INVITING MULTIPLE EXPERTS >>> ---
+    // Expert 2: The Multiple New Protocol Experts (Responds to all relevant new topics)
+    const topNewProtocols = briefing.potentialNewProtocols.slice(0, MAX_NEW_PROTOCOLS_TO_INVITE);
+
+    for (const newProtocol of topNewProtocols) {
+        // Ensure we don't re-invite the active protocol if it appears in the new list
+        if (newProtocol && newProtocol.tag !== briefing.activeProtocol?.intent.tag) {
+            if (DEBUG) console.log(`STRATEGY ROOM: Inviting new protocol candidate "${newProtocol.tag}" with score ${newProtocol.score.toFixed(3)} to perform.`);
+            
+            const newCandidate = executeProtocolStep(
+                { full_intent: newProtocol.full_intent, initial_context: { state: null, turn_counter: 0 } },
+                fingerprint, profile, { state: null, turn_counter: 0 }
+            );
+            if (newCandidate) {
+                candidates.push(newCandidate);
+            }
+        }
     }
+    // --- <<< END: FINAL FIX >>> ---
     
-    // --- <<< START: NEW DIAGNOSTIC LOGGING >>> ---
+    // --- <<< START: MODIFIED DIAGNOSTIC LOGGING >>> ---
     if (DEBUG) {
-        if (candidates.length === 0) {
-            console.log('DIAGNOSTIC: No candidates were generated from protocols.');
+        // This diagnostic now checks if ANY candidates were generated from protocols
+        const protocolCandidates = candidates.filter(c => c.source !== 'empathic_safety_net' && c.source !== 'response_synthesizer_v1.2');
+        if (protocolCandidates.length === 0) {
+            console.log('DIAGNOSTIC: No candidates were generated from any protocol.');
             if (!briefing.activeProtocol) {
                 console.log('DIAGNOSTIC: Reason -> No active protocol in context.');
             }
-            if (!bestNewProtocol) {
+            if (briefing.potentialNewProtocols.length === 0) {
                 console.log(`DIAGNOSTIC: Reason -> No new protocols met the minimum score threshold.`);
-                console.log('DIAGNOSTIC: All potential protocols found:', briefing.potentialNewProtocols.map(p => ({ tag: p.tag, score: p.score.toFixed(3) })));
-            } else if (bestNewProtocol.tag === briefing.activeProtocol?.intent.tag) {
-                console.log(`DIAGNOSTIC: Reason -> Best new protocol "${bestNewProtocol.tag}" is the same as the active one, so it was not invited again.`);
             }
+             console.log('DIAGNOSTIC: All potential protocols found by planner:', briefing.potentialNewProtocols.map(p => ({ tag: p.tag, score: p.score.toFixed(3) })));
         } else {
              console.log('DIAGNOSTIC: Candidates generated successfully:', candidates.map(c => ({ source: c.source, reply: (c.reply || "").slice(0, 50) + "..." })));
         }
     }
-    // --- <<< END: NEW DIAGNOSTIC LOGGING >>> ---
+    // --- <<< END: MODIFIED DIAGNOSTIC LOGGING >>> ---
 
     // Expert 3: The Creative Synthesizer (Adds a different flavor)
     const artisticCandidate = ResponseSynthesizer.synthesizeResponse(candidates, { cognitiveProfile, fingerprint }, {}, tracker);
