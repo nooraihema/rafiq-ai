@@ -1,8 +1,9 @@
-// chat.js v16.2 - Diagnostic Mode
+// chat.js v16.3 - Module Resolution Fix
 // This version introduces the "Strategy Room" concept, allowing the system
 // to process multiple relevant protocols in parallel and enabling true response merging.
 // v16.1 FIX: Calls the main protocol router (executeProtocolStep) instead of a specific engine.
 // v16.2 adds diagnostic checkpoints to trace execution flow.
+// v16.3 changes import method to default for robust module resolution.
 // Author: For Rafiq system
 
 // =================================================================
@@ -13,8 +14,9 @@ import { detectCritical, criticalSafetyReply, tokenize } from '../shared/utils.j
 import { loadUsers, saveUsers, makeUserId } from '../shared/storage.js';
 // --- UPGRADE: Using the new multi-protocol planner ---
 import { buildIndexSync, createCognitiveBriefing } from '../perception/intent_engine.js';
-// --- [MODIFIED] --- Import the main router, not a specific engine ---
-import { executeProtocolStep } from '../core/dynamic_logic_engine.js';
+// --- [MODIFIED] --- Import the main router object for robust resolution ---
+import LogicEngine from '../core/dynamic_logic_engine.js';
+const { executeProtocolStep } = LogicEngine;
 import { composeInferentialResponse } from '../core/composition_engine.js';
 import { processMeta } from '../coordination/meta_router.js';
 import { ContextTracker } from '../shared/context_tracker.js';
