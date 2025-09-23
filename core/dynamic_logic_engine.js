@@ -293,8 +293,10 @@ const V9_coreSuggestionStep = (ctx) => {
     const fallbackResponse = "أنا هنا أسمعك. أخبرني المزيد.";
     return { ...ctx, responseParts: [...ctx.responseParts, fallbackResponse] };
 };
+/*
+// This step is being deprecated in favor of integrated logic at the end of the engine
 const V9_bridgingLogicStep = (ctx) => {
-    if (ctx.sessionContext.state === 'PROTOCOL_COMPLETE') {
+    if (ctx.sessionContext.state === 'PROTOCOL_COMPLETE') { 
         const bridge = selectRandom(safeGet(ctx.fullIntent, 'bridging_logic.on_successful_resolution'));
         if (bridge) {
             const newResponseParts = [...ctx.responseParts, bridge.suggestion];
@@ -304,6 +306,7 @@ const V9_bridgingLogicStep = (ctx) => {
     }
     return ctx;
 };
+*/
 /* ========================================================================== */
 /* V9 SECTION 4: THE NEW V9 META-COGNITIVE PIPELINE                           */
 /* ========================================================================== */
@@ -311,7 +314,7 @@ const cognitivePipelineV9 = [
     V9_dialogueFlowStep,
     V9_serviceHookStep,
     V9_coreSuggestionStep,
-    V9_bridgingLogicStep,
+    // V9_bridgingLogicStep, // Deactivated in favor of integrated end-of-engine logic
 ];
 /* ========================================================================== */
 /* V9 SECTION 5: THE V9 EXECUTION CORE                                        */
