@@ -1,6 +1,6 @@
-
-// dynamic_logic_engine.js v11.0-protocol-upgraded
+// dynamic_logic_engine.js v11.1-protocol-upgraded
 // Full upgrade: universal intent reader, V5 + V9 harmonized, memory + persona + feedback
+// NEW in v11.1: Added Dynamic Room Engine to support new conversational protocols.
 
 // =================================================================
 // START: IMPORTS & CONFIG
@@ -265,30 +265,92 @@ export function executeV9Engine(fullIntent = {}, fingerprint = {}, userProfile =
     return { reply: finalReply, source: `v9_engine:${fullIntent.tag}:${currentSessionContext.state}`, metadata: { ...ctx.metadata, nextSessionContext, feedback_request: { prompt: "هل كان هذا مفيدًا؟", suggestionId: ctx.metadata.chosenSuggestion?.id || null } } };
 }
 
+
 // =================================================================
-// SECTION 4: PROTOCOL EXECUTOR
+// SECTION 4: [NEW] DYNAMIC ROOM ENGINE
+// =================================================================
+function executeDynamicRoomEngine(fullIntent, fingerprint, userProfile, sessionContext) {
+    const config = fullIntent.dialogue_engine_config;
+    const rooms = fullIntent.conversation_rooms;
+    const userName = safeGet(userProfile, 'name', 'صديقي'); // Get user name safely
+
+    // 1. Determine the current room
+    const currentRoomKey = sessionContext.state || config.entry_room;
+    const currentRoom = rooms[currentRoomKey];
+
+    if (!currentRoom) {
+        // Error case: The room doesn't exist in the protocol
+        return { reply: "يبدو أنني فقدت تسلسل أفكاري. أين كنا؟", source: "room_engine_error_room_not_found", metadata: { triedRoom: currentRoomKey } };
+    }
+
+    // 2. Select a random reply from the current room's responses
+    // The .flat() method handles nested arrays like [["a"], ["b", "c"]] => ["a", "b", "c"]
+    const possibleReplies = (currentRoom.responses || []).flat();
+    let chosenReply = selectRandom(possibleReplies);
+
+    if (!chosenReply) {
+         // Fallback if a room has no replies defined
+        chosenReply = "أخبرني المزيد عن هذا الأمر.";
+    }
+    
+    // 3. Personalize the reply by replacing placeholders like {{username}}
+    chosenReply = chosenReply.replace(/\{\{username\}\}/g, userName);
+
+    // 4. Prepare the session context for the next turn
+    const nextRoom = selectRandom(currentRoom.next_room_suggestions) || 'resolved';
+    const nextSessionContext = {
+        active_intent: fullIntent.tag,
+        state: nextRoom, // The 'state' is now the key for the next room
+        layer: 'dynamic_room_engine',
+        last_suggestion_id: null,
+        turn_counter: (sessionContext.turn_counter || 0) + 1,
+    };
+
+    // 5. Build and return the final candidate packet
+    return {
+        reply: chosenReply,
+        source: `dynamic_room_engine:${fullIntent.tag}:${currentRoomKey}`,
+        confidence: 0.98, // High confidence as it's a direct protocol execution
+        metadata: {
+            intentTag: fullIntent.tag,
+            nextSessionContext: nextSessionContext, // This is crucial for the Maestro to update the session
+        }
+    };
+}
+
+
+// =================================================================
+// SECTION 5: PROTOCOL EXECUTOR (THE MAIN ROUTER) - [MODIFIED]
 // =================================================================
 export function executeProtocolStep(protocolPacket, fingerprint, userProfile, sessionContext) {
     const { full_intent, initial_context } = protocolPacket;
     if (!full_intent) return { reply: "أنا أفكر في ذلك...", source: "protocol_error", metadata: {} };
 
+    // [NEW] Check for the Dynamic Room Engine protocol first
+    if (full_intent.dialogue_engine_config?.engine_type === 'dynamic_room_engine' && full_intent.conversation_rooms) {
+        if (DEBUG) console.log(`PROTOCOL EXECUTOR: Using NEW Dynamic Room Engine for intent "${full_intent.tag}".`);
+        return executeDynamicRoomEngine(full_intent, fingerprint, userProfile, initial_context);
+    }
+    
+    // Check for V9 Engine (No changes here)
     if (full_intent.dialogue_flow?.layers || full_intent.service_hooks || full_intent.bridging_logic) {
         if (DEBUG) console.log(`PROTOCOL EXECUTOR: Using V9 Engine for intent "${full_intent.tag}" at state "${initial_context.state}".`);
         return executeV9Engine(full_intent, fingerprint, userProfile, initial_context);
     }
 
+    // Check for legacy V5 Engine (No changes here)
     if (full_intent.actionable_suggestions) {
         if (DEBUG) console.log(`PROTOCOL EXECUTOR: Using legacy V5 Engine for intent "${full_intent.tag}".`);
         return executeMetacognitiveCore(full_intent, fingerprint, userProfile);
     }
 
+    // Fallback if no engine matches (No changes here)
     if (DEBUG) console.log(`PROTOCOL EXECUTOR: No executable parts for intent "${full_intent.tag}".`);
     return { reply: "هناك فكرة لدي، لكن دعني أنظمها أولاً. ماذا يدور في ذهنك الآن؟", source: "protocol_no_action", metadata: {} };
 }
 
 // =================================================================
-// EXPORT LEGACY MEMORY FUNCTIONS
+// SECTION 6: EXPORT LEGACY MEMORY FUNCTIONS - [MODIFIED]
 // =================================================================
 export { V5_consolidateDailySummary as consolidateDailySummary };
 export { V5_updateUserProfileWithFeedback as updateUserProfileWithFeedback };
-
