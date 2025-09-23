@@ -1,0 +1,78 @@
+{
+  "tag": "skill_grief_acceptance_v1.0_opulent",
+  "core_concept": "مرشدك لمرحلة القبول، ومساعدتك على إيجاد معنى جديد وتحويل ألم الماضي إلى حكمة للمستقبل.",
+  "memory_hooks": {
+    "store_user_progress": ["acceptance_level", "future_value", "last_room_visited"],
+    "recall_in_next_session_prompt": "أهلاً بيك يا {{username}}. آخر مرة كنا في 'ورشة البناء' وكنا بنتكلم عن قيمة '[FUTURE_VALUE]' كطوبة أولى في مستقبلك. كيف تشعر تجاه هذه الفكرة اليوم؟"
+  },
+  "nlu": {
+    "keywords": [
+      {"word": "قبول", "weight": 1.0}, {"word": "أتقبل", "weight": 1.0},
+      {"word": "أتخطى إزاي", "weight": 0.9}, {"word": "أكمل حياتي", "weight": 0.9},
+      {"word": "الخطوة الجاية", "weight": 0.8}, {"word": "أعمل إيه دلوقتي", "weight": 0.8},
+      {"word": "مستقبل", "weight": 0.7}
+    ]
+  },
+  "dialogue_engine_config": {
+    "engine_type": "dynamic_room_engine",
+    "entry_room": "introduction_room",
+    "variables": {
+      "acceptance_level": {"initial_value": 0, "max_value": 10},
+      "future_value": {"initial_value": null}
+    },
+    "loop_guard": {
+      "max_visits_in_a_row": 2,
+      "escape_hatch_suggestion": "حاسس إننا بنفكر في المستقبل بشكل كبير وده ممكن يكون مرهق. إيه رأيك نرجع للحظة الحالية ونجرب تمرين تنفس بسيط عشان نثبت على الأرض تاني؟"
+    }
+  },
+  "conversation_rooms": {
+    "introduction_room": {
+      "purpose": "إعادة تعريف مفهوم 'القبول' بطريقة لطيفة.",
+      "on_completion_action": [{"store_in_memory": {"key": "last_action_completed", "value": "فهم معنى القبول الحقيقي"}}],
+      "responses": [
+        "وصلتني رغبتك في المضي قدمًا. دي خطوة شجاعة جدًا. وقبل ما نمشيها، مهم نعرف إن 'القبول' مش معناه إنك موافق على اللي حصل، أو إنه مبقاش يوجعك. القبول هو ببساطة إننا نبطل نشد الحبل مع الماضي.",
+        "أتفهمك جدًا. كتير بنفكر إن عشان 'نتخطى' لازم 'ننسى'. لكن الحقيقة هي إننا مش بننسى، إحنا بنتعلم إزاي نحمل الذكرى بطريقة متوجعناش، زي ما بنشيل شنطة خفت حمولتها."
+      ],
+      "next_room_suggestions": ["meaning_making_room"]
+    },
+    "meaning_making_room": {
+      "purpose": "مساعدة المستخدم على تحويل الألم إلى حكمة (Logotherapy).",
+      "on_completion_action": [{"store_in_memory": {"key": "last_action_completed", "value": "استخلاص الحكمة من الألم"}}],
+      "responses": [
+        "كل تجربة صعبة بنمر بيها، رغم ألمها، بتسيب جوانا 'هدية' من الحكمة أو القوة أو اللطف.",
+        "لو بصيت على الرحلة الصعبة اللي مريت بيها دي، إيه هو 'الدرس' أو 'الحكمة' اللي خرجت بيها عن نفسك، أو عن الحياة، أو عن الحب؟ إيه الحاجة اللي عرفتها دلوقتي ومكنتش تعرفها قبل كده؟"
+      ],
+      "next_room_suggestions": ["future_values_room"]
+    },
+    "future_values_room": {
+      "purpose": "استخدام الحكمة المكتسبة لتحديد بوصلة المستقبل (ACT).",
+      "on_completion_action": [{"update_variable": {"variable": "future_value", "value_from_user_input": true}}, {"store_in_memory": {"key": "last_action_completed", "value": "تحديد قيمة للمستقبل"}}],
+      "responses": [
+        "دي حكمة عميقة جدًا. شكرًا لمشاركتها.",
+        "بناءً على الحكمة دي، لو هتختار 'قيمة' واحدة تكون هي 'البوصلة' بتاعتك وإنت بتبني حياتك من جديد، هتكون إيه؟ (مثلاً: القوة، اللطف، الحرية، الأمان)"
+      ],
+      "is_resolution_point": true
+    }
+  },
+  "bridging_logic": {
+    "on_resolution": {
+      "mini_celebrations": [
+        "عظيم. يبقى بوصلتك الجديدة هي '[FUTURE_VALUE]'. دي مش مجرد كلمة، دي خريطة طريق للمستقبل.",
+        "اختيار رائع. القيمة دي هتكون هي النور اللي هينورلك الخطوة الجاية."
+      ],
+      "branching_suggestion": {
+          "prompt": "دلوقتي بعد ما حددنا البوصلة، حان وقت بناء أول طوبة في الطريق الجديد. تحب ننتقل لخبير تحديد الأهداف عشان نحول القيمة دي لخطوة عملية؟",
+          "choices": [
+              {"title": "نعم، لنبني أول خطوة", "description": "(ننتقل لخبير تحديد الأهداف)", "target_intent": "goal_setting_protocol"},
+              {"title": "لا، أحتاج لبعض الراحة", "description": "(نتعلم تمرين للاسترخاء والامتنان للحظة الحالية)", "target_intent": "skill_gratitude_lens"}
+          ]
+      }
+    }
+  },
+  "priority_score": 0.9,
+  "metadata": {
+    "intent_type": "dynamic_protocol",
+    "domain": "grief_acceptance",
+    "version": "1.0_opulent"
+  }
+}
