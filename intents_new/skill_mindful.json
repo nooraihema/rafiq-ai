@@ -1,0 +1,82 @@
+{
+  "tag": "skill_mindful_breathing_v1.0_masterpiece",
+  "core_concept": "مرشدك الشخصي لتهدئة عاصفة القلق والتوتر في دقائق، باستخدام قوة التنفس الواعي.",
+  "memory_hooks": {
+    "store_user_progress": ["calm_sessions_completed", "last_room_visited"],
+    "recall_in_next_session_prompt": "أهلاً بيك يا {{username}} مرة تانية. أتذكر إن آخر مرة تدربنا مع بعض على تمرين 'المرساة الهادئة'. هل تحتاج لجلسة تهدئة سريعة اليوم؟"
+  },
+  "nlu": {
+    "keywords": [
+      {"word": "اهدأ", "weight": 1.0}, {"word": "متوتر", "weight": 1.0},
+      {"word": "قلقان", "weight": 0.9}, {"word": "مش عارف أركز", "weight": 0.9},
+      {"word": "تمرين تنفس", "weight": 1.0}, {"word": "أهدي نفسي", "weight": 0.9},
+      {"word": "عايز أسترخي", "weight": 0.8}
+    ]
+  },
+  "dialogue_engine_config": {
+    "engine_type": "dynamic_room_engine",
+    "entry_room": "introduction_room",
+    "variables": {
+      "calm_sessions_completed": {"initial_value": 0, "max_value": 100}
+    },
+    "loop_guard": {
+      "max_visits_in_a_row": 2,
+      "escape_hatch_suggestion": "حاسس إننا بنحاول نستخدم نفس الأداة كتير. يمكن يكون مفيد أكتر لو اتكلمنا عن 'مصدر' القلق ده نفسه؟"
+    }
+  },
+  "conversation_rooms": {
+    "introduction_room": {
+      "purpose": "التحقق من حالة التوتر والتمهيد لفكرة التهدئة الجسدية.",
+      "on_completion_action": [{"store_in_memory": {"key": "last_action_completed", "value": "الاستعداد لتمرين التهدئة"}}],
+      "responses": [
+        "وصلني إحساسك. لما القلق بيسيطر، بيبقى كأن فيه عاصفة جوه دماغنا وجسمنا. أنا هنا معاك عشان نلاقي الهدوء في عين العاصفة دي.",
+        "أتفهمك جدًا. الإحساس ده بالتوتر مرهق وبيستهلك الطاقة. قبل ما نحاول 'نفكر' في أي حاجة، خلينا نبتدي بتهدئة 'الجسم' الأول."
+      ],
+      "next_room_suggestions": ["science_intro_room"]
+    },
+    "science_intro_room": {
+      "purpose": "شرح مبسط لكيفية عمل التنفس لتهدئة الدماغ.",
+      "on_completion_action": [{"store_in_memory": {"key": "last_action_completed", "value": "فهم علم التنفس"}}],
+      "responses": [
+        "عشان نهدي العاصفة دي، هنستخدم أقوى أداة عندنا: التنفس. لما بنتنفس ببطء وعمق، إحنا بنبعت رسالة مباشرة لدماغنا بتقوله: 'إنت في أمان. كل حاجة تمام.' ده مش سحر، ده علم.",
+        "الفكرة بسيطة جدًا: القلق بيخلي تنفسنا سريع وقصير. لما بنرجع نتحكم في تنفسنا ونخليه بطيء وطويل، إحنا بنكسر دايرة القلق من أساسها. مستعد نجرب؟"
+      ],
+      "next_room_suggestions": ["the_tool_room"]
+    },
+    "the_tool_room": {
+      "purpose": "توجيه المستخدم خلال تمرين 'التنفس المربع' العملي.",
+      "on_completion_action": [{"update_variable": {"variable": "calm_sessions_completed", "operation": "increment", "value": 1}}, {"store_in_memory": {"key": "last_action_completed", "value": "إكمال تمرين التنفس المربع"}}],
+      "responses": [
+        "ممتاز. هنعمل مع بعض تمرين 'التنفس المربع'. بسيط جدًا، وهنمشي فيه خطوة بخطوة. كل اللي عليك إنك تتبع كلامي:",
+        "1. **شهيق:** خد نفس عميق من مناخيرك وإنت بتعد لحد ٤.",
+        "2. **امسك:** امسك نفسك وإنت بتعد لحد ٤.",
+        "3. **زفير:** طلع النفس ببطء من بوقك وإنت بتعد لحد ٤.",
+        "4. **امسك:** خلي رئتك فاضية وإنت بتعد لحد ٤.",
+        "يلا نكرر الدورة دي ٣ مرات مع بعض... أنا معاك."
+      ],
+      "is_resolution_point": true
+    }
+  },
+  "bridging_logic": {
+    "on_resolution": {
+      "mini_celebrations": [
+        "عمل رائع. 'مؤشر الهدوء' عندك زاد نقطة. أتمنى تكون حاسس بفرق ولو بسيط.",
+        "ممتاز. أخدت خطوة مهمة عشان تهتم بنفسك وتهدي جهازك العصبي.",
+        "شفت إزاي عندك القدرة تهدّي العاصفة دي بنفسك؟ دي قوة كبيرة جدًا."
+      ],
+      "branching_suggestion": {
+          "prompt": "دلوقتي بعد ما العاصفة هديت شوية، ده وقت ممتاز عشان نفهمها. عندك اختيارين للمسار اللي جاي:",
+          "choices": [
+              {"title": "مسار الأفكار", "description": "(نستكشف الأفكار اللي ممكن تكون سببت العاصفة دي)", "target_intent": "skill_cbt_thought_challenging"},
+              {"title": "مسار البوصلة", "description": "(نتصل بالقيم اللي تدينا إحساس بالأمان والثبات)", "target_intent": "skill_act_values_clarification"}
+          ]
+      }
+    }
+  },
+  "priority_score": 1.0, 
+  "metadata": {
+    "intent_type": "dynamic_protocol",
+    "domain": "mindfulness_breathing",
+    "version": "1.0_masterpiece"
+  }
+}
