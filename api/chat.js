@@ -1,6 +1,7 @@
-// chat.js v16.0 - The Multi-Protocol Conductor
+// chat.js v16.1 - The Multi-Protocol Conductor
 // This version introduces the "Strategy Room" concept, allowing the system
 // to process multiple relevant protocols in parallel and enabling true response merging.
+// v16.1 FIX: Calls the main protocol router (executeProtocolStep) instead of a specific engine.
 // Author: For Rafiq system
 
 // =================================================================
@@ -11,7 +12,8 @@ import { detectCritical, criticalSafetyReply, tokenize } from '../shared/utils.j
 import { loadUsers, saveUsers, makeUserId } from '../shared/storage.js';
 // --- UPGRADE: Using the new multi-protocol planner ---
 import { buildIndexSync, createCognitiveBriefing } from '../perception/intent_engine.js';
-import { executeV9Engine } from '../core/dynamic_logic_engine.js';
+// --- [MODIFIED] --- Import the main router, not a specific engine ---
+import { executeProtocolStep } from '../core/dynamic_logic_engine.js';
 import { composeInferentialResponse } from '../core/composition_engine.js';
 import { processMeta } from '../coordination/meta_router.js';
 import { ContextTracker } from '../shared/context_tracker.js';
@@ -96,24 +98,35 @@ export default async function handler(req, res) {
     // 2. The Strategy Room gathers all relevant experts for a parallel performance.
     let candidates = [];
 
+    // --- [MODIFIED] ---
     // Expert 1: The Active Protocol Expert (Continues the ongoing conversation)
     if (briefing.activeProtocol) {
         if (DEBUG) console.log(`STRATEGY ROOM: Inviting active protocol "${briefing.activeProtocol.intent.tag}" to perform.`);
-        const candidate = executeV9Engine(
-            briefing.activeProtocol.intent.full_intent,
-            fingerprint, profile, briefing.activeProtocol.context
-        );
+        
+        const protocolPacket = {
+            full_intent: briefing.activeProtocol.intent.full_intent,
+            initial_context: briefing.activeProtocol.context
+        };
+        const candidate = executeProtocolStep(protocolPacket, fingerprint, profile, protocolPacket.initial_context);
+        
         if (candidate) candidates.push(candidate);
     }
 
+    // --- [MODIFIED] ---
     // Expert 2: The Best New Protocol Expert (Responds to the new topic)
     const bestNewProtocol = briefing.potentialNewProtocols[0];
     if (bestNewProtocol && bestNewProtocol.tag !== briefing.activeProtocol?.intent.tag) {
         if (DEBUG) console.log(`STRATEGY ROOM: Inviting new protocol "${bestNewProtocol.tag}" to perform.`);
-        const newCandidate = executeV9Engine(
-            bestNewProtocol.full_intent,
-            fingerprint, profile, { state: bestNewProtocol.full_intent.dialogue_flow.entry_point, turn_counter: 0 }
-        );
+
+        const protocolPacket = {
+            full_intent: bestNewProtocol.full_intent,
+            initial_context: {
+                state: null, // Let the engine determine the entry point from the protocol file
+                turn_counter: 0
+            }
+        };
+        const newCandidate = executeProtocolStep(protocolPacket, fingerprint, profile, protocolPacket.initial_context);
+
         if (newCandidate) candidates.push(newCandidate);
     }
     
