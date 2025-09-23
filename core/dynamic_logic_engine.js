@@ -1,7 +1,8 @@
-// dynamic_logic_engine.js v11.2-diagnostic-mode
+// dynamic_logic_engine.js v11.3-fix-export
 // Full upgrade: universal intent reader, V5 + V9 harmonized, memory + persona + feedback
 // NEW in v11.1: Added Dynamic Room Engine to support new conversational protocols.
 // NEW in v11.2: Added diagnostic console logs to trace execution flow.
+// NEW in v11.3: Fixed duplicate export error for Vercel build compatibility.
 
 // =================================================================
 // START: IMPORTS & CONFIG
@@ -365,18 +366,12 @@ export function executeProtocolStep(protocolPacket, fingerprint, userProfile, se
     return { reply: "هناك فكرة لدي، لكن دعني أنظمها أولاً. ماذا يدور في ذهنك الآن؟", source: "protocol_no_action", metadata: {} };
 }
 
+
 // =================================================================
-// SECTION 6: EXPORT ALL ENGINE FUNCTIONS
+// SECTION 6: EXPORT ALL ENGINE FUNCTIONS [FIXED]
 // =================================================================
 export default {
     executeProtocolStep,
     consolidateDailySummary: V5_consolidateDailySummary,
     updateUserProfileWithFeedback: V5_updateUserProfileWithFeedback
-};
-
-// We keep these for any potential legacy imports, but the default export is preferred
-export { 
-    executeProtocolStep, 
-    V5_consolidateDailySummary as consolidateDailySummary, 
-    V5_updateUserProfileWithFeedback as updateUserProfileWithFeedback 
 };
