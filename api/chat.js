@@ -11,8 +11,9 @@ import { detectCritical, criticalSafetyReply, tokenize } from '../shared/utils.j
 import { loadUsers, saveUsers, makeUserId } from '../shared/storage.js';
 // --- UPGRADE: Using the new multi-protocol planner ---
 import { buildIndexSync, createCognitiveBriefing } from '../perception/intent_engine.js';
-// --- MODIFICATION: The imported function name from DLE might be different, ensure it matches ---
-import { executeV9Engine } from '../core/dynamic_logic_engine.js';
+// --- <<< START: FINAL FIX - Using the correct strategic entry point >>> ---
+import { executeProtocolStep } from '../core/dynamic_logic_engine.js';
+// --- <<< END: FINAL FIX >>> ---
 import { composeInferentialResponse } from '../core/composition_engine.js';
 import { processMeta } from '../coordination/meta_router.js';
 import { ContextTracker } from '../shared/context_tracker.js';
@@ -100,10 +101,12 @@ export default async function handler(req, res) {
     // Expert 1: The Active Protocol Expert (Continues the ongoing conversation)
     if (briefing.activeProtocol) {
         if (DEBUG) console.log(`STRATEGY ROOM: Inviting active protocol "${briefing.activeProtocol.intent.tag}" to perform.`);
-        const candidate = executeV9Engine(
-            briefing.activeProtocol.intent.full_intent,
+        // --- <<< START: FINAL FIX - Using the correct protocol executor >>> ---
+        const candidate = executeProtocolStep(
+            { full_intent: briefing.activeProtocol.intent.full_intent, initial_context: briefing.activeProtocol.context },
             fingerprint, profile, briefing.activeProtocol.context
         );
+        // --- <<< END: FINAL FIX >>> ---
         if (candidate) candidates.push(candidate);
     }
 
@@ -112,12 +115,12 @@ export default async function handler(req, res) {
     if (bestNewProtocol && bestNewProtocol.tag !== briefing.activeProtocol?.intent.tag) {
         if (DEBUG) console.log(`STRATEGY ROOM: Inviting new protocol "${bestNewProtocol.tag}" with score ${bestNewProtocol.score.toFixed(3)} to perform.`);
         
-        // --- MODIFICATION: Ensure entry_point is correctly accessed ---
-        // Since DLE now adapts internally, we can pass the raw full_intent
-        const newCandidate = executeV9Engine(
-            bestNewProtocol.full_intent,
-            fingerprint, profile, { state: null, turn_counter: 0 } // Let DLE determine the entry point
+        // --- <<< START: FINAL FIX - Using the correct protocol executor >>> ---
+        const newCandidate = executeProtocolStep(
+            { full_intent: bestNewProtocol.full_intent, initial_context: { state: null, turn_counter: 0 } },
+            fingerprint, profile, { state: null, turn_counter: 0 }
         );
+        // --- <<< END: FINAL FIX >>> ---
         if (newCandidate) candidates.push(newCandidate);
     }
     
