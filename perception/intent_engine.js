@@ -261,6 +261,40 @@ export function buildIndexSync() {
   }
 }
 
+// --- <<< START: NEW PROTOCOL STRUCTURE ADAPTER (THE BRIDGE) >>> ---
+/**
+ * يقوم هذا "الجسر" بترجمة هيكل البروتوكول الجديد "الغرف" إلى هيكل dialogue_flow القديم.
+ * يتم استدعاؤه ديناميكيًا، لذلك لا نحتاج إلى تغيير كيفية تحميل البيانات.
+ * @param {object} intentObject - كائن الـ intent الكامل.
+ * @returns {object} - نسخة من الكائن متوافقة مع المحرك V9.
+ */
+function adaptProtocolStructure(intentObject) {
+    // إذا كان الكائن بالفعل بالهيكل القديم أو لا يحتوي على "غرف"، قم بإعادته كما هو
+    if (!intentObject || !intentObject.conversation_rooms || intentObject.dialogue_flow) {
+        return intentObject;
+    }
+
+    // إنشاء نسخة جديدة لتجنب تعديل الكائن الأصلي في الفهرس
+    const adapted = JSON.parse(JSON.stringify(intentObject));
+
+    adapted.dialogue_flow = {
+        entry_point: adapted.dialogue_engine_config?.entry_room,
+        layers: {}
+    };
+
+    for (const roomName in adapted.conversation_rooms) {
+        const room = adapted.conversation_rooms[roomName];
+        adapted.dialogue_flow.layers[roomName] = {
+            purpose: room.purpose,
+            responses: room.responses,
+            next_state: room.next_room_suggestions ? room.next_room_suggestions[0] : null
+        };
+    }
+    
+    return adapted;
+}
+// --- <<< END: NEW PROTOCOL STRUCTURE ADAPTER (THE BRIDGE) >>> ---
+
 // ------------------- Vector & Style helpers -------------------
 function jaccardSimilarity(setA, setB) {
   if (!setA || !setB || setA.size === 0 || setA.size === 0) return 0;
@@ -442,20 +476,34 @@ export function createCognitiveBriefing(rawMessage, fingerprint, context, userPr
     if (context && context.active_intent && context.state) {
         const activeProtocolIndex = tagToIdx[context.active_intent];
         if (activeProtocolIndex !== undefined) {
+            // --- <<< START: THE FIRST FIX >>> ---
+            // قم بترجمة البروتوكول النشط أيضًا لضمان التوافق الكامل
+            const adaptedActiveIntent = adaptProtocolStructure(intentIndex[activeProtocolIndex].full_intent);
             activeProtocol = {
-                intent: intentIndex[activeProtocolIndex],
+                // استخدم النسخة المترجمة
+                intent: { ...intentIndex[activeProtocolIndex], full_intent: adaptedActiveIntent },
                 context: context
             };
+            // --- <<< END: THE FIRST FIX >>> ---
         }
     }
 
     // 3. Assemble the final intelligence briefing for the conductor.
     if (DEBUG) console.log(`STRATEGIC PLANNER: Found ${allPotentialIntents.length} potential protocols. Active protocol is "${context?.active_intent || 'None'}".`);
     
+    // --- <<< START: THE SECOND AND MOST CRITICAL FIX >>> ---
+    // قم بترجمة كل بروتوكول مرشح قبل الفلترة
+    const adaptedPotentialIntents = allPotentialIntents.map(p => {
+        const adaptedFullIntent = adaptProtocolStructure(p.full_intent);
+        return { ...p, full_intent: adaptedFullIntent };
+    });
+
     return {
         activeProtocol: activeProtocol,
-        potentialNewProtocols: allPotentialIntents.filter(p => p.full_intent.dialogue_flow)
+        // استخدم القائمة المترجمة للفلترة
+        potentialNewProtocols: adaptedPotentialIntents.filter(p => p.full_intent && p.full_intent.dialogue_flow)
     };
+    // --- <<< END: THE SECOND AND MOST CRITICAL FIX >>> ---
 }
 
 
