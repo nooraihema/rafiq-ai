@@ -1,0 +1,79 @@
+{
+  "tag": "skill_grief_sadness_room_v1.0_opulent",
+  "core_concept": "مساحة هادئة وحنونة لاحتواء موجات الحزن، وتكريم الذكريات، وتحويلها من مصدر للألم إلى مصدر للقوة.",
+  "memory_hooks": {
+    "store_user_progress": ["grief_intensity", "shared_memory", "last_room_visited"],
+    "recall_in_next_session_prompt": "أهلاً بيك يا {{username}} مرة تانية. أتذكر إن آخر مرة كنا في 'غرفة الذكريات' وتحدثنا عن '[SHARED_MEMORY]'. أنا هنا عشان أكون معاك في مشاعرك، مهما كانت."
+  },
+  "nlu": {
+    "keywords": [
+      {"word": "حزن", "weight": 1.0}, {"word": "وحشني", "weight": 1.0},
+      {"word": "وحشتني", "weight": 1.0}, {"word": "ذكريات", "weight": 0.9},
+      {"word": "بفتكره", "weight": 0.9}, {"word": "مش قادر انسى", "weight": 0.9},
+      {"word": "موجوع", "weight": 0.8}, {"word": "ألم الفراق", "weight": 0.8}
+    ]
+  },
+  "dialogue_engine_config": {
+    "engine_type": "dynamic_room_engine",
+    "entry_room": "introduction_room",
+    "variables": {
+      "grief_intensity": {"initial_value": 0, "max_value": 10},
+      "shared_memory": {"initial_value": null}
+    },
+    "loop_guard": {
+      "max_visits_in_a_row": 2,
+      "escape_hatch_suggestion": "أحيانًا الغوص في الحزن بيكون مرهق. إيه رأيك ناخد استراحة صغيرة ونجرب تمرين بسيط للامتنان عشان نفتكر اللحظات الحلوة؟"
+    }
+  },
+  "conversation_rooms": {
+    "introduction_room": {
+      "purpose": "التحقق من صحة الشعور بالحزن العميق وإعطاء إذن للحزن.",
+      "on_completion_action": [{"store_in_memory": {"key": "last_action_completed", "value": "السماح للحزن بالوجود"}}],
+      "responses": [
+        "أهلاً بيك في 'غرفة الذكريات'. هنا، الحزن مش ضعف، الحزن هو دليل على عمق الحب اللي كان موجود. من حقك تحزن، ومن حق حزنك ياخد وقته ومساحته.",
+        "وصلني وجعك. الذكريات ممكن تكون زي الأمواج، أحيانًا بتيجي عالية وقوية وبتغرقنا. أنا هنا عشان أكون معاك وسط الأمواج دي، مش عشان أوقفها، لكن عشان أساعدك تعوم."
+      ],
+      "next_room_suggestions": ["memory_sharing_room"]
+    },
+    "memory_sharing_room": {
+      "purpose": "دعوة المستخدم لمشاركة ذكرى واحدة بطريقة تكرمها.",
+      "on_completion_action": [{"update_variable": {"variable": "shared_memory", "value_from_user_input": true}}, {"store_in_memory": {"key": "last_action_completed", "value": "مشاركة ذكرى عزيزة"}}],
+      "responses": [
+        "عشان نكرم الحب اللي كان موجود، أحيانًا بيكون مفيد إننا نحكي عنه.",
+        "لو تحب، شاركني بذكرى واحدة جميلة أو موقف حلو بتفتكره مع الشخص ده. مش عشان نفتح الجرح، لكن عشان نتأكد إن الذكرى الحلوة دي مش هتضيع وسط الألم."
+      ],
+      "next_room_suggestions": ["meaning_extraction_room"]
+    },
+    "meaning_extraction_room": {
+      "purpose": "مساعدة المستخدم على استخلاص 'الهدية' أو 'الدرس' من الذكرى.",
+      "on_completion_action": [{"update_variable": {"variable": "grief_intensity", "operation": "increment", "value": 1}}],
+      "responses": [
+        "دي ذكرى جميلة جدًا. شكرًا إنك وثقت فيا وشاركتني بيها.",
+        "لو بصينا على الذكرى دي، إيه هي 'الهدية' أو 'الأثر' اللي الشخص ده سابه جواك من خلال الموقف ده؟ هل هي ضحكة؟ درس؟ إحساس بالأمان؟",
+        "إيه هي الحاجة اللي أخدتها من الذكرى دي وهتفضل معاك طول العمر؟"
+      ],
+      "is_resolution_point": true
+    }
+  },
+  "bridging_logic": {
+    "on_resolution": {
+      "mini_celebrations": [
+        "جميل جدًا. بالطريقة دي، الذكرى مبقتش مجرد مصدر للألم، بقت كمان مصدر للحكمة والقوة.",
+        "شفت إزاي؟ الحب اللي كان موجود مبيختفيش، بيتحول لأثر بنشيله جوانا."
+      ],
+      "branching_suggestion": {
+          "prompt": "دلوقتي بعد ما كرمنا الذكرى دي، إيه الخطوة اللي جاية اللي تحس إنها ممكن تكون مفيدة ليك؟",
+          "choices": [
+              {"title": "مسار البوصلة", "description": "(نستخدم 'الهدية' دي عشان نحدد إيه المهم لينا دلوقتي)", "target_intent": "skill_act_values_clarification"},
+              {"title": "مسار الامتنان", "description": "(نبحث عن لحظات نور تانية صغيرة في يومنا)", "target_intent": "skill_gratitude_lens"}
+          ]
+      }
+    }
+  },
+  "priority_score": 0.9,
+  "metadata": {
+    "intent_type": "dynamic_protocol",
+    "domain": "grief_sadness",
+    "version": "1.0_opulent"
+  }
+}
