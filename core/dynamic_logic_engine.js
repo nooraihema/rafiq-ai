@@ -1,7 +1,6 @@
-// dynamic_logic_engine.js v12.0 - The Sentient Protocol Executor
-// This version integrates the "Dynamic Room Engine" logic directly, making the engine
-// capable of executing our most advanced "masterpiece" intents.
-// All V5 and V9 legacy code is preserved for full backward compatibility.
+// dynamic_logic_engine.js v10.0-protocol - The Protocol-Aware Expert Executor
+// This version introduces a new top-level function `executeProtocolStep` to orchestrate
+// the powerful V9 engine, while keeping all V5 and V9 legacy code intact.
 
 // =================================================================
 // START: PATH UPDATES & IMPORTS
@@ -247,7 +246,8 @@ function V9_chooseSuggestionHybrid(candidates = [], userProfile = {}, fingerprin
 const V9_dialogueFlowStep = (ctx) => {
     const { fullIntent, sessionContext } = ctx;
     const sessionState = sessionContext.state;
-    const layerKey = sessionState; 
+    // --- MODIFICATION: Logic simplified to handle any layer based on sessionContext ---
+    const layerKey = sessionState; // The state from sessionContext IS the layer key.
     const layer = safeGet(fullIntent, `dialogue_flow.layers.${layerKey}`);
 
     if(layer && layer.responses) {
@@ -255,7 +255,8 @@ const V9_dialogueFlowStep = (ctx) => {
         const responseText = (typeof response === 'object') ? [response.opener, response.question].filter(Boolean).join('\n') : response;
         if (responseText) {
             const newResponseParts = [responseText];
-            const stopHere = layer.next_state === "L3_Tool_Selection";
+            // If this layer's purpose is just to talk, we might stop here.
+            const stopHere = layer.next_state === "L3_Tool_Selection"; // Example logic
             return { ...ctx, responseParts: newResponseParts, stopProcessing: stopHere };
         }
     }
@@ -265,7 +266,7 @@ const V9_serviceHookStep = (ctx) => {
     const { fullIntent, fingerprint } = ctx;
     const calmingHook = safeGet(fullIntent, 'service_hooks.calming_service');
     if (calmingHook) {
-        const emotionIntensity = safeGet(fingerprint, 'intensity', 0);
+        const emotionIntensity = safeGet(fingerprint, 'intensity', 0); // Corrected path
         if (emotionIntensity > 0.8 && ctx.sessionContext.state !== 'L0_Validation') {
              const newResponseParts = [calmingHook.suggestion_prompt];
              const newMetadata = { ...ctx.metadata, request_service_intent: calmingHook.target_intent };
@@ -277,6 +278,7 @@ const V9_serviceHookStep = (ctx) => {
 const V9_coreSuggestionStep = (ctx) => {
     const { fullIntent, fingerprint, userProfile, sessionContext } = ctx;
     
+    // This step now only triggers if we are specifically in a state that requires tool selection.
     if (sessionContext.state !== 'L3_Tool_Selection') {
         return ctx;
     }
@@ -295,12 +297,12 @@ const V9_coreSuggestionStep = (ctx) => {
     return { ...ctx, responseParts: [...ctx.responseParts, fallbackResponse] };
 };
 const V9_bridgingLogicStep = (ctx) => {
-    if (ctx.sessionContext.state === 'resolved' || ctx.sessionContext.state === 'resolution') {
-        const bridgeLogic = safeGet(ctx.fullIntent, 'bridging_logic.on_resolution') || safeGet(ctx.fullIntent, 'bridging_logic.on_successful_resolution');
-        if (bridgeLogic && bridgeLogic.branching_suggestion) {
-            // This is a complex step that should be handled by the Room Engine for masterpiece intents.
-            // For now, we just acknowledge it.
-            if(DEBUG) console.log("V9 Engine: Bridging logic found, but will be handled by Room Engine for this intent type.");
+    if (ctx.sessionContext.state === 'resolved') { // Example state
+        const bridge = selectRandom(safeGet(ctx.fullIntent, 'bridging_logic.on_successful_resolution'));
+        if (bridge) {
+            const newResponseParts = [...ctx.responseParts, bridge.suggestion];
+            const newMetadata = { ...ctx.metadata, request_bridge_intent: bridge.target_intent };
+            return { ...ctx, responseParts: newResponseParts, metadata: newMetadata };
         }
     }
     return ctx;
@@ -320,10 +322,10 @@ const cognitivePipelineV9 = [
 export function executeV9Engine(fullIntent = {}, fingerprint = {}, userProfile = {}, sessionContext = {}) {
     if (!fullIntent || !fullIntent.core_concept) return null;
 
+    // --- MODIFICATION: The sessionContext is now the single source of truth ---
     const currentSessionContext = {
-        state: sessionContext.state || safeGet(fullIntent, 'dialogue_flow.entry_point'),
-        turn_counter: sessionContext.turn_counter || 0,
-        active_intent: fullIntent.tag
+        state: sessionContext.state || fullIntent.dialogue_flow.entry_point, // Start from entry point if no state
+        turn_counter: sessionContext.turn_counter || 0
     };
 
     let responseContext = {
@@ -342,6 +344,7 @@ export function executeV9Engine(fullIntent = {}, fingerprint = {}, userProfile =
         return { reply: "أنا أفكر في كلماتك. هل يمكنك أن تخبرني المزيد؟", source: 'v9_engine_fallback', metadata: {} };
     }
     
+    // --- MODIFICATION: Persona logic now uses the current state ---
     const personaKey = safeGet(fullIntent, `dynamic_response_logic.persona_logic.${currentSessionContext.state}`, 'the_empathetic_listener');
     const persona = safeGet(knowledgeBase, `PERSONA_PROFILES.${personaKey}`, {});
     
@@ -350,13 +353,15 @@ export function executeV9Engine(fullIntent = {}, fingerprint = {}, userProfile =
         finalReply = `${persona.prefix} ${finalReply}`;
     }
     
+    // --- MODIFICATION: State transition logic is now explicit ---
     const currentLayer = safeGet(fullIntent, `dialogue_flow.layers.${currentSessionContext.state}`, {});
-    const nextState = currentLayer.next_state || null;
+    const nextState = currentLayer.next_state || null; // If null, the protocol ends.
 
     const nextSessionContext = { 
         ...currentSessionContext,
+        active_intent: fullIntent.tag, // Keep the protocol active
         state: nextState,
-        turn_counter: (currentSessionContext.turn_counter || 0) + 1
+        turn_counter: currentSessionContext.turn_counter + 1
     };
 
     const newMetadata = {
@@ -373,156 +378,40 @@ export function executeV9Engine(fullIntent = {}, fingerprint = {}, userProfile =
 // END: [V9 ENGINE CODE]
 // =================================================================
 
-
-// --- [THE GRAND UPGRADE: The Sentient Room Engine v1.0] ---
+// --- [THE GRAND UPGRADE: The Protocol Executor] ---
 /* ==================================================================
-   NEW CORE LOGIC: executeRoomEngine
-   This is the new, intelligent executor for our "masterpiece" intents.
-   It understands rooms, variables, loop guards, and memory hooks.
+   NEW EXPORTED FUNCTION: executeProtocolStep
+   This is the new, clean entry point. It decides whether to use the
+   powerful V9 engine for protocol-based intents or the legacy V5
+   engine for simpler ones, based on the intent's structure.
    ================================================================== */
-function executeRoomEngine(protocol, fingerprint, userProfile, sessionContext, tracker) {
-    const config = protocol.dialogue_engine_config || {};
-    let currentRoomName = sessionContext.state || config.entry_room;
-    let currentRoom = safeGet(protocol, `conversation_rooms.${currentRoomName}`);
-    let userVariables = sessionContext.variables || {};
+export function executeProtocolStep(protocolPacket, fingerprint, userProfile, sessionContext) {
+    const { full_intent, initial_context } = protocolPacket;
 
-    // --- 1. Initialize Variables if they don't exist ---
-    if (config.variables) {
-        for (const varName in config.variables) {
-            if (userVariables[varName] === undefined) {
-                userVariables[varName] = config.variables[varName].initial_value;
-            }
-        }
-    }
-
-    // --- 2. Loop Guard Logic ---
-    const loopGuard = config.loop_guard;
-    const history = tracker.getHistory();
-    if (loopGuard && history.length >= loopGuard.max_visits_in_a_row) {
-        const lastTurns = history.slice(-loopGuard.max_visits_in_a_row);
-        const lastRooms = lastTurns.map(turn => safeGet(turn, 'ai_response.metadata.room')).filter(Boolean);
-        const allInSameRoom = lastRooms.length === loopGuard.max_visits_in_a_row && new Set(lastRooms).size === 1;
-
-        if (allInSameRoom) {
-            if (DEBUG) console.log(`ROOM ENGINE: Loop Guard triggered for room "${currentRoomName}". Redirecting.`);
-            const redirectState = loopGuard.redirect_state_on_trigger || null;
-            return {
-                reply: loopGuard.escape_hatch_suggestion,
-                source: `room_engine:${protocol.tag}:loop_guard`,
-                metadata: {
-                    nextSessionContext: {
-                        ...sessionContext,
-                        state: redirectState,
-                        variables: userVariables
-                    }
-                }
-            };
-        }
-    }
-
-    if (!currentRoom) {
-        if (DEBUG) console.error(`ROOM ENGINE: Room "${currentRoomName}" not found in protocol "${protocol.tag}". Ending protocol.`);
-        return { reply: "يبدو أننا وصلنا إلى نقطة مثيرة للاهتمام. ما هي أفكارك الآن؟", source: 'room_engine_error', metadata: { nextSessionContext: { ...sessionContext, state: null } } };
-    }
-    
-    // --- 3. Response Generation (with Micro-randomization & Personalization) ---
-    let responseText = "رد مؤقت...";
-    if (currentRoom.responses) {
-        let options = currentRoom.responses;
-        if (Array.isArray(options[0])) {
-            responseText = options.map(group => selectRandom(group)).join(' ');
-        } else {
-            const chosen = selectRandom(options);
-            responseText = (typeof chosen === 'object') ? [chosen.opener, chosen.question].filter(Boolean).join('\n') : chosen;
-        }
-    }
-    
-    if (userProfile.name) {
-        responseText = responseText.replace(/{{username}}/g, userProfile.name);
-    }
-    
-    // --- 4. State Transition & Bridging Logic ---
-    let nextState = null;
-    let bridgingSuggestion = null;
-
-    if (currentRoom.is_resolution_point) {
-        nextState = "resolution";
-        const bridgeLogic = safeGet(protocol, 'bridging_logic.on_resolution');
-        if (bridgeLogic) {
-            const celebrations = safeGet(bridgeLogic, 'mini_celebrations', []);
-            const branching = safeGet(bridgeLogic, 'branching_suggestion');
-            const celebrationText = selectRandom(celebrations);
-            
-            // For now, we will just append the branching prompt. A more advanced version would show buttons.
-            if (branching) {
-                bridgingSuggestion = `${celebrationText}\n\n${branching.prompt}`;
-                // We can add choices to metadata for the UI to use later.
-            } else {
-                bridgingSuggestion = celebrationText;
-            }
-        }
-    } else if (config.engine_type === 'dynamic_room_engine') {
-        const nextRoomSuggestions = currentRoom.next_room_suggestions || [];
-        nextState = selectRandom(nextRoomSuggestions);
-    } else {
-        // Legacy layer-based transition
-        nextState = currentRoom.next_state || null;
-    }
-    
-    // --- 5. Assemble final reply ---
-    const finalReply = bridgingSuggestion ? `${responseText}\n\n${bridgingSuggestion}` : responseText;
-
-    const nextSessionContext = {
-        active_intent: protocol.tag,
-        state: nextState,
-        turn_counter: (sessionContext.turn_counter || 0) + 1,
-        variables: userVariables
-    };
-
-    return {
-        reply: finalReply,
-        source: `room_engine:${protocol.tag}:${currentRoomName}`,
-        metadata: {
-            nextSessionContext,
-            room: currentRoomName
-        }
-    };
-}
-
-
-/* ==================================================================
-   THE UNIFIED EXPORT: executeProtocolStep
-   This is the single, unified entry point that delegates to the correct engine.
-   ================================================================== */
-export function executeProtocolStep(full_intent, fingerprint, userProfile, initial_context, tracker) {
     if (!full_intent) {
-        if (DEBUG) console.warn("executeProtocolStep called with an empty intent.");
+        if (DEBUG) console.warn("executeProtocolStep called with an empty protocol packet.");
         return { reply: "أنا أفكر في ذلك...", source: "protocol_error", metadata: {} };
     }
 
-    const config = full_intent.dialogue_engine_config;
-
-    // --- STRATEGIC DELEGATION ---
-    if (config && config.engine_type === 'dynamic_room_engine') {
-        if (DEBUG) console.log(`PROTOCOL EXECUTOR: Engaging SENTIENT Room Engine for protocol "${full_intent.tag}".`);
-        return executeRoomEngine(full_intent, fingerprint, userProfile, initial_context, tracker);
-    }
-    
+    // --- Strategic Decision: Check if the intent is a modern V9 protocol ---
     if (full_intent.dialogue_flow && full_intent.dialogue_flow.layers) {
-        if (DEBUG) console.log(`PROTOCOL EXECUTOR: Engaging STABLE V9 Engine for protocol "${full_intent.tag}".`);
+        if (DEBUG) console.log(`PROTOCOL EXECUTOR: Engaging V9 Engine for protocol "${full_intent.tag}" at state "${initial_context.state}".`);
+        // Use the powerful V9 engine for structured dialogues
         return executeV9Engine(full_intent, fingerprint, userProfile, initial_context);
     } 
     
+    // --- Fallback: Use the legacy V5 engine for older, simpler intents ---
     if (full_intent.actionable_suggestions) {
-        if (DEBUG) console.log(`PROTOCOL EXECUTOR: Engaging LEGACY V5 Engine for simple intent "${full_intent.tag}".`);
+        if (DEBUG) console.log(`PROTOCOL EXECUTOR: Engaging legacy V5 Engine for simple intent "${full_intent.tag}".`);
         return executeMetacognitiveCore(full_intent, fingerprint, userProfile);
     }
 
+    // --- Final Fallback ---
     if (DEBUG) console.log(`PROTOCOL EXECUTOR: Intent "${full_intent.tag}" has no executable parts. Falling back.`);
     return { reply: "هناك فكرة لدي، لكن دعني أنظمها أولاً. ماذا يدور في ذهنك الآن؟", source: "protocol_no_action", metadata: {} };
 }
 
 
-// [V9 UPGRADE] Renaming the old memory functions to avoid export conflicts. (Preserved)
+// [V9 UPGRADE] Renaming the old memory functions to avoid export conflicts.
 export { V5_consolidateDailySummary as consolidateDailySummary }
 export { V5_updateUserProfileWithFeedback as updateUserProfileWithFeedback }
