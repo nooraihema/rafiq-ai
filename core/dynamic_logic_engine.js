@@ -366,7 +366,17 @@ export function executeProtocolStep(protocolPacket, fingerprint, userProfile, se
 }
 
 // =================================================================
-// SECTION 6: EXPORT LEGACY MEMORY FUNCTIONS - [MODIFIED]
+// SECTION 6: EXPORT ALL ENGINE FUNCTIONS
 // =================================================================
-export { V5_consolidateDailySummary as consolidateDailySummary };
-export { V5_updateUserProfileWithFeedback as updateUserProfileWithFeedback };
+export default {
+    executeProtocolStep,
+    consolidateDailySummary: V5_consolidateDailySummary,
+    updateUserProfileWithFeedback: V5_updateUserProfileWithFeedback
+};
+
+// We keep these for any potential legacy imports, but the default export is preferred
+export { 
+    executeProtocolStep, 
+    V5_consolidateDailySummary as consolidateDailySummary, 
+    V5_updateUserProfileWithFeedback as updateUserProfileWithFeedback 
+};
