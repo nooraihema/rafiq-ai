@@ -365,10 +365,26 @@ export function executeV9Engine(fullIntent = {}, fingerprint = {}, userProfile =
         stopProcessing: false,
     };
 
+    // --- <<< START: NEW DIAGNOSTIC PIPELINE TRACER >>> ---
+    if (DEBUG) console.log(`\nPIPELINE TRACE for State: "${currentSessionContext.state}"`);
+
     for (const step of cognitivePipelineV9) {
-        if (responseContext.stopProcessing) break;
+        if (responseContext.stopProcessing) {
+            if (DEBUG) console.log(` -> Pipeline stopped by a previous step.`);
+            break;
+        }
+
+        const stepName = step.name || 'anonymous_step';
+        if (DEBUG) console.log(`\n--- [STEP: ${stepName}] ---`);
+        if (DEBUG) console.log(`  [IN]  | responseParts: ${JSON.stringify(responseContext.responseParts)} | stopProcessing: ${responseContext.stopProcessing}`);
+
+        // Execute the step
         responseContext = step(responseContext);
+
+        if (DEBUG) console.log(`  [OUT] | responseParts: ${JSON.stringify(responseContext.responseParts)} | stopProcessing: ${responseContext.stopProcessing}`);
     }
+    if (DEBUG) console.log(`--- [PIPELINE END] ---\n`);
+    // --- <<< END: NEW DIAGNOSTIC PIPELINE TRACER >>> ---
     
     if (responseContext.responseParts.length === 0) {
         if (DEBUG) console.log("V9 Engine: Pipeline resulted in no response. Falling back.");
