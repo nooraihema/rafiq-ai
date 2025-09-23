@@ -1,0 +1,82 @@
+{
+  "tag": "skill_grief_anger_room_v1.0_opulent",
+  "core_concept": "مساحة آمنة ومُحصَّنة لاحتواء عاصفة الغضب والأسئلة الوجودية التي تأتي مع الفقد، وتحويلها إلى فهم.",
+  "memory_hooks": {
+    "store_user_progress": ["anger_intensity", "last_expressed_feeling", "last_room_visited"],
+    "recall_in_next_session_prompt": "أهلاً بيك يا {{username}} مرة تانية. آخر مرة كنا في 'غرفة العاصفة' وكنا بنتكلم عن مشاعر '[LAST_EXPRESSED_FEELING]' القوية. أنا هنا عشان نكمل لما تكون مستعد."
+  },
+  "nlu": {
+    "keywords": [
+      {"word": "غضب", "weight": 1.0}, {"word": "غضبان", "weight": 1.0},
+      {"word": "ليه ده حصل", "weight": 0.9}, {"word": "ده مش عدل", "weight": 0.9},
+      {"word": "ظلم", "weight": 0.9}, {"word": "بكرهه", "weight": 0.8},
+      {"word": "بكرها", "weight": 0.8}, {"word": "عايز انتقم", "weight": 0.8},
+      {"word": "قهره", "weight": 0.9}
+    ]
+  },
+  "dialogue_engine_config": {
+    "engine_type": "dynamic_room_engine",
+    "entry_room": "introduction_room",
+    "variables": {
+      "anger_intensity": {"initial_value": 0, "max_value": 10},
+      "last_expressed_feeling": {"initial_value": null}
+    },
+    "loop_guard": {
+      "max_visits_in_a_row": 2,
+      "escape_hatch_suggestion": "حاسس إننا بنلف في دايرة الغضب دي. ده طبيعي جدًا. إيه رأيك للحظة واحدة بس نركز على 'الحزن' اللي ممكن يكون مستخبي تحت الغضب ده؟"
+    }
+  },
+  "conversation_rooms": {
+    "introduction_room": {
+      "purpose": "التحقق الفوري من صحة الشعور بالغضب وإعطائه الشرعية الكاملة.",
+      "on_completion_action": [{"store_in_memory": {"key": "last_action_completed", "value": "الاعتراف بمشروعية الغضب"}}],
+      "responses": [
+        "وصلني إحساسك. من حقك تمامًا، ومن الطبيعي 100% إنك تحس بالغضب. الغضب هو رد فعل صحي جدًا على الظلم أو الألم الشديد.",
+        "الغضب شعور قوي جدًا، كأنه نار بتحرق جوانا. عايزك تعرف إن النار دي مسموح بيها هنا. مش هنحاول نطفيها، إحنا بس هنتعلم إزاي منتحرقش بيها.",
+        "أهلاً بيك في 'غرفة العاصفة'. هنا، كل المشاعر القوية مرحب بيها. الغضب، القهر، الإحساس بالظلم... كل ده له مكان هنا."
+      ],
+      "next_room_suggestions": ["expression_room"]
+    },
+    "expression_room": {
+      "purpose": "توفير أداة آمنة للتعبير عن الغضب دون كبت.",
+      "on_completion_action": [{"update_variable": {"variable": "last_expressed_feeling", "value_from_user_input": true}}, {"store_in_memory": {"key": "last_action_completed", "value": "التعبير عن الغضب كتابيًا"}}],
+      "responses": [
+        "عشان نتعامل مع النار دي، أول خطوة هي إننا نديها مساحة تطلع فيها بشكل آمن. عندي ليك تمرين بسيط لكنه فعال جدًا اسمه 'الرسالة التي لن تُرسل'.",
+        "**امسك ورقة وقلم (أو افتح نوتة على موبايلك)، ووجه رسالة للشخص أو للظرف اللي مسبب لك الغضب ده. اكتب كل حاجة، كل كلمة، كل إحساس، بدون أي رقابة أو تهذيب.**",
+        "طلع كل اللي جواك. اشتم، اصرخ، عبر عن ألمك. الرسالة دي بتاعتك إنت بس، ومحدش هيشوفها أبدًا. أنا هنا مستنيك تخلص."
+      ],
+      "next_room_suggestions": ["understanding_room"]
+    },
+    "understanding_room": {
+      "purpose": "مساعدة المستخدم على فهم ما يكمن تحت سطح الغضب.",
+      "on_completion_action": [{"update_variable": {"variable": "anger_intensity", "operation": "increment", "value": 1}}],
+      "responses": [
+        "شكرًا إنك عملت التمرين ده. دي خطوة محتاجة شجاعة كبيرة.",
+        "غالبًا، بيكون الغضب ده زي 'الجبل الجليدي'. الجزء اللي بنشوفه هو الغضب، لكن تحت السطح فيه مشاعر أعمق بكتير.",
+        "لو بصيت على الرسالة اللي كتبتها، تحت كل الغضب ده، إيه هو الشعور التاني اللي مستخبي؟ هل هو حزن؟ خوف؟ إحساس بالضعف؟"
+      ],
+      "is_resolution_point": true
+    }
+  },
+  "bridging_logic": {
+    "on_resolution": {
+      "mini_celebrations": [
+        "دي رؤية عميقة جدًا. مجرد فهم إن الغضب هو قناع لمشاعر تانية هو بداية التعافي الحقيقي.",
+        "أنت بتعمل عمل نفسي عميق جدًا دلوقتي. أنا فخور بالوعي اللي عندك ده."
+      ],
+      "branching_suggestion": {
+          "prompt": "دلوقتي بعد ما لمسنا الشعور الأعمق ده، عندنا اختيارين للمسار اللي جاي:",
+          "choices": [
+              {"title": "مسار الحزن", "description": "(ندي مساحة للحزن اللي تحت الغضب عشان ياخد وقته)", "target_intent": "skill_grief_sadness_room"},
+              {"title": "مسار القيم", "description": "(نتكلم عن إيه المهم ليك بجد عشان تبني من جديد)", "target_intent": "skill_act_values_clarification"}
+          ]
+      }
+    }
+  },
+  "priority_score": 0.9,
+  "metadata": {
+    "intent_type": "dynamic_protocol",
+    "domain": "grief_anger",
+    "version": "1.0_opulent"
+  }
+}
