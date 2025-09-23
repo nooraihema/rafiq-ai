@@ -297,12 +297,15 @@ const V9_coreSuggestionStep = (ctx) => {
     return { ...ctx, responseParts: [...ctx.responseParts, fallbackResponse] };
 };
 const V9_bridgingLogicStep = (ctx) => {
-    if (ctx.sessionContext.state === 'resolved') { // Example state
+    // --- MODIFICATION: Logic now triggers when the state is PROTOCOL_COMPLETE ---
+    if (ctx.sessionContext.state === 'PROTOCOL_COMPLETE') {
         const bridge = selectRandom(safeGet(ctx.fullIntent, 'bridging_logic.on_successful_resolution'));
         if (bridge) {
+            // We are adding to existing parts, which might be empty or might have the final room's response
             const newResponseParts = [...ctx.responseParts, bridge.suggestion];
             const newMetadata = { ...ctx.metadata, request_bridge_intent: bridge.target_intent };
-            return { ...ctx, responseParts: newResponseParts, metadata: newMetadata };
+            // Stop processing after bridging to avoid any other steps interfering
+            return { ...ctx, responseParts: newResponseParts, metadata: newMetadata, stopProcessing: true };
         }
     }
     return ctx;
@@ -322,9 +325,40 @@ const cognitivePipelineV9 = [
 export function executeV9Engine(fullIntent = {}, fingerprint = {}, userProfile = {}, sessionContext = {}) {
     if (!fullIntent || !fullIntent.core_concept) return null;
 
-    // --- MODIFICATION: The sessionContext is now the single source of truth ---
+    // --- <<< START: NEW COMPATIBILITY LAYER FOR "CONVERSATION ROOMS" >>> ---
+    const isNewRoomStructure = fullIntent.hasOwnProperty('conversation_rooms');
+    if (isNewRoomStructure) {
+        if (DEBUG) console.log(`V9 ENGINE: Detected new "Conversation Rooms" structure for intent "${fullIntent.tag}". Adapting...`);
+        let adaptedIntent = JSON.parse(JSON.stringify(fullIntent));
+        adaptedIntent.dialogue_flow = {
+            entry_point: adaptedIntent.dialogue_engine_config?.entry_room,
+            layers: {}
+        };
+        for (const roomName in adaptedIntent.conversation_rooms) {
+            const room = adaptedIntent.conversation_rooms[roomName];
+            let nextState = room.next_room_suggestions ? room.next_room_suggestions[0] : null;
+            if (room.is_resolution_point === true && !nextState) {
+                nextState = 'PROTOCOL_COMPLETE';
+            }
+            adaptedIntent.dialogue_flow.layers[roomName] = {
+                purpose: room.purpose,
+                responses: room.responses,
+                next_state: nextState
+            };
+        }
+        if (adaptedIntent.bridging_logic?.on_resolution?.branching_suggestion?.choices) {
+            adaptedIntent.bridging_logic.on_successful_resolution = 
+                adaptedIntent.bridging_logic.on_resolution.branching_suggestion.choices.map(choice => ({
+                    suggestion: `${choice.title}: ${choice.description}`,
+                    target_intent: choice.target_intent
+                }));
+        }
+        fullIntent = adaptedIntent;
+    }
+    // --- <<< END: NEW COMPATIBILITY LAYER >>> ---
+
     const currentSessionContext = {
-        state: sessionContext.state || fullIntent.dialogue_flow.entry_point, // Start from entry point if no state
+        state: sessionContext.state || fullIntent.dialogue_flow.entry_point,
         turn_counter: sessionContext.turn_counter || 0
     };
 
@@ -344,7 +378,6 @@ export function executeV9Engine(fullIntent = {}, fingerprint = {}, userProfile =
         return { reply: "أنا أفكر في كلماتك. هل يمكنك أن تخبرني المزيد؟", source: 'v9_engine_fallback', metadata: {} };
     }
     
-    // --- MODIFICATION: Persona logic now uses the current state ---
     const personaKey = safeGet(fullIntent, `dynamic_response_logic.persona_logic.${currentSessionContext.state}`, 'the_empathetic_listener');
     const persona = safeGet(knowledgeBase, `PERSONA_PROFILES.${personaKey}`, {});
     
@@ -353,13 +386,19 @@ export function executeV9Engine(fullIntent = {}, fingerprint = {}, userProfile =
         finalReply = `${persona.prefix} ${finalReply}`;
     }
     
-    // --- MODIFICATION: State transition logic is now explicit ---
-    const currentLayer = safeGet(fullIntent, `dialogue_flow.layers.${currentSessionContext.state}`, {});
-    const nextState = currentLayer.next_state || null; // If null, the protocol ends.
-
+    // --- MODIFICATION: State transition logic now respects PROTOCOL_COMPLETE ---
+    let nextState;
+    // If the pipeline ended because of bridging logic, the protocol is complete
+    if (responseContext.metadata.request_bridge_intent) {
+        nextState = 'PROTOCOL_COMPLETE';
+    } else {
+        const currentLayer = safeGet(fullIntent, `dialogue_flow.layers.${currentSessionContext.state}`, {});
+        nextState = currentLayer.next_state || null;
+    }
+    
     const nextSessionContext = { 
         ...currentSessionContext,
-        active_intent: fullIntent.tag, // Keep the protocol active
+        active_intent: fullIntent.tag,
         state: nextState,
         turn_counter: currentSessionContext.turn_counter + 1
     };
@@ -394,9 +433,9 @@ export function executeProtocolStep(protocolPacket, fingerprint, userProfile, se
     }
 
     // --- Strategic Decision: Check if the intent is a modern V9 protocol ---
-    if (full_intent.dialogue_flow && full_intent.dialogue_flow.layers) {
+    // --- MODIFICATION: Also check for the new structure to route to V9 ---
+    if ((full_intent.dialogue_flow && full_intent.dialogue_flow.layers) || full_intent.conversation_rooms) {
         if (DEBUG) console.log(`PROTOCOL EXECUTOR: Engaging V9 Engine for protocol "${full_intent.tag}" at state "${initial_context.state}".`);
-        // Use the powerful V9 engine for structured dialogues
         return executeV9Engine(full_intent, fingerprint, userProfile, initial_context);
     } 
     
