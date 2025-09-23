@@ -1,8 +1,7 @@
-// dynamic_logic_engine.js v11.3-fix-export
+// dynamic_logic_engine.js v11.3-production
 // Full upgrade: universal intent reader, V5 + V9 harmonized, memory + persona + feedback
 // NEW in v11.1: Added Dynamic Room Engine to support new conversational protocols.
-// NEW in v11.2: Added diagnostic console logs to trace execution flow.
-// NEW in v11.3: Fixed duplicate export error for Vercel build compatibility.
+// NEW in v11.3: Fixed export structure for robust module resolution.
 
 // =================================================================
 // START: IMPORTS & CONFIG
@@ -128,7 +127,7 @@ const V5_selfDoubtStep = (ctx) => {
 
 const V5_cognitivePipeline = [V5_emotionalPreambleStep, V5_counterfactualStep, V5_coreSuggestionStep, V5_selfDoubtStep];
 
-export function executeMetacognitiveCore(fullIntent = {}, fingerprint = {}, userProfile = {}, sessionGoal = 'explore') {
+function executeMetacognitiveCore(fullIntent = {}, fingerprint = {}, userProfile = {}, sessionGoal = 'explore') {
     if (!fullIntent?.core_concept) return null;
     let ctx = { responseParts: [], metadata: { intentTag: fullIntent.tag, sessionGoal, persona: 'the_listener' }, fingerprint, userProfile, fullIntent, stopProcessing: false };
     for (const step of V5_cognitivePipeline) if (!ctx.stopProcessing) ctx = step(ctx);
@@ -137,7 +136,7 @@ export function executeMetacognitiveCore(fullIntent = {}, fingerprint = {}, user
     return { reply: finalReply, source: 'metacognitive_core_v5', metadata: { ...ctx.metadata, feedback_request: { prompt: "هل كان هذا مفيدًا في تحقيق هدفك لهذا الحديث؟", goal: sessionGoal, suggestionId: ctx.metadata.chosenSuggestion?.id || null } } };
 }
 
-export function V5_consolidateDailySummary(userProfile) {
+function V5_consolidateDailySummary(userProfile) {
     if (!userProfile?.shortMemory?.length) return userProfile;
     const today = new Date().toISOString().split('T')[0];
     const uniqueNeeds = [...new Set(userProfile.shortMemory.map(t => safeGet(t, 'user_fingerprint.chosenPrimaryNeed', null)).filter(Boolean))];
@@ -145,7 +144,7 @@ export function V5_consolidateDailySummary(userProfile) {
     return { ...userProfile, dailySummaries: { ...(userProfile.dailySummaries || {}), [today]: summary }, shortMemory: [] };
 }
 
-export function V5_updateUserProfileWithFeedback(userProfile, feedback) {
+function V5_updateUserProfileWithFeedback(userProfile, feedback) {
     const { suggestionId, wasHelpful } = feedback;
     const stats = { ...(userProfile.dynamicStats || {}) };
     if (suggestionId) {
@@ -243,7 +242,7 @@ const V9_bridgingLogicStep = (ctx) => {
 
 const cognitivePipelineV9 = [V9_dialogueFlowStep, V9_serviceHookStep, V9_coreSuggestionStep, V9_bridgingLogicStep];
 
-export function executeV9Engine(fullIntent = {}, fingerprint = {}, userProfile = {}, sessionContext = {}) {
+function executeV9Engine(fullIntent = {}, fingerprint = {}, userProfile = {}, sessionContext = {}) {
     if (!fullIntent?.core_concept) return null;
 
     const currentSessionContext = {
@@ -322,47 +321,31 @@ function executeDynamicRoomEngine(fullIntent, fingerprint, userProfile, sessionC
 
 
 // =================================================================
-// SECTION 5: PROTOCOL EXECUTOR (THE MAIN ROUTER) - [MODIFIED]
+// SECTION 5: PROTOCOL EXECUTOR (THE MAIN ROUTER)
 // =================================================================
-export function executeProtocolStep(protocolPacket, fingerprint, userProfile, sessionContext) {
+function executeProtocolStep(protocolPacket, fingerprint, userProfile, sessionContext) {
     const { full_intent, initial_context } = protocolPacket;
 
-    // DEBUG: Checkpoint at the very entrance of the main router
-    console.log("--- DEBUG CHECKPOINT 5: Executor received protocol:", full_intent ? full_intent.tag : "UNDEFINED");
-
     if (!full_intent) {
-        console.log("--- DEBUG EXECUTOR: full_intent is missing! Returning error. ---");
         return { reply: "أنا أفكر في ذلك...", source: "protocol_error", metadata: {} };
     }
 
     // [NEW] Check for the Dynamic Room Engine protocol first
     if (full_intent.dialogue_engine_config?.engine_type === 'dynamic_room_engine' && full_intent.conversation_rooms) {
-        // DEBUG: The most critical checkpoint. Will it enter this block?
-        console.log("--- DEBUG CHECKPOINT 6: SUCCESS! Matched dynamic_room_engine. Executing now... ---");
         return executeDynamicRoomEngine(full_intent, fingerprint, userProfile, initial_context);
     }
     
-    // DEBUG: If it didn't match the first block, log the reason why.
-    console.log("--- DEBUG EXECUTOR: Did NOT match dynamic room engine. Checking other engines... ---");
-    console.log("--- DEBUG REASON: dialogue_engine_config was:", JSON.stringify(full_intent.dialogue_engine_config, null, 2));
-
-
     // Check for V9 Engine (No changes here)
     if (full_intent.dialogue_flow?.layers || full_intent.service_hooks || full_intent.bridging_logic) {
-        if (DEBUG) console.log(`PROTOCOL EXECUTOR: Using V9 Engine for intent "${full_intent.tag}" at state "${initial_context.state}".`);
         return executeV9Engine(full_intent, fingerprint, userProfile, initial_context);
     }
 
     // Check for legacy V5 Engine (No changes here)
     if (full_intent.actionable_suggestions) {
-        if (DEBUG) console.log(`PROTOCOL EXECUTOR: Using legacy V5 Engine for intent "${full_intent.tag}".`);
         return executeMetacognitiveCore(full_intent, fingerprint, userProfile);
     }
 
-    // Fallback if no engine matches (No changes here)
-    if (DEBUG) console.log(`PROTOCOL EXECUTOR: No executable parts for intent "${full_intent.tag}".`);
-    // DEBUG: Log if it reached the end without any match
-    console.log("--- DEBUG CHECKPOINT 7: No engine matched. Returning fallback. ---");
+    // Fallback if no engine matches
     return { reply: "هناك فكرة لدي، لكن دعني أنظمها أولاً. ماذا يدور في ذهنك الآن؟", source: "protocol_no_action", metadata: {} };
 }
 
