@@ -243,6 +243,8 @@ function V9_chooseSuggestionHybrid(candidates = [], userProfile = {}, fingerprin
 /* ========================================================================== */
 /* V9 SECTION 3: THE NEW V9 COGNITIVE PIPELINE STEPS                          */
 /* ========================================================================== */
+
+// --- <<< START: FINAL FIX - MAKING DIALOGUE STEP SMARTER >>> ---
 const V9_dialogueFlowStep = (ctx) => {
     const { fullIntent, sessionContext } = ctx;
     const sessionState = sessionContext.state;
@@ -250,8 +252,16 @@ const V9_dialogueFlowStep = (ctx) => {
     const layer = safeGet(fullIntent, `dialogue_flow.layers.${layerKey}`);
 
     if(layer && layer.responses) {
-        const response = selectRandom(layer.responses);
-        const responseText = (typeof response === 'object') ? [response.opener, response.question].filter(Boolean).join('\n') : response;
+        let response = selectRandom(layer.responses);
+        
+        // If the selected response is itself an array (nested arrays),
+        // pick a random item from that inner array.
+        if (Array.isArray(response)) {
+            response = selectRandom(response);
+        }
+
+        const responseText = (typeof response === 'object' && response !== null) ? [response.opener, response.question].filter(Boolean).join('\n') : response;
+        
         if (responseText) {
             const newResponseParts = [responseText];
             const stopHere = layer.next_state === "L3_Tool_Selection";
@@ -260,6 +270,8 @@ const V9_dialogueFlowStep = (ctx) => {
     }
     return ctx;
 };
+// --- <<< END: FINAL FIX >>> ---
+
 const V9_serviceHookStep = (ctx) => {
     const { fullIntent, fingerprint } = ctx;
     const calmingHook = safeGet(fullIntent, 'service_hooks.calming_service');
