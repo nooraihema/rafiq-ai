@@ -1,11 +1,15 @@
-// intelligence/HybridComposer.js v6.1 - The Decisive, Conscious & Robust Maestro
-// Backwards-compatible upgrade of v6.0
-// - Keeps original design & functions
-// - Fixes candidate selection (uses analyzeCandidates scores)
-// - Improves smartWeave with persona-aware merging rules
-// - Adds anti-redundancy (dedupe sentences) and safety/robustness checks
-// - Attaches clean, well-formed metadata and memory passport
+// intelligence/HybridComposer.js v7.1 - The Decisive, Conscious & Insight-Enhanced Maestro
+// This is an upgrade of v6.1. It preserves all original logic.
+// NEW in 7.1:
+// - Imports the InsightGenerator module.
+// - After making its own final decision, it passes that decision to the
+//   InsightGenerator for a final enhancement pass.
+// - This maintains robustness while adding a layer of deep, knowledge-based insight.
 // Author: iterative upgrade for Rafiq system
+
+// <<< STEP 1: استيراد محرك التحسين الجديد >>>
+import InsightEnhancer from './InsightGenerator.js';
+
 
 const DEBUG = false;
 
@@ -195,11 +199,9 @@ function smartWeave(activeCandidate, newCandidate, fingerprint, scoredCandidates
 
     // 2) empathic + pragmatic (or vice versa) => empathic intro + pragmatic steps (ideal merge)
     if ((activePersona === 'empathic' && newPersona === 'pragmatic') || (activePersona === 'pragmatic' && newPersona === 'empathic')) {
-        // determine which is empathic and which is pragmatic
         const empathic = (activePersona === 'empathic') ? activeCandidate : newCandidate;
         const pragmatic = (activePersona === 'pragmatic') ? activeCandidate : newCandidate;
         const intro = firstSentence(empathic.reply) || "أرى أن هذا الوضع صعب.";
-        // try to extract a short practical fragment from pragmatic
         const practical = firstSentence(pragmatic.reply).length > 20 ? firstSentence(pragmatic.reply) : PERSONA_FUNCS.pragmatic(pragmatic).segment;
         const reply = `${intro}\n\n${practical}\n\n${createEmpathyBridge()}`;
         return {
@@ -212,13 +214,8 @@ function smartWeave(activeCandidate, newCandidate, fingerprint, scoredCandidates
 
     // 3) both pragmatic => merge practical steps cautiously (prefer higher-calibrated candidate)
     if (activePersona === 'pragmatic' && newPersona === 'pragmatic') {
-        // pick top-two practical fragments (avoid long duplication)
-        const aFrag = firstSentence(activeCandidate.reply) || PERSONA_FUNCS.pragmatic(activeCandidate).segment;
-        const bFrag = firstSentence(newCandidate.reply) || PERSONA_FUNCS.pragmatic(newCandidate).segment;
-        // order by scoredCandidates calibratedScore if available
         let ordered = [activeCandidate, newCandidate];
         if (Array.isArray(scoredCandidates) && scoredCandidates.length) {
-          // find their scores
           const mapScore = (c) => (scoredCandidates.find(s => s.candidate === c)?.calibratedScore ?? 0);
           ordered = [activeCandidate, newCandidate].sort((x,y) => mapScore(y) - mapScore(x));
         }
@@ -333,10 +330,8 @@ function synthesizeHybridResponse(candidates = [], briefing = {}, context = {}) 
     // RULE 2: Trust active protocol (choose the best candidate representing it)
     else if (activeCandidate) {
       if (DEBUG) console.log("MAESTRO: Rule 2 - Trust active protocol (selected by score).");
-      // ensure we pick the best-scored representative for the active protocol
       const rep = scored.find(s => s.candidate === activeCandidate) || scored.find(s => safeStr(s.candidate.source).includes(activeProtocol.intent.tag));
       finalDecision = rep ? rep.candidate : activeCandidate;
-      // attach metadata if missing
       finalDecision = {
         ...finalDecision,
         metadata: { ...(finalDecision.metadata || {}), selected_by: 'active_protocol', ts: nowISO() }
@@ -368,30 +363,43 @@ function synthesizeHybridResponse(candidates = [], briefing = {}, context = {}) 
       return { reply: "أنا هنا معاك — ممكن توضّح أكتر؟", source: "hybrid_composer_safe_fallback", metadata: { ts: nowISO() } };
     }
 
+    // <<< STEP 2: مرحلة التحسين النهائية >>>
+    // =========================================================================
+    // بعد اتخاذ القرار الأولي، نقوم بتمريره إلى محرك التحسين لإضافة طبقة من البصيرة.
+    // المحرك سيقرر إما تحسين الرد أو إعادته كما هو.
+    const insightContext = {
+      user_message: fingerprint.originalMessage || "",
+      // يمكنك إضافة المزيد من السياق هنا إذا لزم الأمر
+    };
+    let enhancedDecision = InsightEnhancer.enhanceDecision(finalDecision, scored, insightContext);
+    // =========================================================================
+
+
+    // <<< STEP 3: استخدام الرد المحسن ومتابعة العمليات عليه >>>
     // Attach memory passport if available on primaryProtocolForMemory
     const primaryProtocolForMemory = newCandidate || activeCandidate;
     if (primaryProtocolForMemory && primaryProtocolForMemory.metadata?.nextSessionContext) {
-      finalDecision.metadata = finalDecision.metadata || {};
-      finalDecision.metadata.nextSessionContext = primaryProtocolForMemory.metadata.nextSessionContext;
+      enhancedDecision.metadata = enhancedDecision.metadata || {};
+      enhancedDecision.metadata.nextSessionContext = primaryProtocolForMemory.metadata.nextSessionContext;
       if (DEBUG) console.log("MAESTRO: attached memory passport.");
     }
 
-    // Add multi-voice note if not a weaver product (preserve original behavior)
-    const src = safeStr(finalDecision.source || '');
-    if (!src.includes('weaver') && !src.includes('maestro_weaver')) {
-      finalDecision.reply = `${finalDecision.reply}\n\n[ملحوظة: تم توليد الرد من مزيج متعدد الأصوات.]`;
+    // Add multi-voice note if not a weaver or enhancer product (preserve original behavior)
+    const src = safeStr(enhancedDecision.source || '');
+    if (!src.includes('weaver') && !src.includes('maestro_weaver') && !src.includes('insight')) {
+      enhancedDecision.reply = `${enhancedDecision.reply}\n\n[ملحوظة: تم توليد الرد من مزيج متعدد الأصوات.]`;
     }
 
     // Anti-redundancy: de-duplicate sentences and safe-truncate
-    finalDecision.reply = dedupeSentences(finalDecision.reply);
-    finalDecision.reply = safeTruncateText(finalDecision.reply, 2500);
+    enhancedDecision.reply = dedupeSentences(enhancedDecision.reply);
+    enhancedDecision.reply = safeTruncateText(enhancedDecision.reply, 2500);
 
     // Ensure metadata cleanliness
-    finalDecision.metadata = finalDecision.metadata || {};
-    finalDecision.metadata.produced_at = finalDecision.metadata.produced_at || nowISO();
-    finalDecision.metadata.produced_by = finalDecision.metadata.produced_by || 'hybridcomposer_v6.1';
+    enhancedDecision.metadata = enhancedDecision.metadata || {};
+    enhancedDecision.metadata.produced_at = enhancedDecision.metadata.produced_at || nowISO();
+    enhancedDecision.metadata.produced_by = enhancedDecision.metadata.produced_by || 'hybridcomposer_v7.1_enhanced';
 
-    return finalDecision;
+    return enhancedDecision;
 
   } catch (err) {
     // In case anything goes wrong, don't break the app — return safe empathic fallback
@@ -408,4 +416,3 @@ function synthesizeHybridResponse(candidates = [], briefing = {}, context = {}) 
    Default export
    ========================= */
 export default { synthesizeHybridResponse };
-
