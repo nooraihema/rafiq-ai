@@ -1,14 +1,14 @@
-// intelligence/HybridComposer.js v7.1 - The Decisive, Conscious & Insight-Enhanced Maestro
+// intelligence/HybridComposer.js v7.2 - The Decisive, Conscious & Insight-Enhanced Maestro
 // This is an upgrade of v6.1. It preserves all original logic.
-// NEW in 7.1:
-// - Imports the InsightGenerator module.
+// NEW in 7.1/7.2:
+// - Correctly imports the 'enhanceDecision' function from the InsightGenerator module.
 // - After making its own final decision, it passes that decision to the
 //   InsightGenerator for a final enhancement pass.
-// - This maintains robustness while adding a layer of deep, knowledge-based insight.
+// - Added console.log for tracing the enhancement step.
 // Author: iterative upgrade for Rafiq system
 
-// <<< STEP 1: استيراد محرك التحسين الجديد >>>
-import InsightEnhancer from './InsightGenerator.js';
+// <<< FIX 1: تغيير طريقة الاستيراد لتكون صحيحة >>>
+import { enhanceDecision as enhanceDecisionWithInsight } from './InsightGenerator.js';
 
 
 const DEBUG = false;
@@ -257,11 +257,9 @@ function smartWeave(activeCandidate, newCandidate, fingerprint, scoredCandidates
 
 /* =========================
    API: synthesizeHybridResponse (The Final, Decisive Logic)
-   v6.1 improvements:
-   - use analyzed (scored) candidates for reliable choices
-   - persona-aware smartWeave merging
-   - dedupe and safe truncation
-   - robust metadata fields
+   v7.2 improvements:
+   - Correctly imports and calls the Insight Enhancer.
+   - Adds console logs for tracing the enhancement step.
    ========================= */
 function synthesizeHybridResponse(candidates = [], briefing = {}, context = {}) {
   const { tracker = null, fingerprint = {} } = context;
@@ -363,15 +361,24 @@ function synthesizeHybridResponse(candidates = [], briefing = {}, context = {}) 
       return { reply: "أنا هنا معاك — ممكن توضّح أكتر؟", source: "hybrid_composer_safe_fallback", metadata: { ts: nowISO() } };
     }
 
-    // <<< STEP 2: مرحلة التحسين النهائية >>>
+    // <<< STEP 2: مرحلة التحسين النهائية (مع التتبع والإصلاح) >>>
     // =========================================================================
-    // بعد اتخاذ القرار الأولي، نقوم بتمريره إلى محرك التحسين لإضافة طبقة من البصيرة.
-    // المحرك سيقرر إما تحسين الرد أو إعادته كما هو.
+    console.log("MAESTRO: Handing off to Insight Enhancer. Initial decision source:", finalDecision.source);
+
     const insightContext = {
       user_message: fingerprint.originalMessage || "",
       // يمكنك إضافة المزيد من السياق هنا إذا لزم الأمر
     };
-    let enhancedDecision = InsightEnhancer.enhanceDecision(finalDecision, scored, insightContext);
+
+    // <<< FIX 2: تغيير طريقة الاستدعاء لتكون صحيحة >>>
+    let enhancedDecision = enhanceDecisionWithInsight(finalDecision, scored, insightContext);
+    
+    // <<< TRACING: إضافة تتبع للنتيجة >>>
+    if (enhancedDecision.source !== finalDecision.source) {
+        console.log(`MAESTRO: Insight Enhancer SUCCEEDED. New source: ${enhancedDecision.source}`);
+    } else {
+        console.log("MAESTRO: Insight Enhancer chose to fallback to the original decision.");
+    }
     // =========================================================================
 
 
@@ -397,7 +404,7 @@ function synthesizeHybridResponse(candidates = [], briefing = {}, context = {}) 
     // Ensure metadata cleanliness
     enhancedDecision.metadata = enhancedDecision.metadata || {};
     enhancedDecision.metadata.produced_at = enhancedDecision.metadata.produced_at || nowISO();
-    enhancedDecision.metadata.produced_by = enhancedDecision.metadata.produced_by || 'hybridcomposer_v7.1_enhanced';
+    enhancedDecision.metadata.produced_by = enhancedDecision.metadata.produced_by || 'hybridcomposer_v7.2_enhanced';
 
     return enhancedDecision;
 
