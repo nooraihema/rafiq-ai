@@ -163,10 +163,15 @@ export default async function handler(req, res) {
     if (DEBUG) console.log(`MAESTRO'S DESK: Received ${uniqueCandidates.length} unique candidates for final review.`);
     
     // 3. The Maestro (HybridComposer) receives ALL expert opinions and the briefing to make the final composition.
+    // --- [التعديل الوحيد] --- تم تعديل هذا الاستدعاء لتمرير رسالة المستخدم بشكل صحيح
     responsePayload = HybridComposer.synthesizeHybridResponse(
         uniqueCandidates, 
         briefing, // Pass the full briefing for strategic context
-        { fingerprint, tracker }
+        { 
+          fingerprint, 
+          tracker, 
+          user_message: rawMessage // ضمان وصول الرسالة إلى InsightGenerator عبر السياق
+        }
     );
     
     if (!responsePayload || !responsePayload.reply) {
