@@ -3,7 +3,7 @@
 // Final Fusion: HybridComposer + NarrativeWeaver post-process
 // Exports: synthesizeHybridResponse(candidates, briefing, context, options)
 
-import { weaveNarrativeResponse } from './InsightGenerator.js';
+import  weaveNarrativeResponse  from './InsightGenerator.js';
 
 const DEBUG = false;
 
