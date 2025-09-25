@@ -77,11 +77,11 @@ function applyContextBuffer(reply, context, bufferSize = 3){
 
 // ------------------ Knowledge loader (graceful) ------------------
 (function loadLexicons() {
-  console.log('[InsightGenerator] Initializing: Loading lexicons...');
+  // console.log('[InsightGenerator] Initializing: Loading lexicons...'); // Kept for debugging if needed
   try {
     const lexiconDir = path.join(process.cwd(), 'lexicons');
     if(!fs.existsSync(lexiconDir)) {
-      console.log('[InsightGenerator] Lexicon directory not found. KB will be empty.');
+      // console.log('[InsightGenerator] Lexicon directory not found. KB will be empty.');
       return;
     }
     const files = fs.readdirSync(lexiconDir).filter(f=>f.endsWith('.json'));
@@ -105,17 +105,17 @@ function applyContextBuffer(reply, context, bufferSize = 3){
           }
         }
       }catch(e){
-        console.warn(`[InsightGenerator] Warning: Skipping malformed lexicon file: ${file}`);
+        // console.warn(`[InsightGenerator] Warning: Skipping malformed lexicon file: ${file}`);
         continue;
       }
     }
-    console.log(`[InsightGenerator] Lexicons loaded successfully. ${Object.keys(KNOWLEDGE_BASE).length} concepts, ${Object.keys(INSIGHT_RULES).length} rules.`);
+    // console.log(`[InsightGenerator] Lexicons loaded successfully. ${Object.keys(KNOWLEDGE_BASE).length} concepts, ${Object.keys(INSIGHT_RULES).length} rules.`);
   }catch(e){
-    console.error('[InsightGenerator] FATAL: Lexicon loader failed.', e);
+    // console.error('[InsightGenerator] FATAL: Lexicon loader failed.', e);
   }
 })();
 
-// ------------------ Concept mapping ------------------
+// ... (All other helper functions remain the same) ...
 function mapToConcept(token){
   const norm = safeStr(token).toLowerCase();
   return CONCEPT_MAP[norm] || null;
@@ -135,13 +135,9 @@ function extractConceptsFromText(text, topN = 4){
   }
   return uniq(out);
 }
-
-// ------------------ Build concept graph ------------------
 function buildConceptGraph(user_message, allCandidates){
-  console.log('[InsightGenerator:buildConceptGraph] Building graph...');
   const graph = { nodes:{}, edges:{} };
   const userConcepts = extractConceptsFromText(user_message||"",6);
-  console.log('[InsightGenerator:buildConceptGraph] Extracted user concepts:', userConcepts);
   userConcepts.forEach((c,i)=> graph.nodes[c] = (graph.nodes[c]||0) + (1.2/(1+i)));
   for(const sc of allCandidates){
     const reply = safeStr(sc.candidate?.reply || sc.reply || "");
@@ -157,7 +153,6 @@ function buildConceptGraph(user_message, allCandidates){
         graph.edges[key].supporters.push({ source: safeStr(sc.candidate?.source || sc.source || "unknown"), score: weight, text: reply });
       }
     }
-    // cross-link user concepts
     for(const uc of userConcepts){
       for(const cc of ccs){
         const key = uc < cc ? `${uc}::${cc}` : `${cc}::${uc}`;
@@ -167,13 +162,9 @@ function buildConceptGraph(user_message, allCandidates){
       }
     }
   }
-  console.log('[InsightGenerator:buildConceptGraph] Graph built. Nodes:', Object.keys(graph.nodes).length, 'Edges:', Object.keys(graph.edges).length);
   return graph;
 }
-
-// ------------------ Attention reweighting ------------------
 function applyGraphAttention(graph, context){
-  console.log('[InsightGenerator:applyGraphAttention] Applying attention...');
   const userMsg = safeStr(context?.user_message || "");
   const nodeAttention = {};
   const keys = Object.keys(graph.nodes);
@@ -195,11 +186,8 @@ function applyGraphAttention(graph, context){
   }
   const mx = Math.max(...Object.values(nodeAttention), 1e-6);
   for(const k in nodeAttention) nodeAttention[k] = nodeAttention[k] / mx;
-  console.log('[InsightGenerator:applyGraphAttention] Attention map:', nodeAttention);
   return nodeAttention;
 }
-
-// ------------------ Scoring pairs/triples ------------------
 function scorePair(a,b,graph,allCandidates,context,nodeAttention){
   const edgeKey = a < b ? `${a}::${b}` : `${b}::${a}`;
   const edgeObj = graph.edges[edgeKey] || { weight:0, supporters:[] };
@@ -250,8 +238,6 @@ function scoreTriple(triple, graph, allCandidates, INSIGHT_RULES, context, nodeA
   const raw = (p1.rawScore + p2.rawScore + p3.rawScore)/3 - 0.18;
   return { triple, rawScore: raw, components: [p1,p2,p3] };
 }
-
-// ------------------ Evidence picking ------------------
 function pickEvidenceFromCandidate(candidate, concept, maxEvidence=2, userMsg=""){
   if(!candidate || !candidate.reply) return [];
   const sents = safeStr(candidate.reply).split(/(?<=[.؟!?])\s+/).map(s=>s.trim()).filter(Boolean);
@@ -262,10 +248,7 @@ function pickEvidenceFromCandidate(candidate, concept, maxEvidence=2, userMsg=""
   }
   return sents.slice(0,maxEvidence);
 }
-
-// ------------------ Narrative Weaver (uses KB + gems) ------------------
 function extractGems(allScoredCandidates){
-  console.log('[InsightGenerator:extractGems] Extracting empathy and action gems...');
   const gems = { empathy:null, action:null };
   let be=-1, ba=-1;
   for(const sc of allScoredCandidates){
@@ -280,11 +263,9 @@ function extractGems(allScoredCandidates){
   }
   if(!gems.empathy) gems.empathy = firstSentence(allScoredCandidates[0]?.candidate?.reply || allScoredCandidates[0]?.reply || "");
   if(!gems.action) gems.action = firstSentence(allScoredCandidates[0]?.candidate?.reply || allScoredCandidates[0]?.reply || "");
-  console.log('[InsightGenerator:extractGems] Gems found:', gems);
   return gems;
 }
 function findDominantNarrative(allScoredCandidates, context){
-  console.log('[InsightGenerator:findDominantNarrative] Searching for dominant narrative...');
   const userMessage = safeStr(context?.user_message || "");
   const conceptScores = {};
   const userConcepts = extractConceptsFromText(userMessage,4);
@@ -295,36 +276,21 @@ function findDominantNarrative(allScoredCandidates, context){
     });
   });
   const concepts = Object.keys(conceptScores).sort((a,b)=> conceptScores[b] - conceptScores[a]);
-  if(concepts.length < 2) {
-    console.log('[InsightGenerator:findDominantNarrative] Not enough concepts to find a narrative.');
-    return null;
-  }
+  if(concepts.length < 2) return null;
   for(let i=0;i<Math.min(concepts.length,4);i++){
     for(let j=i+1;j<Math.min(concepts.length,4);j++){
       const a=concepts[i], b=concepts[j];
       const r = INSIGHT_RULES[`${a}_${b}`] || INSIGHT_RULES[`${b}_${a}`];
-      if(r) {
-        const narrative = { insight: r, primaryConcept: a, secondaryConcept: b, strength: (conceptScores[a]+conceptScores[b]) };
-        console.log('[InsightGenerator:findDominantNarrative] Dominant narrative found:', narrative);
-        return narrative;
-      }
+      if(r) return { insight: r, primaryConcept: a, secondaryConcept: b, strength: (conceptScores[a]+conceptScores[b]) };
     }
   }
-  console.log('[InsightGenerator:findDominantNarrative] No matching narrative rule found.');
   return null;
 }
 function weaveNarrativeResponse(allScoredCandidates, context){
-  console.log('[InsightGenerator:weaveNarrativeResponse] Attempting to weave a narrative response...');
-  if(!Array.isArray(allScoredCandidates) || allScoredCandidates.length < 2 || !context?.user_message) {
-    console.log('[InsightGenerator:weaveNarrativeResponse] Pre-conditions not met. Aborting.');
-    return null;
-  }
+  if(!Array.isArray(allScoredCandidates) || allScoredCandidates.length < 2 || !context?.user_message) return null;
   try{
     const narrative = findDominantNarrative(allScoredCandidates, context);
-    if(!narrative || (narrative.strength || 0) < MIN_NARRATIVE_STRENGTH) {
-      console.log(`[InsightGenerator:weaveNarrativeResponse] Narrative strength (${narrative?.strength || 0}) is below threshold (${MIN_NARRATIVE_STRENGTH}). Aborting.`);
-      return null;
-    }
+    if(!narrative || (narrative.strength || 0) < MIN_NARRATIVE_STRENGTH) return null;
     const gems = extractGems(allScoredCandidates);
     const primaryData = KNOWLEDGE_BASE[narrative.primaryConcept] || {};
     let finalAction = gems.action || "هل تحب نجرب خطوة صغيرة الآن؟";
@@ -333,20 +299,14 @@ function weaveNarrativeResponse(allScoredCandidates, context){
       finalAction = `كخطوة أولى بسيطة، هل تقدر تجرب: "${sug}"؟`;
     }
     const finalReply = `${gems.empathy}. ${narrative.insight}. ${finalAction}`;
-    const result = { reply: polishInsight(finalReply), source: "narrative_weaver_v5.1", confidence: 0.95, metadata: { narrative: `${narrative.primaryConcept}_to_${narrative.secondaryConcept}`, components: { empathy: gems.empathy, action: gems.action } } };
-    console.log('[InsightGenerator:weaveNarrativeResponse] Successfully weaved narrative response:', result);
-    return result;
+    return { reply: polishInsight(finalReply), source: "narrative_weaver_v5.1", confidence: 0.95, metadata: { narrative: `${narrative.primaryConcept}_to_${narrative.secondaryConcept}`, components: { empathy: gems.empathy, action: gems.action } } };
   }catch(e){
-    console.error('[InsightGenerator:weaveNarrativeResponse] Error during narrative weaving.', e);
     return null;
   }
 }
 
 // ------------------ Main export ------------------
 export function generateInsight(allRawCandidates = [], context = {}, options = {}){
-  console.log(`\n\n- - - [InsightGenerator ENTRY] ---`);
-  console.log(`[InsightGenerator] Received ${allRawCandidates?.length || 0} candidates. User message: "${context?.user_message}"`);
-  
   const {
     topK = 6,
     triableStrategies = ["rule_first","attention_then_rule","attention_only","triple_boost","fallback"],
@@ -354,61 +314,39 @@ export function generateInsight(allRawCandidates = [], context = {}, options = {
     maxEvidence = 2
   } = options || {};
 
-  // normalize candidates: accept either scored forms or plain {reply,source,metadata}
   const normalized = (Array.isArray(allRawCandidates) ? allRawCandidates : []).map(c => {
     if(!c) return null;
     if(c.candidate && c.calibratedScore !== undefined) return c;
     return { candidate: c, calibratedScore: Number(c.calibratedScore ?? c.score ?? c.baseConf ?? 0.6), personaAvg: 0, novelty: 0, baseConf: Number(c.baseConf ?? c.score ?? 0.6) };
   }).filter(Boolean);
 
-  if(normalized.length === 0) {
-    console.log('[InsightGenerator] No valid candidates after normalization. Returning null.');
-    return null;
-  }
-  console.log(`[InsightGenerator] Normalized to ${normalized.length} candidates. Top candidate score: ${normalized[0]?.calibratedScore.toFixed(3)}`);
+  if(normalized.length === 0) return null;
 
   const hybrid = normalized.find(s => safeStr(s.candidate?.source || '').toLowerCase().includes('hybrid')) || null;
 
   const graph = buildConceptGraph(context?.user_message || "", normalized);
   const allConcepts = uniq(Object.keys(graph.nodes));
-  console.log('[InsightGenerator] All unique concepts from graph:', allConcepts);
-
   const narrativeCandidate = weaveNarrativeResponse(normalized, context);
   if(narrativeCandidate){
-    console.log('[InsightGenerator] Narrative Weaving produced a candidate:', narrativeCandidate);
-    const hasEvidence = true;
-    if(narrativeCandidate.confidence > 0.7 && hasEvidence) {
-      console.log('[InsightGenerator] Narrative candidate is strong. Returning it early.');
-      return narrativeCandidate;
-    }
-  } else {
-    console.log('[InsightGenerator] Narrative Weaving did not produce a candidate.');
+    const hasEvidence = true; 
+    if(narrativeCandidate.confidence > 0.7 && hasEvidence) return narrativeCandidate;
   }
 
   if(allConcepts.length < 2){
-    console.log('[InsightGenerator] Insufficient concepts (< 2). Falling back to top candidate.');
     const top = normalized.slice().sort((a,b)=> (b.calibratedScore - a.calibratedScore))[0];
     const fallbackCandidate = hybrid?.candidate || top?.candidate || {};
     const reply = polishInsight(safeStr(fallbackCandidate.reply || ""));
-    const result = { reply, source: hybrid ? "hybrid_fallback" : "direct_fallback", confidence: top?.calibratedScore ?? 0.6, metadata: { reason: "insufficient_concepts", produced_at: nowISO(), components: normalized.map(n=>safeStr(n.candidate?.source)) } };
-    console.log('[InsightGenerator] Fallback result:', result);
-    return result;
+    return { reply, source: hybrid ? "hybrid_fallback" : "direct_fallback", confidence: top?.calibratedScore ?? 0.6, metadata: { reason: "insufficient_concepts", produced_at: nowISO(), components: normalized.map(n=>safeStr(n.candidate?.source)) } };
   }
 
   const nodeAttention = applyGraphAttention(graph, context);
   const pairs = enumeratePairs(allConcepts).map(([a,b]) => scorePair(a,b,graph,normalized,context,nodeAttention));
   const triples = allConcepts.length >=3 ? enumerateTriples(allConcepts).map(t => scoreTriple(t,graph,normalized,INSIGHT_RULES,context,nodeAttention)) : [];
-  console.log(`[InsightGenerator] Scored ${pairs.length} pairs and ${triples.length} triples.`);
-  const topPairs = pairs.slice().sort((a,b)=>b.rawScore - a.rawScore).slice(0, 3);
-  console.log('[InsightGenerator] Top 3 scored pairs:', topPairs.map(p => ({ pair: `${p.a}-${p.b}`, score: p.rawScore.toFixed(3), rule: !!p.rule })));
 
-  // helper builders
   function buildFromPair(chosen){
-    console.log('[InsightGenerator:buildFromPair] Building response from pair:', { a: chosen.a, b: chosen.b });
     const a = chosen.a, b = chosen.b;
     const ruleText = chosen.rule || INSIGHT_RULES[`${a}_${b}`] || INSIGHT_RULES[`${b}_${a}`] || null;
     const insightCore = ruleText ? ruleText : `أرى علاقة بين "${a}" و "${b}" قد تكون مهمة بالنسبة لك.`;
-    console.log('[InsightGenerator:buildFromPair] Insight Core:', insightCore);
     const supportersSrcs = uniq((chosen.supporters||[]).map(s=>s.source)).slice(0,6);
     const evidenceParts = [];
     for(const src of supportersSrcs.slice(0,4)){
@@ -425,7 +363,6 @@ export function generateInsight(allRawCandidates = [], context = {}, options = {
         if(evidenceParts.length >= 2) break;
       }
     }
-    console.log('[InsightGenerator:buildFromPair] Evidence parts:', evidenceParts);
     if(chosen.conflict) evidenceParts.unshift("توجد تباينات بين المصادر — من الأفضل توضيحها قبل اتخاذ خطوة.");
     const gems = extractGems(normalized);
     const tone = personaTonePreference || (context?.detected_emotions && context.detected_emotions.includes('sadness') ? 'empathic' : 'logical');
@@ -439,17 +376,13 @@ export function generateInsight(allRawCandidates = [], context = {}, options = {
     const raw = chosen.rawScore || 0;
     const confidence = clamp(0.45 + (Math.tanh(raw/3)/1.2), 0.45, 0.98);
     const metadata = { source: "insight_generator_v5.1", chosen_pair: [a,b], confidence, produced_at: nowISO(), reasoning: chosen };
-    const result = { reply: finalReply, source: "insight_generator_v5.1", confidence, metadata };
-    console.log('[InsightGenerator:buildFromPair] Final built object:', { reply: result.reply, source: result.source, confidence: result.confidence });
-    return result;
+    return { reply: finalReply, source: "insight_generator_v5.1", confidence, metadata };
   }
 
   function buildFromTriple(chosenTriple){
-    console.log('[InsightGenerator:buildFromTriple] Building response from triple:', chosenTriple.triple);
     const [a,b,c] = chosenTriple.triple;
     const comp = chosenTriple.components || [];
     const insightCore = `أرى اتصالًا بين "${a}", "${b}" و "${c}" قد يوضّح جزءًا من اللي بتحس به.`;
-    console.log('[InsightGenerator:buildFromTriple] Insight Core:', insightCore);
     const evidenceParts = [];
     const used = new Set();
     for(const part of comp){
@@ -475,7 +408,6 @@ export function generateInsight(allRawCandidates = [], context = {}, options = {
         if(evidenceParts.length >= 2) break;
       }
     }
-    console.log('[InsightGenerator:buildFromTriple] Evidence parts:', evidenceParts);
     const gems = extractGems(normalized);
     const callToAction = gems.action || "نقدر نجرب خطوة بسيطة الآن؟";
     let finalReply = `${gems.empathy}. ${insightCore}\n\n${evidenceParts.join("\n\n")}\n\n${callToAction}`;
@@ -485,87 +417,57 @@ export function generateInsight(allRawCandidates = [], context = {}, options = {
     finalReply = triableReply(finalReply, variants);
     const raw = chosenTriple.rawScore || 0;
     const confidence = clamp(0.45 + (Math.tanh(raw/3)/1.2), 0.45, 0.98);
-    const result = { reply: finalReply, source: "insight_generator_v5.1_triple", confidence, metadata: { chosen_triple: chosenTriple.triple, produced_at: nowISO(), reasoning: chosenTriple } };
-    console.log('[InsightGenerator:buildFromTriple] Final built object:', { reply: result.reply, source: result.source, confidence: result.confidence });
-    return result;
+    return { reply: finalReply, source: "insight_generator_v5.1_triple", confidence, metadata: { chosen_triple: chosenTriple.triple, produced_at: nowISO(), reasoning: chosenTriple } };
   }
 
   // Triable strategies
-  // --- [التصحيح] --- تم إضافة السطر المفقود لإصلاح خطأ ReferenceError
-  const strategies = triableStrategies;
-  console.log('[InsightGenerator] Starting triable strategies loop:', strategies);
+  // --- [التصحيح] --- تم إضافة هذا السطر لإصلاح خطأ ReferenceError
+  const strategies = triableStrategies; 
   for(const strat of strategies){
-    console.log(`[InsightGenerator] --- Attempting Strategy: ${strat} ---`);
     if(strat === "rule_first"){
       const withRule = pairs.filter(p=> !!p.rule).sort((x,y)=> y.rawScore - x.rawScore);
       if(withRule.length){
-        console.log(`[InsightGenerator:strat:${strat}] Found ${withRule.length} pairs with a KB rule. Trying best one.`);
         const candidate = buildFromPair(withRule[0]);
-        if(candidate && candidate.confidence > 0.5) {
-            console.log(`[InsightGenerator:strat:${strat}] Candidate passed confidence check. Returning.`);
-            return candidate;
-        }
-      } else {
-        console.log(`[InsightGenerator:strat:${strat}] No pairs with KB rule found.`);
+        if(candidate && candidate.confidence > 0.5) return candidate;
       }
     }
     if(strat === "attention_then_rule"){
       const ordered = pairs.slice().sort((x,y)=> (y.rawScore + (y.rule?0.25:0)) - (x.rawScore + (x.rule?0.25:0)));
       if(ordered.length){
-        console.log(`[InsightGenerator:strat:${strat}] Sorted all pairs by score + rule bonus. Trying best one.`);
         const candidate = buildFromPair(ordered[0]);
-        if(candidate && candidate.confidence > 0.5) {
-            console.log(`[InsightGenerator:strat:${strat}] Candidate passed confidence check. Returning.`);
-            return candidate;
-        }
+        if(candidate && candidate.confidence > 0.5) return candidate;
       }
     }
     if(strat === "attention_only"){
       const ordered = pairs.slice().sort((x,y)=> y.rawScore - x.rawScore);
       if(ordered.length){
-        console.log(`[InsightGenerator:strat:${strat}] Sorted all pairs by raw score only. Trying best one.`);
         const candidate = buildFromPair(ordered[0]);
-        if(candidate && candidate.confidence > 0.48) {
-            console.log(`[InsightGenerator:strat:${strat}] Candidate passed confidence check. Returning.`);
-            return candidate;
-        }
+        if(candidate && candidate.confidence > 0.48) return candidate;
       }
     }
     if(strat === "triple_boost"){
       if(triples.length){
         const bestTriple = triples.slice().sort((x,y)=> y.rawScore - x.rawScore)[0];
         if(bestTriple && bestTriple.rawScore > (pairs[0]?.rawScore || 0) + 0.12){
-          console.log(`[InsightGenerator:strat:${strat}] Best triple score is significantly higher than best pair. Trying triple.`);
           const candidate = buildFromTriple(bestTriple);
-          if(candidate && candidate.confidence > 0.5) {
-            console.log(`[InsightGenerator:strat:${strat}] Candidate passed confidence check. Returning.`);
-            return candidate;
-          }
+          if(candidate && candidate.confidence > 0.5) return candidate;
         }
       }
     }
     if(strat === "fallback"){
-      console.log(`[InsightGenerator:strat:${strat}] Reached fallback strategy.`);
       if(hybrid && hybrid.candidate && safeStr(hybrid.candidate.reply).length > 10){
         const reply = polishInsight(safeStr(hybrid.candidate.reply));
-        const result = { reply, source: "insight_generator_fallback_to_hybrid", confidence: hybrid.calibratedScore ?? 0.6, metadata: { reason: "fallback_to_hybrid", produced_at: nowISO() } };
-        console.log(`[InsightGenerator:strat:${strat}] Falling back to Hybrid candidate:`, result);
-        return result;
+        return { reply, source: "insight_generator_fallback_to_hybrid", confidence: hybrid.calibratedScore ?? 0.6, metadata: { reason: "fallback_to_hybrid", produced_at: nowISO() } };
       }
       const top = normalized.slice().sort((a,b)=> b.calibratedScore - a.calibratedScore)[0];
       const reply = polishInsight(safeStr(top.candidate.reply));
-      const result = { reply: `${reply}\n\n[ملاحظة: تم استخدام أفضل رد متاح كمحتوى احتياطي.]`, source: "insight_generator_fallback_top", confidence: top.calibratedScore ?? 0.55, metadata: { reason: "final_fallback", produced_at: nowISO() } };
-      console.log(`[InsightGenerator:strat:${strat}] Falling back to top overall candidate:`, result);
-      return result;
+      return { reply: `${reply}\n\n[ملاحظة: تم استخدام أفضل رد متاح كمحتوى احتياطي.]`, source: "insight_generator_fallback_top", confidence: top.calibratedScore ?? 0.55, metadata: { reason: "final_fallback", produced_at: nowISO() } };
     }
   }
 
   // ultimate safety
-  console.log('[InsightGenerator] All strategies failed. Falling back to last resort: top candidate.');
   const top = normalized.slice().sort((a,b)=> b.calibratedScore - a.calibratedScore)[0];
-  const result = { reply: polishInsight(safeStr(top.candidate.reply || "")), source: "insight_generator_last_resort", confidence: top.calibratedScore ?? 0.5, metadata: { produced_at: nowISO() } };
-  console.log('[InsightGenerator] Last resort result:', result);
-  return result;
+  return { reply: polishInsight(safeStr(top.candidate.reply || "")), source: "insight_generator_last_resort", confidence: top.calibratedScore ?? 0.5, metadata: { produced_at: nowISO() } };
 }
 
-export default { generateInsight };`
+export default { generateInsight };
