@@ -491,6 +491,8 @@ export function generateInsight(allRawCandidates = [], context = {}, options = {
   }
 
   // Triable strategies
+  // --- [التصحيح] --- تم إضافة السطر المفقود لإصلاح خطأ ReferenceError
+  const strategies = triableStrategies;
   console.log('[InsightGenerator] Starting triable strategies loop:', strategies);
   for(const strat of strategies){
     console.log(`[InsightGenerator] --- Attempting Strategy: ${strat} ---`);
@@ -566,4 +568,4 @@ export function generateInsight(allRawCandidates = [], context = {}, options = {
   return result;
 }
 
-export default { generateInsight };
+export default { generateInsight };`
