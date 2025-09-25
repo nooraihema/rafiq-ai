@@ -1,9 +1,9 @@
-
 // intelligence/HybridComposerFinal.js
 // Final Fusion: HybridComposer + NarrativeWeaver post-process
 // Exports: synthesizeHybridResponse(candidates, briefing, context, options)
 
-import  weaveNarrativeResponse  from './InsightGenerator.js';
+// --- [تصحيح] تم تصحيح الاستيراد والاستدعاء لاستخدام InsightGenerator بشكل صحيح
+import { generateInsight } from './InsightGenerator.js';
 
 const DEBUG = false;
 
@@ -197,6 +197,9 @@ function weaveEmpathyAndAction(empathicCandidate, practicalCandidate, fingerprin
 
 /* ===== The final fused API ===== */
 export function synthesizeHybridResponse(candidates = [], briefing = {}, context = {}, options = {}){
+  console.log(`\n\n- - - [HybridComposerFinal ENTRY] ---`);
+  console.log(`[HybridComposerFinal] Received ${candidates?.length} candidates. User message: "${context?.user_message}"`);
+
   const {
     attemptNarrativeAfter = true, // run Narrative Weaver AFTER hybrid decision
     narrativeMinStrength = 0.5,   // minimal guideline (Narrative's own logic still applies)
@@ -205,17 +208,19 @@ export function synthesizeHybridResponse(candidates = [], briefing = {}, context
 
   try {
     if(!Array.isArray(candidates) || candidates.length === 0) {
+      console.log('[HybridComposerFinal] EXIT: No candidates provided. Returning fallback.');
       return { reply: "أنا معاك، ممكن توضّح أكتر؟", source: "hybridcomposer_final_fallback", metadata:{ produced_at: nowISO() } };
     }
 
     const fingerprint = context?.fingerprint || {};
     const safety = safetyCheck(fingerprint, candidates);
     if(!safety.ok){
+      console.log('[HybridComposerFinal] EXIT: Safety check failed. Returning emergency reply.');
       return { reply: "لاحظت إشارات للخطر في كلامك. إن كنت في خطر اتصل بخط الطوارئ المحلي أو اطلب مساعدة عاجلة.", source: "hybrid_safety", metadata:{ safetyFlags: safety.flags, produced_at: nowISO() } };
     }
 
     const analyzed = analyzeCandidates(candidates, context?.tracker || null, fingerprint, options);
-    if(debug || DEBUG) console.log('[HybridFinal] scored:', analyzed.map(s=>({src:s.candidate.source,score:s.calibratedScore.toFixed(3)})));
+    console.log('[HybridComposerFinal] Scored candidates:', analyzed.map(s=>({src:s.candidate.source,score:s.calibratedScore.toFixed(3)})));
 
     // Identify protocol candidates
     const activeProtocol = briefing?.activeProtocol || null;
@@ -228,93 +233,95 @@ export function synthesizeHybridResponse(candidates = [], briefing = {}, context
 
     // empathy fallback candidate
     const empathicCandidate = candidates.find(c => c.source === 'empathic_safety_net') || candidates.find(c => safeStr(c.source).includes('empathic')) || null;
+    
+    console.log(`[HybridComposerFinal] Decision Logic: Active Protocol: ${!!activeProtocolCandidate}, New Protocol: ${!!newProtocolCandidate}, Empathic Candidate: ${!!empathicCandidate}`);
 
     // Decide finalDecision using robust Maestro rules (preserve original logic)
     let finalDecision = null;
 
     if(activeProtocolCandidate && newProtocolCandidate && safeStr(activeProtocolCandidate.source) !== safeStr(newProtocolCandidate.source)){
-      // multi-protocol: advanced weave
-      if(DEBUG || debug) console.log('HybridFinal: advanced weave between active & new protocols');
+      console.log('[HybridComposerFinal] Decision Path: Advanced Weave (multi-protocol).');
       finalDecision = advancedWeave(activeProtocolCandidate, newProtocolCandidate, fingerprint);
     } else if(fingerprint?.primaryEmotion?.type && fingerprint.primaryEmotion.type !== 'neutral' && (activeProtocolCandidate || newProtocolCandidate) && empathicCandidate){
-      // weave empathy + practical action
-      if(DEBUG || debug) console.log('HybridFinal: weave empathy + action');
+      console.log('[HybridComposerFinal] Decision Path: Weave Empathy and Action.');
       const practical = activeProtocolCandidate || newProtocolCandidate;
       finalDecision = weaveEmpathyAndAction(empathicCandidate, practical, fingerprint);
     } else if(activeProtocolCandidate && newProtocolCandidate && safeStr(activeProtocolCandidate.source) === safeStr(newProtocolCandidate.source)){
-      // same protocol, just use it
+      console.log('[HybridComposerFinal] Decision Path: Same protocol, choosing active.');
       finalDecision = activeProtocolCandidate;
       finalDecision = { ...finalDecision, metadata: { ...(finalDecision.metadata||{}), selected_by: 'active_protocol', produced_at: nowISO() } };
     } else if(activeProtocolCandidate){
+      console.log('[HybridComposerFinal] Decision Path: Active protocol only.');
       finalDecision = activeProtocolCandidate;
       finalDecision = { ...finalDecision, metadata: { ...(finalDecision.metadata||{}), selected_by: 'active_protocol', produced_at: nowISO() } };
     } else if(newProtocolCandidate){
+      console.log('[HybridComposerFinal] Decision Path: New protocol only.');
       finalDecision = newProtocolCandidate;
       finalDecision = { ...finalDecision, metadata: { ...(finalDecision.metadata||{}), selected_by: 'new_protocol', produced_at: nowISO() } };
     } else {
-      // fallback to best scored candidate (analyzed[0])
+      console.log('[HybridComposerFinal] Decision Path: Fallback to top scored candidate.');
       const top = analyzed[0].candidate;
       finalDecision = { reply: `${top.reply}\n\n[ملاحظة: تم توليد الرد من مزيج متعدد الأصوات.]`, source: top.source, metadata: { produced_by: 'maestro_fallback', produced_at: nowISO() } };
     }
 
-    // ensure finalDecision is normalized object with reply
     if(!finalDecision || !finalDecision.reply){
+      console.log('[HybridComposerFinal] EXIT: finalDecision was null or empty after logic. Returning safe fallback.');
       return { reply: "أنا هنا معاك — ممكن توضّح أكتر؟", source: "hybridcomposer_final_safe_fallback", metadata:{ produced_at: nowISO() } };
     }
+    console.log('[HybridComposerFinal] Intermediate finalDecision chosen:', { source: finalDecision.source, reply: (finalDecision.reply||"").slice(0, 70) + "..." });
 
-    // Attach memory passport from primary protocol if present
     const primaryProtocolForMemory = activeProtocolCandidate || newProtocolCandidate;
     if(primaryProtocolForMemory && primaryProtocolForMemory.metadata?.nextSessionContext){
       finalDecision.metadata = finalDecision.metadata || {};
       finalDecision.metadata.nextSessionContext = primaryProtocolForMemory.metadata.nextSessionContext;
     }
 
-    // Now — crucial change: give Narrative Weaver FULL VIEW including the finalDecision
+    console.log(`[HybridComposerFinal] Checking condition to run Insight Generator: attemptNarrativeAfter = ${attemptNarrativeAfter}`);
     if(attemptNarrativeAfter){
-      // build a scored list that includes analyzed candidates + finalDecision as a high-score pseudo-candidate
-      const allScored = analyzed.slice(); // shallow copy
-      // insert finalDecision as top pseudo-candidate (score: max existing or 0.95)
+      const allScored = analyzed.slice(); 
       const maxScore = allScored.length ? Math.max(...allScored.map(s=>s.calibratedScore)) : 0.8;
-      const pseudoScore = clamp(maxScore * 0.98 + 0.02, 0, 0.99); // slightly below perfect but high
+      const pseudoScore = clamp(maxScore * 0.98 + 0.02, 0, 0.99);
       allScored.unshift({ candidate: { reply: finalDecision.reply, source: finalDecision.source || 'finalDecision', metadata: finalDecision.metadata || {} }, calibratedScore: pseudoScore, personaAvg: 0.99, novelty: 0 });
 
-      if(DEBUG || debug) console.log('[HybridFinal] invoking Narrative Weaver with', allScored.map(s=>({src:s.candidate.source,score:s.calibratedScore.toFixed(3)})));
+      console.log('[HybridComposerFinal] --- INVOKING InsightGenerator ---');
+      console.log('[HybridComposerFinal] Data sent to InsightGenerator:', {
+        candidatesCount: allScored.length,
+        user_message: context.user_message,
+        topCandidateSource: allScored[0]?.candidate.source
+      });
 
-      // call the Narrative Weaver (should be robust to varied input)
       let narrativeResponse = null;
       try {
-        narrativeResponse = weaveNarrativeResponse(allScored, { user_message: fingerprint.originalMessage || context?.user_message, fingerprint, context });
+        narrativeResponse = generateInsight(allScored, context, options);
       } catch(err){
-        if(DEBUG || debug) console.error('HybridFinal: narrative weave error', err);
+        console.error('[HybridComposerFinal] FATAL: Error calling InsightGenerator.', err);
         narrativeResponse = null;
       }
 
-      // Validate narrativeResponse minimally and prefer it if present
+      console.log('[HybridComposerFinal] --- RETURNED from InsightGenerator ---');
       if(narrativeResponse && narrativeResponse.reply){
-        // simple guard against garbage: must be longer than a short phrase and contain arabic letters
+        console.log('[HybridComposerFinal] InsightGenerator returned a valid response:', { source: narrativeResponse.source, confidence: narrativeResponse.confidence });
         const clean = polishInsight(safeStr(narrativeResponse.reply));
         const wordsCount = clean.split(/\s+/).filter(Boolean).length;
         const containsArabic = /[\u0600-\u06FF]/.test(clean);
         if(wordsCount >= 4 && containsArabic){
-          // merge metadata & attach produced_by label
+          console.log('[HybridComposerFinal] InsightGenerator response passed validation. Using it as final reply.');
           narrativeResponse.reply = dedupeSentences(safeTruncateText(clean, 2400));
           narrativeResponse.metadata = narrativeResponse.metadata || {};
           narrativeResponse.metadata.produced_by = 'hybridcomposer_final_narrative_weaver';
-          // preserve memory passport if present
           if(primaryProtocolForMemory && primaryProtocolForMemory.metadata?.nextSessionContext){
             narrativeResponse.metadata.nextSessionContext = primaryProtocolForMemory.metadata.nextSessionContext;
           }
-          if(DEBUG || debug) console.log('HybridFinal: Narrative Weaver produced final reply. Returning it.');
           return narrativeResponse;
         } else {
-          if(DEBUG || debug) console.log('HybridFinal: Narrative response failed minimal validation — ignoring.');
+          console.log(`[HybridComposerFinal] InsightGenerator response failed validation (words: ${wordsCount}, hasArabic: ${containsArabic}). Ignoring.`);
         }
       } else {
-        if(DEBUG || debug) console.log('HybridFinal: Narrative Weaver returned null/empty — using finalDecision.');
+        console.log('[HybridComposerFinal] InsightGenerator returned null or empty. Using intermediate finalDecision.');
       }
     }
 
-    // If Narrative not used, polish finalDecision and return
+    console.log('[HybridComposerFinal] Finalizing: Polishing and returning intermediate finalDecision.');
     let out = { ...finalDecision };
     out.reply = polishInsight(out.reply);
     out.reply = safeTruncateText(out.reply, 2400);
@@ -325,7 +332,7 @@ export function synthesizeHybridResponse(candidates = [], briefing = {}, context
     return out;
 
   } catch(err){
-    if(DEBUG) console.error('HybridFinal synth error', err);
+    console.error('[HybridComposerFinal] FATAL: Unhandled error in synthesizeHybridResponse.', err);
     return { reply: "أنا هنا — ممكن توضّح أكتر؟", source: "hybridcomposer_final_error_fallback", metadata:{ error: String(err), produced_at: nowISO() } };
   }
 }
