@@ -1,3 +1,4 @@
+
 // intelligence/InsightGenerator.js (v5.1 - Robust Narrative Weaver + Triable Logic)
 // Purpose: Take ALL candidate replies (including hybrid/final) + context + local lexicons
 // and produce a single cohesive, high-quality insight reply.
@@ -62,7 +63,6 @@ function triableReply(baseReply, variations = []){
     if(len > 60) score -= 0.25;
     if(/[؟?!]\s*$/.test(r)) score += 0.15;
     if(/\b(تحب|هل|ممكن|نبدأ)\b/.test(r)) score += 0.12;
-    // penalize obvious template markers
     if(/(أرى علاقة بين|قد يكون هناك ارتباط)/.test(r)) score -= 0.08;
     return { r, score };
   });
@@ -77,13 +77,9 @@ function applyContextBuffer(reply, context, bufferSize = 3){
 
 // ------------------ Knowledge loader (graceful) ------------------
 (function loadLexicons() {
-  // console.log('[InsightGenerator] Initializing: Loading lexicons...'); // Kept for debugging if needed
   try {
     const lexiconDir = path.join(process.cwd(), 'lexicons');
-    if(!fs.existsSync(lexiconDir)) {
-      // console.log('[InsightGenerator] Lexicon directory not found. KB will be empty.');
-      return;
-    }
+    if(!fs.existsSync(lexiconDir)) return;
     const files = fs.readdirSync(lexiconDir).filter(f=>f.endsWith('.json'));
     for(const file of files){
       try{
@@ -104,18 +100,11 @@ function applyContextBuffer(reply, context, bufferSize = 3){
             }
           }
         }
-      }catch(e){
-        // console.warn(`[InsightGenerator] Warning: Skipping malformed lexicon file: ${file}`);
-        continue;
-      }
+      }catch(e){ continue; }
     }
-    // console.log(`[InsightGenerator] Lexicons loaded successfully. ${Object.keys(KNOWLEDGE_BASE).length} concepts, ${Object.keys(INSIGHT_RULES).length} rules.`);
-  }catch(e){
-    // console.error('[InsightGenerator] FATAL: Lexicon loader failed.', e);
-  }
+  }catch(e){}
 })();
 
-// ... (All other helper functions remain the same) ...
 function mapToConcept(token){
   const norm = safeStr(token).toLowerCase();
   return CONCEPT_MAP[norm] || null;
@@ -220,92 +209,20 @@ function scorePair(a,b,graph,allCandidates,context,nodeAttention){
   }
   return { a, b, rule, rawScore: raw, edgeW, nodeW, supportCount: supporters.length, avgNovelty: 0, cov, emoAlign, supporters, conflict };
 }
-function enumeratePairs(concepts){
-  const pairs = [];
-  for(let i=0;i<concepts.length;i++) for(let j=i+1;j<concepts.length;j++) pairs.push([concepts[i],concepts[j]]);
-  return pairs;
-}
-function enumerateTriples(concepts){
-  const triples = [];
-  for(let i=0;i<concepts.length;i++) for(let j=i+1;j<concepts.length;j++) for(let k=j+1;k<concepts.length;k++) triples.push([concepts[i],concepts[j],concepts[k]]);
-  return triples;
-}
-function scoreTriple(triple, graph, allCandidates, INSIGHT_RULES, context, nodeAttention){
-  const [a,b,c] = triple;
-  const p1 = scorePair(a,b,graph,allCandidates,context,nodeAttention);
-  const p2 = scorePair(a,c,graph,allCandidates,context,nodeAttention);
-  const p3 = scorePair(b,c,graph,allCandidates,context,nodeAttention);
-  const raw = (p1.rawScore + p2.rawScore + p3.rawScore)/3 - 0.18;
-  return { triple, rawScore: raw, components: [p1,p2,p3] };
-}
-function pickEvidenceFromCandidate(candidate, concept, maxEvidence=2, userMsg=""){
-  if(!candidate || !candidate.reply) return [];
-  const sents = safeStr(candidate.reply).split(/(?<=[.؟!?])\s+/).map(s=>s.trim()).filter(Boolean);
-  const hits = sents.filter(s => s.includes(concept) || tokenizeWords(s).includes(String(concept).replace(/\s+/g,'')));
-  if(hits.length){
-    hits.sort((x,y)=> jaccardSim(y,userMsg) - jaccardSim(x,userMsg));
-    return hits.slice(0,maxEvidence);
-  }
-  return sents.slice(0,maxEvidence);
-}
-function extractGems(allScoredCandidates){
-  const gems = { empathy:null, action:null };
-  let be=-1, ba=-1;
-  for(const sc of allScoredCandidates){
-    const reply = safeStr(sc.candidate?.reply || sc.reply || "");
-    const src = safeStr(sc.candidate?.source || sc.source || "").toLowerCase();
-    if((src.includes('gateway') || src.includes('empath') || src.includes('compassion')) && sc.calibratedScore > be){
-      gems.empathy = firstSentence(reply); be = sc.calibratedScore;
-    }
-    if((src.includes('skill') || src.includes('tool') || reply.includes('?')) && sc.calibratedScore > ba){
-      gems.action = firstSentence(reply); ba = sc.calibratedScore;
-    }
-  }
-  if(!gems.empathy) gems.empathy = firstSentence(allScoredCandidates[0]?.candidate?.reply || allScoredCandidates[0]?.reply || "");
-  if(!gems.action) gems.action = firstSentence(allScoredCandidates[0]?.candidate?.reply || allScoredCandidates[0]?.reply || "");
-  return gems;
-}
-function findDominantNarrative(allScoredCandidates, context){
-  const userMessage = safeStr(context?.user_message || "");
-  const conceptScores = {};
-  const userConcepts = extractConceptsFromText(userMessage,4);
-  userConcepts.forEach((c,i)=> conceptScores[c] = (conceptScores[c]||0) + (2/(i+1)));
-  allScoredCandidates.slice(0,4).forEach(sc=>{
-    extractConceptsFromText(safeStr(sc.candidate?.reply || sc.reply || ""),2).forEach(c=>{
-      conceptScores[c] = (conceptScores[c]||0) + (sc.calibratedScore ?? 0.5);
-    });
-  });
-  const concepts = Object.keys(conceptScores).sort((a,b)=> conceptScores[b] - conceptScores[a]);
-  if(concepts.length < 2) return null;
-  for(let i=0;i<Math.min(concepts.length,4);i++){
-    for(let j=i+1;j<Math.min(concepts.length,4);j++){
-      const a=concepts[i], b=concepts[j];
-      const r = INSIGHT_RULES[`${a}_${b}`] || INSIGHT_RULES[`${b}_${a}`];
-      if(r) return { insight: r, primaryConcept: a, secondaryConcept: b, strength: (conceptScores[a]+conceptScores[b]) };
-    }
-  }
-  return null;
-}
-function weaveNarrativeResponse(allScoredCandidates, context){
-  if(!Array.isArray(allScoredCandidates) || allScoredCandidates.length < 2 || !context?.user_message) return null;
-  try{
-    const narrative = findDominantNarrative(allScoredCandidates, context);
-    if(!narrative || (narrative.strength || 0) < MIN_NARRATIVE_STRENGTH) return null;
-    const gems = extractGems(allScoredCandidates);
-    const primaryData = KNOWLEDGE_BASE[narrative.primaryConcept] || {};
-    let finalAction = gems.action || "هل تحب نجرب خطوة صغيرة الآن؟";
-    if(primaryData && primaryData.coping_mechanisms && Array.isArray(primaryData.coping_mechanisms.short_term) && primaryData.coping_mechanisms.short_term.length){
-      const sug = primaryData.coping_mechanisms.short_term[0];
-      finalAction = `كخطوة أولى بسيطة، هل تقدر تجرب: "${sug}"؟`;
-    }
-    const finalReply = `${gems.empathy}. ${narrative.insight}. ${finalAction}`;
-    return { reply: polishInsight(finalReply), source: "narrative_weaver_v5.1", confidence: 0.95, metadata: { narrative: `${narrative.primaryConcept}_to_${narrative.secondaryConcept}`, components: { empathy: gems.empathy, action: gems.action } } };
-  }catch(e){
-    return null;
-  }
+
+// ------------------ مولد لغوي جبّار ------------------
+function generateFromCandidates(allCandidates, context){
+  const userMsg = safeStr(context?.user_message || "");
+  const sentences = allCandidates.map(c => safeStr(c.candidate?.reply || c.reply || ""));
+  const tokens = sentences.flatMap(s => tokenizeWords(s)).filter(Boolean);
+  const important = uniq(tokens).filter(t=> !DEFAULT_STOPWORDS.includes(t)).slice(0,12);
+  if(important.length===0) return null;
+  let generated = `أرى أن ${important.join('، ')} قد يكون مهم بالنسبة لك`;
+  if(Math.random()>0.5) generated += ", هل تحب نناقشه خطوة خطوة؟";
+  return polishInsight(generated);
 }
 
-// ------------------ Main export ------------------
+// ------------------ Main export (مع تعديل fallback جبّار) ------------------
 export function generateInsight(allRawCandidates = [], context = {}, options = {}){
   const {
     topK = 6,
@@ -343,84 +260,6 @@ export function generateInsight(allRawCandidates = [], context = {}, options = {
   const pairs = enumeratePairs(allConcepts).map(([a,b]) => scorePair(a,b,graph,normalized,context,nodeAttention));
   const triples = allConcepts.length >=3 ? enumerateTriples(allConcepts).map(t => scoreTriple(t,graph,normalized,INSIGHT_RULES,context,nodeAttention)) : [];
 
-  function buildFromPair(chosen){
-    const a = chosen.a, b = chosen.b;
-    const ruleText = chosen.rule || INSIGHT_RULES[`${a}_${b}`] || INSIGHT_RULES[`${b}_${a}`] || null;
-    const insightCore = ruleText ? ruleText : `أرى علاقة بين "${a}" و "${b}" قد تكون مهمة بالنسبة لك.`;
-    const supportersSrcs = uniq((chosen.supporters||[]).map(s=>s.source)).slice(0,6);
-    const evidenceParts = [];
-    for(const src of supportersSrcs.slice(0,4)){
-      const sc = normalized.find(n => safeStr(n.candidate?.source) === safeStr(src));
-      if(sc){
-        const ev = pickEvidenceFromCandidate(sc.candidate, a, Math.ceil(maxEvidence/2), context?.user_message).concat(pickEvidenceFromCandidate(sc.candidate, b, Math.floor(maxEvidence/2), context?.user_message));
-        if(ev.length) evidenceParts.push(`من ${sc.candidate.source}: ${ev.join(' / ')}`);
-      }
-    }
-    if(evidenceParts.length === 0){
-      for(const sc of normalized.slice(0,3)){
-        const ev = pickEvidenceFromCandidate(sc.candidate, a,1, context?.user_message);
-        if(ev.length) evidenceParts.push(`من ${sc.candidate.source}: ${ev.join(' / ')}`);
-        if(evidenceParts.length >= 2) break;
-      }
-    }
-    if(chosen.conflict) evidenceParts.unshift("توجد تباينات بين المصادر — من الأفضل توضيحها قبل اتخاذ خطوة.");
-    const gems = extractGems(normalized);
-    const tone = personaTonePreference || (context?.detected_emotions && context.detected_emotions.includes('sadness') ? 'empathic' : 'logical');
-    let callToAction = gems.action || "هل تحب نجرب خطوة صغيرة الآن؟";
-    if((context?.detected_intent||'').toLowerCase().includes('advice')) callToAction = "تحب أقدملك خطوة عملية بسيطة الآن؟";
-    const assembled = `${gems.empathy}. ${insightCore}\n\n${evidenceParts.join("\n\n")}\n\n${callToAction}`;
-    let finalReply = polishInsight(assembled);
-    finalReply = applyContextBuffer(finalReply, context);
-    const variants = [`${finalReply} إيه رأيك؟`, `نقدر نبدأ بـ: ${firstSentence(callToAction)}`, `${firstSentence(finalReply)} — تحب نوضّح أكثر؟`];
-    finalReply = triableReply(finalReply, variants);
-    const raw = chosen.rawScore || 0;
-    const confidence = clamp(0.45 + (Math.tanh(raw/3)/1.2), 0.45, 0.98);
-    const metadata = { source: "insight_generator_v5.1", chosen_pair: [a,b], confidence, produced_at: nowISO(), reasoning: chosen };
-    return { reply: finalReply, source: "insight_generator_v5.1", confidence, metadata };
-  }
-
-  function buildFromTriple(chosenTriple){
-    const [a,b,c] = chosenTriple.triple;
-    const comp = chosenTriple.components || [];
-    const insightCore = `أرى اتصالًا بين "${a}", "${b}" و "${c}" قد يوضّح جزءًا من اللي بتحس به.`;
-    const evidenceParts = [];
-    const used = new Set();
-    for(const part of comp){
-      for(const s of (part.supporters||[])){
-        const src = s.source;
-        if(used.has(src)) continue;
-        used.add(src);
-        const sc = normalized.find(n => safeStr(n.candidate?.source) === safeStr(src));
-        if(sc){
-          const ev = pickEvidenceFromCandidate(sc.candidate, a,1, context?.user_message)
-                    .concat(pickEvidenceFromCandidate(sc.candidate, b,1, context?.user_message))
-                    .concat(pickEvidenceFromCandidate(sc.candidate, c,1, context?.user_message));
-          if(ev.length) evidenceParts.push(`من ${sc.candidate.source}: ${ev.join(' / ')}`);
-        }
-        if(evidenceParts.length >= 4) break;
-      }
-      if(evidenceParts.length >= 4) break;
-    }
-    if(evidenceParts.length === 0){
-      for(const sc of normalized.slice(0,3)){
-        const ev = pickEvidenceFromCandidate(sc.candidate, a,1, context?.user_message);
-        if(ev.length) evidenceParts.push(`من ${sc.candidate.source}: ${ev.join(' / ')}`);
-        if(evidenceParts.length >= 2) break;
-      }
-    }
-    const gems = extractGems(normalized);
-    const callToAction = gems.action || "نقدر نجرب خطوة بسيطة الآن؟";
-    let finalReply = `${gems.empathy}. ${insightCore}\n\n${evidenceParts.join("\n\n")}\n\n${callToAction}`;
-    finalReply = polishInsight(finalReply);
-    finalReply = applyContextBuffer(finalReply, context);
-    const variants = [`${finalReply} إيه رأيك؟`, `خلينا نجرّب: ${firstSentence(callToAction)}`];
-    finalReply = triableReply(finalReply, variants);
-    const raw = chosenTriple.rawScore || 0;
-    const confidence = clamp(0.45 + (Math.tanh(raw/3)/1.2), 0.45, 0.98);
-    return { reply: finalReply, source: "insight_generator_v5.1_triple", confidence, metadata: { chosen_triple: chosenTriple.triple, produced_at: nowISO(), reasoning: chosenTriple } };
-  }
-
-  // Triable strategies
   // --- [التصحيح] --- تم إضافة هذا السطر لإصلاح خطأ ReferenceError
   const strategies = triableStrategies; 
   for(const strat of strategies){
@@ -455,19 +294,31 @@ export function generateInsight(allRawCandidates = [], context = {}, options = {
       }
     }
     if(strat === "fallback"){
+      // محاولة توليد رد جبّار
+      const generated = generateFromCandidates(normalized, context);
+      if(generated && generated.length>5){
+        return { reply: generated, source: "insight_generator_forced_generation", confidence: 0.5, metadata:{ reason:"forced_generated_from_candidates", produced_at: nowISO() } };
+      }
       if(hybrid && hybrid.candidate && safeStr(hybrid.candidate.reply).length > 10){
         const reply = polishInsight(safeStr(hybrid.candidate.reply));
         return { reply, source: "insight_generator_fallback_to_hybrid", confidence: hybrid.calibratedScore ?? 0.6, metadata: { reason: "fallback_to_hybrid", produced_at: nowISO() } };
       }
       const top = normalized.slice().sort((a,b)=> b.calibratedScore - a.calibratedScore)[0];
       const reply = polishInsight(safeStr(top.candidate.reply));
-      return { reply: `${reply}\n\n[ملاحظة: تم استخدام أفضل رد متاح كمحتوى احتياطي.]`, source: "insight_generator_fallback_top", confidence: top.calibratedScore ?? 0.55, metadata: { reason: "final_fallback", produced_at: nowISO() } };
+      return { reply: `${reply}\n\n[ملاحظة: تم استخدام أفضل رد متاح كمحتوى احتياطي.]`, source: "insight_generator_last_resort", confidence: top?.calibratedScore ?? 0.55, metadata: { reason: "final_top_candidate_fallback", produced_at: nowISO() } };
     }
   }
 
-  // ultimate safety
+  // لو وصلنا هنا يبقى لازم نرجع حاجة
+  const generatedFinal = generateFromCandidates(normalized, context);
+  if(generatedFinal){
+    return { reply: generatedFinal, source: "insight_generator_forced_final", confidence: 0.45, metadata:{ reason:"forced_generation_as_last_option", produced_at: nowISO() } };
+  }
+
+  // fallback النهائي جداً
   const top = normalized.slice().sort((a,b)=> b.calibratedScore - a.calibratedScore)[0];
-  return { reply: polishInsight(safeStr(top.candidate.reply || "")), source: "insight_generator_last_resort", confidence: top.calibratedScore ?? 0.5, metadata: { produced_at: nowISO() } };
+  const reply = polishInsight(safeStr(top.candidate.reply || ""));
+  return { reply, source: "insight_generator_absolute_fallback", confidence: top?.calibratedScore ?? 0.4, metadata:{ reason:"absolute_last_resort", produced_at: nowISO() } };
 }
 
-export default { generateInsight };
+
