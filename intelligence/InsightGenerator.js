@@ -1,312 +1,494 @@
-// intelligence/InsightGenerator.js (v5.1 - The Narrative Weaver, integrated & resilient)
-// Exports: weaveNarrativeResponse(allScoredCandidates, context, options)
-// Purpose: take the full bundle from HybridComposer (all candidates + hybrid final + context + fingerprint + metadata)
-// and produce a single, deeply coherent response that links empathy, insight, and action using the lexicons/knowledge base.
+// intelligence/InsightGenerator.js (v5.1 - Robust Narrative Weaver + Triable Logic)
+// Purpose: Take ALL candidate replies (including hybrid/final) + context + local lexicons
+// and produce a single cohesive, high-quality insight reply.
+// Minimal comments and strong validation / graceful fallback.
 
 import fs from 'fs';
 import path from 'path';
 
-// -------------------- Config / KB loaders --------------------
+const DEFAULT_STOPWORDS = ["في","من","على","مع","أنا","إني","هو","هي","ما","لم","لا","إن","أن","أو","لكن","و","ال","يا"];
+const MIN_SUPPORTERS_FOR_INSIGHT = 1; // require at least 1 supporting candidate sentence
+const MIN_NARRATIVE_STRENGTH = 1.2; // threshold to allow narrative weaving
+
+// KB containers
 const KNOWLEDGE_BASE = {};
 const CONCEPT_MAP = {};
 const INSIGHT_RULES = {};
-const DEFAULT_STOPWORDS = ["في","من","على","مع","أنا","إني","هو","هي","ما","لم","لا","إن","أن","أو","لكن","و","ال","يا"];
 
-(function loadKnowledgeBase() {
-  try {
-    const lexiconDir = path.join(process.cwd(), 'lexicons');
-    if (!fs.existsSync(lexiconDir)) {
-      console.warn('[NarrativeWeaver] lexicons directory not found:', lexiconDir);
-      return;
-    }
-    const files = fs.readdirSync(lexiconDir);
-    for (const file of files) {
-      if (path.extname(file) !== '.json') continue;
-      try {
-        const content = fs.readFileSync(path.join(lexiconDir, file), 'utf-8');
-        const data = JSON.parse(content);
-        if (!data || !data.emotion) continue;
-        const mainConcept = data.emotion;
-        KNOWLEDGE_BASE[mainConcept] = data;
-        CONCEPT_MAP[mainConcept.toLowerCase()] = mainConcept;
-        if (Array.isArray(data.aliases)) {
-          for (const alias of data.aliases) CONCEPT_MAP[String(alias).toLowerCase()] = mainConcept;
-        }
-        if (data.related_concepts && typeof data.related_concepts === 'object') {
-          for (const related in data.related_concepts) {
-            const rule = data.related_concepts[related].short_description
-              ? `أرى علاقة بين "${mainConcept}" و "${related}". ${firstSentence(data.related_concepts[related].short_description)}`
-              : `قد يكون هناك ارتباط بين "${mainConcept}" و "${related}".`;
-            INSIGHT_RULES[`${mainConcept}_${related}`] = rule;
-          }
-        }
-        // also include simple mapping for words inside the file (if provided)
-        if (Array.isArray(data.keywords)) {
-          for (const kw of data.keywords) CONCEPT_MAP[String(kw).toLowerCase()] = mainConcept;
-        }
-      } catch (e) {
-        console.warn('[NarrativeWeaver] Failed to parse lexicon file', file, e.message);
-      }
-    }
-    console.log(`✅ [NarrativeWeaver] Knowledge Base loaded with ${Object.keys(KNOWLEDGE_BASE).length} concepts.`);
-  } catch (error) {
-    console.error("🚨 [NarrativeWeaver] Could not load Knowledge Base.", error);
-  }
-})();
-
-// -------------------- Utilities --------------------
 function safeStr(s){ return (s===null||s===undefined)?"":String(s); }
 function nowISO(){ return (new Date()).toISOString(); }
 function clamp(v,a=0,b=1){ return Math.max(a, Math.min(b, v)); }
-function firstSentence(text){ if(!text) return ""; const m = String(text).split(/(?<=[.؟!?])\s+/); return m[0] || String(text); }
-function tokenizeWords(text){ if(!text) return []; return safeStr(text).toLowerCase().split(/\s+/).map(t => t.replace(/[^\p{L}\p{N}_]+/gu,'')).filter(Boolean); }
+function tokenizeWords(text){
+  if(!text) return [];
+  return safeStr(text).toLowerCase().split(/\s+/).map(t => t.replace(/[^\p{L}\p{N}_]+/gu,'')).filter(Boolean);
+}
 function uniq(arr){ return [...new Set(arr)]; }
-function dedupeSentences(text){ if(!text) return text; const parts = String(text).split(/(?<=[.؟!?])\s+/).map(s=>s.trim()).filter(Boolean); const seen=new Set(); const out=[]; for(const p of parts){ const k=p.replace(/\s+/g,' ').toLowerCase(); if(!seen.has(k)){ seen.add(k); out.push(p); } } return out.join(' '); }
-
-// -------------------- Concept mapping & extraction --------------------
-function mapToConcept(token) {
-  const norm = String(token).toLowerCase();
-  return CONCEPT_MAP[norm] || null;
+function jaccardSim(a="", b=""){
+  const s1 = new Set(tokenizeWords(a));
+  const s2 = new Set(tokenizeWords(b));
+  if(s1.size===0 && s2.size===0) return 1;
+  const inter = [...s1].filter(x=>s2.has(x)).length;
+  const union = new Set([...s1,...s2]).size || 1;
+  return inter/union;
 }
-function extractConceptsFromText(text, topN = 5) {
-  const tokens = tokenizeWords(text).filter(t => !DEFAULT_STOPWORDS.includes(t));
-  if (!tokens.length) return [];
-  const freq = {};
-  tokens.forEach((t,i) => freq[t] = (freq[t]||0)+1);
-  const keys = Object.entries(freq).sort((a,b)=> b[1]-a[1]).map(e=>e[0]);
-  const concepts = [];
-  for (const k of keys) {
-    const c = mapToConcept(k);
-    concepts.push(c || k);
-    if (concepts.length >= topN) break;
-  }
-  return uniq(concepts);
+function firstSentence(text){
+  if(!text) return "";
+  const m = text.split(/(?<=[.؟!?])\s+/);
+  return m[0] || text;
 }
-
-// -------------------- Narrative discovery & scoring --------------------
-function scoreConceptBundle(allScoredCandidates, context) {
-  const userMsg = safeStr(context?.user_message || "");
-  const scores = {};
-  // user concepts weighted
-  const userConcepts = extractConceptsFromText(userMsg, 6);
-  userConcepts.forEach((c,i) => { scores[c] = (scores[c] || 0) + (2/(1+i)); });
-  // candidate contributions
-  for (const sc of allScoredCandidates.slice(0,8)) {
-    const cs = Number(sc.calibratedScore ?? sc.calibrated ?? sc.score ?? sc.baseConf ?? 0.5);
-    const ccs = extractConceptsFromText(safeStr(sc.candidate?.reply || sc.candidate?.text || ""), 4);
-    ccs.forEach((c, idx) => {
-      scores[c] = (scores[c] || 0) + cs * (1/(1+idx));
-    });
+function dedupeSentences(text){
+  if(!text) return text;
+  const parts = text.split(/(?<=[.؟!?])\s+/).map(s=>s.trim()).filter(Boolean);
+  const seen = new Set(); const out = [];
+  for(const p of parts){
+    const key = p.replace(/\s+/g,' ').toLowerCase();
+    if(!seen.has(key)){ seen.add(key); out.push(p); }
   }
-  return scores;
+  return out.join(' ');
 }
-
-function findDominantNarrative(allScoredCandidates, context) {
-  const scores = scoreConceptBundle(allScoredCandidates, context);
-  const concepts = Object.keys(scores).sort((a,b)=> scores[b]-scores[a]);
-  if (concepts.length < 2) return null;
-
-  // candidate narrative rules & heuristics
-  // try to find explicit INSIGHT_RULES between top concepts
-  for (let i=0;i<Math.min(6,concepts.length);i++){
-    for (let j=i+1;j<Math.min(6,concepts.length);j++){
-      const a = concepts[i], b = concepts[j];
-      const rule = INSIGHT_RULES[`${a}_${b}`] || INSIGHT_RULES[`${b}_${a}`];
-      if (rule) {
-        const strength = (scores[a] || 0) + (scores[b] || 0);
-        return { insight: rule, primaryConcept: a, secondaryConcept: b, strength };
-      }
-    }
-  }
-
-  // fallback: try to infer a direction by checking candidate phrases
-  // if many candidates mention concept A then B in same reply, boost that pair
-  const pairCounts = {};
-  for (const sc of allScoredCandidates) {
-    const txt = safeStr(sc.candidate?.reply || sc.candidate?.text || "");
-    const cs = extractConceptsFromText(txt, 6);
-    for (let i=0;i<cs.length;i++){
-      for (let j=i+1;j<cs.length;j++){
-        const key = `${cs[i]}::${cs[j]}`;
-        pairCounts[key] = (pairCounts[key]||0)+1;
-      }
-    }
-  }
-  const pairEntries = Object.entries(pairCounts).sort((a,b)=> b[1]-a[1]);
-  if (pairEntries.length) {
-    const [pair, cnt] = pairEntries[0];
-    const [a,b] = pair.split('::');
-    const strength = (scores[a]||0)+(scores[b]||0) + cnt*0.5;
-    // craft a gentle insight sentence if no KB rule present
-    const insight = `قد يكون هناك ارتباط بين "${a}" و "${b}" بناءً على ما ورد في ردود متعددة.`;
-    return { insight, primaryConcept: a, secondaryConcept: b, strength };
-  }
-
-  return null;
+function polishInsight(text){
+  if(!text) return text;
+  let out = dedupeSentences(safeStr(text));
+  out = out.replace(/\s+/g,' ').trim();
+  out = out.replace(/\s+([؟.!])/g, '$1');
+  return out;
 }
-
-// -------------------- Gems extraction --------------------
-function extractGems(allScoredCandidates, options = {}) {
-  const gems = { empathy: null, action: null, rationale: null };
-  let bestEmpathyScore = -1;
-  let bestActionScore = -1;
-  let bestRationaleScore = -1;
-
-  for (const sc of allScoredCandidates) {
-    const reply = safeStr(sc.candidate?.reply || sc.candidate?.text || "");
-    const src = safeStr(sc.candidate?.source || '').toLowerCase();
-    const score = Number(sc.calibratedScore ?? sc.calibrated ?? sc.score ?? sc.baseConf ?? 0.5);
-
-    // empathy gem detection
-    if (src.includes('empath') || src.includes('gateway') || reply.match(/\b(أفهم|مشاعرك|حاسس)\b/)) {
-      if (score > bestEmpathyScore) { bestEmpathyScore = score; gems.empathy = firstSentence(reply); }
-    }
-
-    // action gem detection — explicit suggestions, steps, or direct questions
-    if (reply.includes('?') || reply.match(/\b(جرب|ابدأ|خطوة|ممكن تعمل)\b/) || src.includes('skill') || src.includes('pragmatic')) {
-      if (score > bestActionScore) { bestActionScore = score; gems.action = firstSentence(reply).length > 8 ? firstSentence(reply) : reply; }
-    }
-
-    // rationale / explanation gem — where logical reasons are given
-    if (reply.match(/\b(لأن|بسبب|يمكن أن|لذلك|لذلك)\b/) || src.includes('logical') || src.includes('analysis')) {
-      if (score > bestRationaleScore) { bestRationaleScore = score; gems.rationale = firstSentence(reply); }
-    }
-  }
-
-  // fallbacks
-  if (!gems.empathy && allScoredCandidates[0]) gems.empathy = firstSentence(safeStr(allScoredCandidates[0].candidate.reply || ""));
-  if (!gems.action && allScoredCandidates[0]) gems.action = firstSentence(safeStr(allScoredCandidates[0].candidate.reply || ""));
-  if (!gems.rationale && allScoredCandidates[0]) gems.rationale = firstSentence(safeStr(allScoredCandidates[0].candidate.reply || ""));
-
-  return gems;
-}
-
-// -------------------- Merge helpers --------------------
-function mergeHybridAndGems(hybridCandidate, gems, narrativeInsight, context) {
-  const empath = gems.empathy ? `${gems.empathy}` : '';
-  const rationale = narrativeInsight?.insight ? narrativeInsight.insight : (gems.rationale ? gems.rationale : '');
-  const action = gems.action ? `${gems.action}` : '';
-  // prefer targeted coping mechanisms from KB when available
-  let targetedAction = action;
-  const primary = narrativeInsight?.primaryConcept;
-  if (primary && KNOWLEDGE_BASE[primary] && Array.isArray(KNOWLEDGE_BASE[primary].coping_mechanisms?.short_term) && KNOWLEDGE_BASE[primary].coping_mechanisms.short_term.length) {
-    const s = KNOWLEDGE_BASE[primary].coping_mechanisms.short_term[0];
-    targetedAction = `كخطوة أولية بسيطة، ممكن تجرب: "${s}".`;
-  }
-
-  // craft weave
-  const parts = [];
-  if (empath) parts.push(empath);
-  if (rationale) parts.push(rationale);
-  if (targetedAction) parts.push(targetedAction);
-  // if hybridCandidate exists, add a concise citation/bridge
-  if (hybridCandidate && safeStr(hybridCandidate.reply)) {
-    const bridge = firstSentence(safeStr(hybridCandidate.reply || ''));
-    if (bridge && !parts.includes(bridge)) parts.push(bridge);
-  }
-
-  const reply = dedupeSentences(parts.join(' '));
-  return reply;
-}
-
-// -------------------- Triable strategies & decision harness --------------------
-export function weaveNarrativeResponse(allScoredCandidates = [], context = {}, options = {}) {
-  // options: { triableStrategies: [...], minNarrativeStrength: number, requireKBRule: bool }
-  const {
-    triableStrategies = ["rule_first","hybrid_merge","attention_only","fallback"],
-    minNarrativeStrength = 1.2,
-    requireKBRule = false
-  } = options || {};
-
-  // validation
-  if (!Array.isArray(allScoredCandidates) || allScoredCandidates.length === 0) return null;
-  if (!context || !context.user_message) {
-    // if no user message, can't build narrative reliably
-    return null;
-  }
-
-  // normalize candidate structure: accept either {candidate,calibratedScore,...} or plain candidate objects
-  const normalized = allScoredCandidates.map((s, idx) => {
-    if (s && s.candidate) return s;
-    // assume s is a candidate object
-    return { candidate: s, calibratedScore: Number(s.calibratedScore ?? s.score ?? s.baseConf ?? 0.5) };
+function triableReply(baseReply, variations = []){
+  const all = [baseReply, ...variations].filter(Boolean);
+  const scored = all.map(r=>{
+    const len = safeStr(r).split(/\s+/).filter(Boolean).length;
+    let score = 1.0;
+    if(len < 5) score -= 0.35;
+    if(len > 60) score -= 0.25;
+    if(/[؟?!]\s*$/.test(r)) score += 0.15;
+    if(/\b(تحب|هل|ممكن|نبدأ)\b/.test(r)) score += 0.12;
+    // penalize obvious template markers
+    if(/(أرى علاقة بين|قد يكون هناك ارتباط)/.test(r)) score -= 0.08;
+    return { r, score };
   });
+  scored.sort((a,b)=> b.score - a.score);
+  return scored[0]?.r || baseReply;
+}
+function applyContextBuffer(reply, context, bufferSize = 3){
+  if(!context || !context.previousReplies || !Array.isArray(context.previousReplies) || context.previousReplies.length===0) return reply;
+  const slice = context.previousReplies.slice(-bufferSize).map(r=> typeof r === 'string' ? r : safeStr(r)).join(" / ");
+  return `من اللي قلته قبل كده (${slice}) — ${reply}`;
+}
 
-  // attempt to find hybrid final candidate inside the bundle (by conventional source tags)
-  const hybridCandidate = normalized.find(n => safeStr(n.candidate.source || '').toLowerCase().includes('hybrid')) ||
-                          normalized.find(n => safeStr(n.candidate.source || '').toLowerCase().includes('maestro')) ||
-                          normalized.find(n => safeStr(n.candidate.source || '').toLowerCase().includes('final')) ||
-                          null;
-
-  // compute narrative
-  const narrative = findDominantNarrative(normalized, context);
-
-  // compute gems
-  const gems = extractGems(normalized);
-
-  // Triable logic
-  for (const strat of triableStrategies) {
-    try {
-      if (strat === "rule_first") {
-        if (narrative && (!requireKBRule || (requireKBRule && INSIGHT_RULES[`${narrative.primaryConcept}_${narrative.secondaryConcept}`]))) {
-          if (narrative.strength >= minNarrativeStrength) {
-            // build call to action using KB if available
-            const primaryData = KNOWLEDGE_BASE[narrative.primaryConcept];
-            const actionSentence = primaryData?.coping_mechanisms?.short_term && primaryData.coping_mechanisms.short_term.length
-              ? `كخطوة بسيطة، جرب: "${primaryData.coping_mechanisms.short_term[0]}".`
-              : gems.action;
-            const reply = `${gems.empathy}. ${narrative.insight}. ${actionSentence}`;
-            const metadata = { source: "narrative_weaver_v5_rule_first", narrative: `${narrative.primaryConcept}_to_${narrative.secondaryConcept}`, components: { gems, hybrid: hybridCandidate?.candidate?.source || null } };
-            return { reply: dedupeSentences(reply), source: "narrative_weaver_v5", confidence: clamp(0.45 + narrative.strength/3, 0.5, 0.99), metadata };
+// ------------------ Knowledge loader (graceful) ------------------
+(function loadLexicons() {
+  try {
+    const lexiconDir = path.join(process.cwd(), 'lexicons');
+    if(!fs.existsSync(lexiconDir)) {
+      // no lexicons directory: keep KB empty but don't crash
+      return;
+    }
+    const files = fs.readdirSync(lexiconDir).filter(f=>f.endsWith('.json'));
+    for(const file of files){
+      try{
+        const raw = fs.readFileSync(path.join(lexiconDir,file),'utf8');
+        const data = JSON.parse(raw);
+        if(data && data.emotion){
+          const main = data.emotion;
+          KNOWLEDGE_BASE[main] = data;
+          CONCEPT_MAP[main.toLowerCase()] = main;
+          if(Array.isArray(data.aliases)){
+            for(const a of data.aliases) CONCEPT_MAP[safeStr(a).toLowerCase()] = main;
+          }
+          if(data.related_concepts && typeof data.related_concepts === 'object'){
+            for(const related in data.related_concepts){
+              const ruleText = data.related_concepts[related].short_description
+                || (`غالبًا ما يكون هناك ارتباط بين الشعور بـ "${main}" والشعور بـ "${related}".`);
+              INSIGHT_RULES[`${main}_${related}`] = ruleText;
+            }
           }
         }
+      }catch(e){
+        // skip malformed lexicon file
+        continue;
       }
+    }
+  }catch(e){
+    // loader failure -> continue without KB
+  }
+})();
 
-      if (strat === "hybrid_merge") {
-        // Always beneficial: merge hybridCandidate reply with gems & narrative if hybrid exists
-        if (hybridCandidate) {
-          const merged = mergeHybridAndGems(hybridCandidate.candidate, gems, narrative, context);
-          const polished = dedupeSentences(merged);
-          const metadata = { source: "narrative_weaver_v5_hybrid_merge", components: { gems, hybrid: hybridCandidate.candidate.source, narrative: narrative ? `${narrative.primaryConcept}_${narrative.secondaryConcept}` : null } };
-          // confidence higher if narrative exists
-          const conf = narrative ? clamp(0.5 + (narrative.strength/4), 0.5, 0.98) : 0.6;
-          return { reply: polished, source: "narrative_weaver_v5", confidence: conf, metadata };
+// ------------------ Concept mapping ------------------
+function mapToConcept(token){
+  const norm = safeStr(token).toLowerCase();
+  return CONCEPT_MAP[norm] || null;
+}
+function extractConceptsFromText(text, topN = 4){
+  if(!text) return [];
+  const tokens = tokenizeWords(text).filter(t => !DEFAULT_STOPWORDS.includes(t));
+  if(tokens.length===0) return [];
+  const freq = {};
+  tokens.forEach((t,i) => freq[t] = (freq[t]||0)+1);
+  const entries = Object.entries(freq).sort((a,b)=> b[1]-a[1]).slice(0, topN);
+  const out = [];
+  for(const [tok] of entries){
+    const mapped = mapToConcept(tok) || tok;
+    out.push(mapped);
+    if(out.length>=topN) break;
+  }
+  return uniq(out);
+}
+
+// ------------------ Build concept graph ------------------
+function buildConceptGraph(user_message, allCandidates){
+  const graph = { nodes:{}, edges:{} };
+  const userConcepts = extractConceptsFromText(user_message||"",6);
+  userConcepts.forEach((c,i)=> graph.nodes[c] = (graph.nodes[c]||0) + (1.2/(1+i)));
+  for(const sc of allCandidates){
+    const reply = safeStr(sc.candidate?.reply || sc.reply || "");
+    const ccs = extractConceptsFromText(reply,6);
+    const weight = clamp(Number(sc.calibratedScore ?? sc.score ?? sc.baseConf ?? 0.5), 0.01, 1.0);
+    ccs.forEach((c,idx)=> graph.nodes[c] = (graph.nodes[c]||0) + weight * (1/(1+idx)));
+    for(let i=0;i<ccs.length;i++){
+      for(let j=i+1;j<ccs.length;j++){
+        const a=ccs[i], b=ccs[j];
+        const key = a < b ? `${a}::${b}` : `${b}::${a}`;
+        graph.edges[key] = graph.edges[key] || { weight:0, supporters:[] };
+        graph.edges[key].weight += weight * (1/(1+Math.abs(i-j)));
+        graph.edges[key].supporters.push({ source: safeStr(sc.candidate?.source || sc.source || "unknown"), score: weight, text: reply });
+      }
+    }
+    // cross-link user concepts
+    for(const uc of userConcepts){
+      for(const cc of ccs){
+        const key = uc < cc ? `${uc}::${cc}` : `${cc}::${uc}`;
+        graph.edges[key] = graph.edges[key] || { weight:0, supporters:[] };
+        graph.edges[key].weight += 0.5 * weight;
+        graph.edges[key].supporters.push({ source: safeStr(sc.candidate?.source || sc.source || "unknown"), score: weight, text: reply });
+      }
+    }
+  }
+  return graph;
+}
+
+// ------------------ Attention reweighting ------------------
+function applyGraphAttention(graph, context){
+  const userMsg = safeStr(context?.user_message || "");
+  const nodeAttention = {};
+  const keys = Object.keys(graph.nodes);
+  for(const n of keys){
+    const base = graph.nodes[n] || 0;
+    const cov = jaccardSim(n, userMsg);
+    let supCount = 0;
+    let supStrength = 0;
+    for(const eKey in graph.edges){
+      if(eKey.includes(n)){
+        supStrength += (graph.edges[eKey].weight || 0);
+        supCount += (graph.edges[eKey].supporters ? graph.edges[eKey].supporters.length : 0);
+      }
+    }
+    let userBoost = 1.0;
+    if(context?.userProfile?.focus && Array.isArray(context.userProfile.focus) && context.userProfile.focus.includes(n)) userBoost = 1.2;
+    const att = base * (1 + cov*1.2) * (1 + Math.log(1+supCount)) * userBoost;
+    nodeAttention[n] = att || 0.001;
+  }
+  const mx = Math.max(...Object.values(nodeAttention), 1e-6);
+  for(const k in nodeAttention) nodeAttention[k] = nodeAttention[k] / mx;
+  return nodeAttention;
+}
+
+// ------------------ Scoring pairs/triples ------------------
+function scorePair(a,b,graph,allCandidates,context,nodeAttention){
+  const edgeKey = a < b ? `${a}::${b}` : `${b}::${a}`;
+  const edgeObj = graph.edges[edgeKey] || { weight:0, supporters:[] };
+  const edgeW = edgeObj.weight || 0;
+  const nodeW = (graph.nodes[a]||0) + (graph.nodes[b]||0);
+  const rule = INSIGHT_RULES[`${a}_${b}`] || INSIGHT_RULES[`${b}_${a}`] || null;
+  const ruleBoost = rule ? 1.6 : 1.0;
+  const supporters = (edgeObj.supporters || []).map(s=>({source:s.source,score:s.score,text:s.text}));
+  const supportStrength = supporters.reduce((acc,s)=> acc + (Number(s.score||0.01)),0) || 0.01;
+  const userMsg = safeStr(context?.user_message || "");
+  const cov = jaccardSim(`${a} ${b}`, userMsg);
+  const detected = context?.detected_emotions || [];
+  let emoAlign = 0;
+  if(detected.length && supporters.length){
+    supporters.forEach(s => detected.forEach(d => { if((s.text||'').includes(d)) emoAlign += 0.5; }));
+    emoAlign = clamp(emoAlign / Math.max(1,supporters.length), 0, 1);
+  }
+  const attA = nodeAttention[a] || 0.01;
+  const attB = nodeAttention[b] || 0.01;
+  const attBoost = 0.35 * (attA + attB);
+  const raw = (edgeW * 1.2 + nodeW * 0.55) * ruleBoost * (0.6 + cov*0.4) * (0.8 + emoAlign*0.4) + supportStrength * 0.3 + attBoost;
+  let conflict = false;
+  if(supporters.length >= 2){
+    const tones = supporters.map(s => {
+      if((s.text||'').includes('خطر') || (s.text||'').includes('ضروري')) return 'urgent';
+      if((s.text||'').includes('تهدأ') || (s.text||'').includes('معاك')) return 'soothing';
+      return 'neutral';
+    });
+    if(tones.includes('urgent') && tones.includes('soothing')) conflict = true;
+  }
+  return { a, b, rule, rawScore: raw, edgeW, nodeW, supportCount: supporters.length, avgNovelty: 0, cov, emoAlign, supporters, conflict };
+}
+function enumeratePairs(concepts){
+  const pairs = [];
+  for(let i=0;i<concepts.length;i++) for(let j=i+1;j<concepts.length;j++) pairs.push([concepts[i],concepts[j]]);
+  return pairs;
+}
+function enumerateTriples(concepts){
+  const triples = [];
+  for(let i=0;i<concepts.length;i++) for(let j=i+1;j<concepts.length;j++) for(let k=j+1;k<concepts.length;k++) triples.push([concepts[i],concepts[j],concepts[k]]);
+  return triples;
+}
+function scoreTriple(triple, graph, allCandidates, INSIGHT_RULES, context, nodeAttention){
+  const [a,b,c] = triple;
+  const p1 = scorePair(a,b,graph,allCandidates,context,nodeAttention);
+  const p2 = scorePair(a,c,graph,allCandidates,context,nodeAttention);
+  const p3 = scorePair(b,c,graph,allCandidates,context,nodeAttention);
+  const raw = (p1.rawScore + p2.rawScore + p3.rawScore)/3 - 0.18;
+  return { triple, rawScore: raw, components: [p1,p2,p3] };
+}
+
+// ------------------ Evidence picking ------------------
+function pickEvidenceFromCandidate(candidate, concept, maxEvidence=2, userMsg=""){
+  if(!candidate || !candidate.reply) return [];
+  const sents = safeStr(candidate.reply).split(/(?<=[.؟!?])\s+/).map(s=>s.trim()).filter(Boolean);
+  const hits = sents.filter(s => s.includes(concept) || tokenizeWords(s).includes(String(concept).replace(/\s+/g,'')));
+  if(hits.length){
+    hits.sort((x,y)=> jaccardSim(y,userMsg) - jaccardSim(x,userMsg));
+    return hits.slice(0,maxEvidence);
+  }
+  return sents.slice(0,maxEvidence);
+}
+
+// ------------------ Narrative Weaver (uses KB + gems) ------------------
+function extractGems(allScoredCandidates){
+  const gems = { empathy:null, action:null };
+  let be=-1, ba=-1;
+  for(const sc of allScoredCandidates){
+    const reply = safeStr(sc.candidate?.reply || sc.reply || "");
+    const src = safeStr(sc.candidate?.source || sc.source || "").toLowerCase();
+    if((src.includes('gateway') || src.includes('empath') || src.includes('compassion')) && sc.calibratedScore > be){
+      gems.empathy = firstSentence(reply); be = sc.calibratedScore;
+    }
+    if((src.includes('skill') || src.includes('tool') || reply.includes('?')) && sc.calibratedScore > ba){
+      gems.action = firstSentence(reply); ba = sc.calibratedScore;
+    }
+  }
+  if(!gems.empathy) gems.empathy = firstSentence(allScoredCandidates[0]?.candidate?.reply || allScoredCandidates[0]?.reply || "");
+  if(!gems.action) gems.action = firstSentence(allScoredCandidates[0]?.candidate?.reply || allScoredCandidates[0]?.reply || "");
+  return gems;
+}
+function findDominantNarrative(allScoredCandidates, context){
+  const userMessage = safeStr(context?.user_message || "");
+  const conceptScores = {};
+  const userConcepts = extractConceptsFromText(userMessage,4);
+  userConcepts.forEach((c,i)=> conceptScores[c] = (conceptScores[c]||0) + (2/(i+1)));
+  allScoredCandidates.slice(0,4).forEach(sc=>{
+    extractConceptsFromText(safeStr(sc.candidate?.reply || sc.reply || ""),2).forEach(c=>{
+      conceptScores[c] = (conceptScores[c]||0) + (sc.calibratedScore ?? 0.5);
+    });
+  });
+  const concepts = Object.keys(conceptScores).sort((a,b)=> conceptScores[b] - conceptScores[a]);
+  if(concepts.length < 2) return null;
+  for(let i=0;i<Math.min(concepts.length,4);i++){
+    for(let j=i+1;j<Math.min(concepts.length,4);j++){
+      const a=concepts[i], b=concepts[j];
+      const r = INSIGHT_RULES[`${a}_${b}`] || INSIGHT_RULES[`${b}_${a}`];
+      if(r) return { insight: r, primaryConcept: a, secondaryConcept: b, strength: (conceptScores[a]+conceptScores[b]) };
+    }
+  }
+  return null;
+}
+function weaveNarrativeResponse(allScoredCandidates, context){
+  if(!Array.isArray(allScoredCandidates) || allScoredCandidates.length < 2 || !context?.user_message) return null;
+  try{
+    const narrative = findDominantNarrative(allScoredCandidates, context);
+    if(!narrative || (narrative.strength || 0) < MIN_NARRATIVE_STRENGTH) return null;
+    const gems = extractGems(allScoredCandidates);
+    const primaryData = KNOWLEDGE_BASE[narrative.primaryConcept] || {};
+    let finalAction = gems.action || "هل تحب نجرب خطوة صغيرة الآن؟";
+    if(primaryData && primaryData.coping_mechanisms && Array.isArray(primaryData.coping_mechanisms.short_term) && primaryData.coping_mechanisms.short_term.length){
+      const sug = primaryData.coping_mechanisms.short_term[0];
+      finalAction = `كخطوة أولى بسيطة، هل تقدر تجرب: "${sug}"؟`;
+    }
+    const finalReply = `${gems.empathy}. ${narrative.insight}. ${finalAction}`;
+    return { reply: polishInsight(finalReply), source: "narrative_weaver_v5.1", confidence: 0.95, metadata: { narrative: `${narrative.primaryConcept}_to_${narrative.secondaryConcept}`, components: { empathy: gems.empathy, action: gems.action } } };
+  }catch(e){
+    return null;
+  }
+}
+
+// ------------------ Main export ------------------
+export function generateInsight(allRawCandidates = [], context = {}, options = {}){
+  const {
+    topK = 6,
+    triableStrategies = ["rule_first","attention_then_rule","attention_only","triple_boost","fallback"],
+    personaTonePreference = null,
+    maxEvidence = 2
+  } = options || {};
+
+  // normalize candidates: accept either scored forms or plain {reply,source,metadata}
+  const normalized = (Array.isArray(allRawCandidates) ? allRawCandidates : []).map(c => {
+    if(!c) return null;
+    if(c.candidate && c.calibratedScore !== undefined) return c;
+    // if it's plain candidate
+    return { candidate: c, calibratedScore: Number(c.calibratedScore ?? c.score ?? c.baseConf ?? 0.6), personaAvg: 0, novelty: 0, baseConf: Number(c.baseConf ?? c.score ?? 0.6) };
+  }).filter(Boolean);
+
+  if(normalized.length === 0) return null;
+
+  // ensure hybrid final candidate included if present (source includes 'hybrid' or 'hybridcomposer')
+  const hybrid = normalized.find(s => safeStr(s.candidate?.source || '').toLowerCase().includes('hybrid')) || null;
+
+  // build graph across all provided candidates
+  const graph = buildConceptGraph(context?.user_message || "", normalized);
+  const allConcepts = uniq(Object.keys(graph.nodes));
+  // attempt narrative weaving first
+  const narrativeCandidate = weaveNarrativeResponse(normalized, context);
+  if(narrativeCandidate){
+    // verify narrativeCandidate quality: has meaningful insight and not templated garbage
+    const hasEvidence = true; // weaving uses KB; allow high confidence only if evidence exists
+    if(narrativeCandidate.confidence > 0.7 && hasEvidence) return narrativeCandidate;
+  }
+
+  // if not enough concepts -> fallback to hybrid or top candidate
+  if(allConcepts.length < 2){
+    const top = normalized.slice().sort((a,b)=> (b.calibratedScore - a.calibratedScore))[0];
+    const fallbackCandidate = hybrid?.candidate || top?.candidate || {};
+    const reply = polishInsight(safeStr(fallbackCandidate.reply || ""));
+    return { reply, source: hybrid ? "hybrid_fallback" : "direct_fallback", confidence: top?.calibratedScore ?? 0.6, metadata: { reason: "insufficient_concepts", produced_at: nowISO(), components: normalized.map(n=>safeStr(n.candidate?.source)) } };
+  }
+
+  // scoring & attention
+  const nodeAttention = applyGraphAttention(graph, context);
+  const pairs = enumeratePairs(allConcepts).map(([a,b]) => scorePair(a,b,graph,normalized,context,nodeAttention));
+  const triples = allConcepts.length >=3 ? enumerateTriples(allConcepts).map(t => scoreTriple(t,graph,normalized,INSIGHT_RULES,context,nodeAttention)) : [];
+
+  // helper builders
+  function buildFromPair(chosen){
+    const a = chosen.a, b = chosen.b;
+    const ruleText = chosen.rule || INSIGHT_RULES[`${a}_${b}`] || INSIGHT_RULES[`${b}_${a}`] || null;
+    const insightCore = ruleText ? ruleText : `أرى علاقة بين "${a}" و "${b}" قد تكون مهمة بالنسبة لك.`;
+    const supportersSrcs = uniq((chosen.supporters||[]).map(s=>s.source)).slice(0,6);
+    const evidenceParts = [];
+    for(const src of supportersSrcs.slice(0,4)){
+      const sc = normalized.find(n => safeStr(n.candidate?.source) === safeStr(src));
+      if(sc){
+        const ev = pickEvidenceFromCandidate(sc.candidate, a, Math.ceil(maxEvidence/2), context?.user_message).concat(pickEvidenceFromCandidate(sc.candidate, b, Math.floor(maxEvidence/2), context?.user_message));
+        if(ev.length) evidenceParts.push(`من ${sc.candidate.source}: ${ev.join(' / ')}`);
+      }
+    }
+    if(evidenceParts.length === 0){
+      for(const sc of normalized.slice(0,3)){
+        const ev = pickEvidenceFromCandidate(sc.candidate, a,1, context?.user_message);
+        if(ev.length) evidenceParts.push(`من ${sc.candidate.source}: ${ev.join(' / ')}`);
+        if(evidenceParts.length >= 2) break;
+      }
+    }
+    if(chosen.conflict) evidenceParts.unshift("توجد تباينات بين المصادر — من الأفضل توضيحها قبل اتخاذ خطوة.");
+    const gems = extractGems(normalized);
+    const tone = personaTonePreference || (context?.detected_emotions && context.detected_emotions.includes('sadness') ? 'empathic' : 'logical');
+    let callToAction = gems.action || "هل تحب نجرب خطوة صغيرة الآن؟";
+    if((context?.detected_intent||'').toLowerCase().includes('advice')) callToAction = "تحب أقدملك خطوة عملية بسيطة الآن؟";
+    const assembled = `${gems.empathy}. ${insightCore}\n\n${evidenceParts.join("\n\n")}\n\n${callToAction}`;
+    let finalReply = polishInsight(assembled);
+    finalReply = applyContextBuffer(finalReply, context);
+    const variants = [`${finalReply} إيه رأيك؟`, `نقدر نبدأ بـ: ${firstSentence(callToAction)}`, `${firstSentence(finalReply)} — تحب نوضّح أكثر؟`];
+    finalReply = triableReply(finalReply, variants);
+    const raw = chosen.rawScore || 0;
+    const confidence = clamp(0.45 + (Math.tanh(raw/3)/1.2), 0.45, 0.98);
+    const metadata = { source: "insight_generator_v5.1", chosen_pair: [a,b], confidence, produced_at: nowISO(), reasoning: chosen };
+    return { reply: finalReply, source: "insight_generator_v5.1", confidence, metadata };
+  }
+
+  function buildFromTriple(chosenTriple){
+    const [a,b,c] = chosenTriple.triple;
+    const comp = chosenTriple.components || [];
+    const insightCore = `أرى اتصالًا بين "${a}", "${b}" و "${c}" قد يوضّح جزءًا من اللي بتحس به.`;
+    const evidenceParts = [];
+    const used = new Set();
+    for(const part of comp){
+      for(const s of (part.supporters||[])){
+        const src = s.source;
+        if(used.has(src)) continue;
+        used.add(src);
+        const sc = normalized.find(n => safeStr(n.candidate?.source) === safeStr(src));
+        if(sc){
+          const ev = pickEvidenceFromCandidate(sc.candidate, a,1, context?.user_message)
+                    .concat(pickEvidenceFromCandidate(sc.candidate, b,1, context?.user_message))
+                    .concat(pickEvidenceFromCandidate(sc.candidate, c,1, context?.user_message));
+          if(ev.length) evidenceParts.push(`من ${sc.candidate.source}: ${ev.join(' / ')}`);
+        }
+        if(evidenceParts.length >= 4) break;
+      }
+      if(evidenceParts.length >= 4) break;
+    }
+    if(evidenceParts.length === 0){
+      for(const sc of normalized.slice(0,3)){
+        const ev = pickEvidenceFromCandidate(sc.candidate, a,1, context?.user_message);
+        if(ev.length) evidenceParts.push(`من ${sc.candidate.source}: ${ev.join(' / ')}`);
+        if(evidenceParts.length >= 2) break;
+      }
+    }
+    const gems = extractGems(normalized);
+    const callToAction = gems.action || "نقدر نجرب خطوة بسيطة الآن؟";
+    let finalReply = `${gems.empathy}. ${insightCore}\n\n${evidenceParts.join("\n\n")}\n\n${callToAction}`;
+    finalReply = polishInsight(finalReply);
+    finalReply = applyContextBuffer(finalReply, context);
+    const variants = [`${finalReply} إيه رأيك؟`, `خلينا نجرّب: ${firstSentence(callToAction)}`];
+    finalReply = triableReply(finalReply, variants);
+    const raw = chosenTriple.rawScore || 0;
+    const confidence = clamp(0.45 + (Math.tanh(raw/3)/1.2), 0.45, 0.98);
+    return { reply: finalReply, source: "insight_generator_v5.1_triple", confidence, metadata: { chosen_triple: chosenTriple.triple, produced_at: nowISO(), reasoning: chosenTriple } };
+  }
+
+  // Triable strategies
+  const strategies = triableStrategies;
+  for(const strat of strategies){
+    if(strat === "rule_first"){
+      const withRule = pairs.filter(p=> !!p.rule).sort((x,y)=> y.rawScore - x.rawScore);
+      if(withRule.length){
+        const candidate = buildFromPair(withRule[0]);
+        if(candidate && candidate.confidence > 0.5) return candidate;
+      }
+    }
+    if(strat === "attention_then_rule"){
+      const ordered = pairs.slice().sort((x,y)=> (y.rawScore + (y.rule?0.25:0)) - (x.rawScore + (x.rule?0.25:0)));
+      if(ordered.length){
+        const candidate = buildFromPair(ordered[0]);
+        if(candidate && candidate.confidence > 0.5) return candidate;
+      }
+    }
+    if(strat === "attention_only"){
+      const ordered = pairs.slice().sort((x,y)=> y.rawScore - x.rawScore);
+      if(ordered.length){
+        const candidate = buildFromPair(ordered[0]);
+        if(candidate && candidate.confidence > 0.48) return candidate;
+      }
+    }
+    if(strat === "triple_boost"){
+      if(triples.length){
+        const bestTriple = triples.slice().sort((x,y)=> y.rawScore - x.rawScore)[0];
+        if(bestTriple && bestTriple.rawScore > (pairs[0]?.rawScore || 0) + 0.12){
+          const candidate = buildFromTriple(bestTriple);
+          if(candidate && candidate.confidence > 0.5) return candidate;
         }
       }
-
-      if (strat === "attention_only") {
-        // pick best-scored pair/triple from the bundle and attempt to phrase insight even without KB rule
-        const scores = scoreConceptBundle(normalized, context);
-        const concepts = Object.keys(scores).sort((a,b)=> scores[b]-scores[a]);
-        if (concepts.length >= 2) {
-          const a = concepts[0], b = concepts[1];
-          const insight = INSIGHT_RULES[`${a}_${b}`] || INSIGHT_RULES[`${b}_${a}`] || `قد يكون هناك رابط بين "${a}" و "${b}".`;
-          const reply = `${gems.empathy}. ${insight}. ${gems.action}`;
-          const metadata = { source: "narrative_weaver_v5_attention", chosen_pair: [a,b], components: { gems } };
-          return { reply: dedupeSentences(reply), source: "narrative_weaver_v5", confidence: 0.58, metadata };
-        }
+    }
+    if(strat === "fallback"){
+      // fallback: prefer hybrid final if available and clean
+      if(hybrid && hybrid.candidate && safeStr(hybrid.candidate.reply).length > 10){
+        const reply = polishInsight(safeStr(hybrid.candidate.reply));
+        return { reply, source: "insight_generator_fallback_to_hybrid", confidence: hybrid.calibratedScore ?? 0.6, metadata: { reason: "fallback_to_hybrid", produced_at: nowISO() } };
       }
-
-      if (strat === "fallback") {
-        // safe fallback: return an enriched hybrid or best candidate with gems prefixed
-        const best = normalized[0].candidate;
-        const prefix = gems.empathy ? `${gems.empathy}. ` : '';
-        const hybridText = safeStr(best.reply || best.text || '');
-        const final = dedupeSentences(`${prefix}${hybridText}`);
-        const metadata = { source: "narrative_weaver_v5_fallback", components: normalized.map(n=>n.candidate.source) };
-        return { reply: final, source: "narrative_weaver_v5", confidence: Number(normalized[0].calibratedScore ?? 0.6), metadata };
-      }
-    } catch (err) {
-      // do not crash whole flow; move to next strategy
-      console.warn('[NarrativeWeaver] strategy error', strat, err.message);
-      continue;
+      // else take top normalized candidate and annotate
+      const top = normalized.slice().sort((a,b)=> b.calibratedScore - a.calibratedScore)[0];
+      const reply = polishInsight(safeStr(top.candidate.reply));
+      return { reply: `${reply}\n\n[ملاحظة: تم استخدام أفضل رد متاح كمحتوى احتياطي.]`, source: "insight_generator_fallback_top", confidence: top.calibratedScore ?? 0.55, metadata: { reason: "final_fallback", produced_at: nowISO() } };
     }
   }
 
-  // safety final fallback
-  const fallback = normalized[0].candidate;
-  return { reply: dedupeSentences(safeStr(fallback.reply || fallback.text || 'أنا معاك — ممكن تحكيلي أكثر؟')), source: "narrative_weaver_v5_final_fallback", confidence: normalized[0].calibratedScore ?? 0.5, metadata: { source: "final_fallback", produced_at: nowISO() } };
+  // ultimate safety
+  const top = normalized.slice().sort((a,b)=> b.calibratedScore - a.calibratedScore)[0];
+  return { reply: polishInsight(safeStr(top.candidate.reply || "")), source: "insight_generator_last_resort", confidence: top.calibratedScore ?? 0.5, metadata: { produced_at: nowISO() } };
 }
 
-export default { weaveNarrativeResponse };
+export default { generateInsight };
+```0
 
