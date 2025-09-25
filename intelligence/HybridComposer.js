@@ -1,9 +1,9 @@
+
 // intelligence/HybridComposerFinal.js
 // Final Fusion: HybridComposer + NarrativeWeaver post-process
 // Exports: synthesizeHybridResponse(candidates, briefing, context, options)
 
-// --- [التعديل الأول] --- تم تغيير طريقة الاستيراد لتطابق ملف InsightGenerator
-import { generateInsight } from './InsightGenerator.js';
+import  weaveNarrativeResponse  from './InsightGenerator.js';
 
 const DEBUG = false;
 
@@ -278,16 +278,14 @@ export function synthesizeHybridResponse(candidates = [], briefing = {}, context
       const pseudoScore = clamp(maxScore * 0.98 + 0.02, 0, 0.99); // slightly below perfect but high
       allScored.unshift({ candidate: { reply: finalDecision.reply, source: finalDecision.source || 'finalDecision', metadata: finalDecision.metadata || {} }, calibratedScore: pseudoScore, personaAvg: 0.99, novelty: 0 });
 
-      if(DEBUG || debug) console.log('[HybridFinal] invoking Insight Generator with', allScored.map(s=>({src:s.candidate.source,score:s.calibratedScore.toFixed(3)})));
+      if(DEBUG || debug) console.log('[HybridFinal] invoking Narrative Weaver with', allScored.map(s=>({src:s.candidate.source,score:s.calibratedScore.toFixed(3)})));
 
-      // call the Insight Generator (should be robust to varied input)
+      // call the Narrative Weaver (should be robust to varied input)
       let narrativeResponse = null;
       try {
-        // --- [التعديل الثاني] --- تم استدعاء الدالة الصحيحة وتمرير المدخلات المناسبة
-        narrativeResponse = generateInsight(allScored, context, options);
-
+        narrativeResponse = weaveNarrativeResponse(allScored, { user_message: fingerprint.originalMessage || context?.user_message, fingerprint, context });
       } catch(err){
-        if(DEBUG || debug) console.error('HybridFinal: insight generator error', err);
+        if(DEBUG || debug) console.error('HybridFinal: narrative weave error', err);
         narrativeResponse = null;
       }
 
@@ -306,13 +304,13 @@ export function synthesizeHybridResponse(candidates = [], briefing = {}, context
           if(primaryProtocolForMemory && primaryProtocolForMemory.metadata?.nextSessionContext){
             narrativeResponse.metadata.nextSessionContext = primaryProtocolForMemory.metadata.nextSessionContext;
           }
-          if(DEBUG || debug) console.log('HybridFinal: Insight Generator produced final reply. Returning it.');
+          if(DEBUG || debug) console.log('HybridFinal: Narrative Weaver produced final reply. Returning it.');
           return narrativeResponse;
         } else {
-          if(DEBUG || debug) console.log('HybridFinal: Insight response failed minimal validation — ignoring.');
+          if(DEBUG || debug) console.log('HybridFinal: Narrative response failed minimal validation — ignoring.');
         }
       } else {
-        if(DEBUG || debug) console.log('HybridFinal: Insight Generator returned null/empty — using finalDecision.');
+        if(DEBUG || debug) console.log('HybridFinal: Narrative Weaver returned null/empty — using finalDecision.');
       }
     }
 
