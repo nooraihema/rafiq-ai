@@ -490,5 +490,5 @@ export function generateInsight(allRawCandidates = [], context = {}, options = {
 }
 
 export default { generateInsight };
-```0
+
 
