@@ -1,11 +1,10 @@
 // intelligence/linguistic_core/summarizer/index.js
 import { tokenize } from '../tokenizer/index.js';
 import { createVector } from '../vectorizer/index.js';
-import { Dictionaries } from '../../dictionaries/index.js';
+import { Dictionaries } from '../dictionaries/index.js'; // <-- تصحيح المسار
 
 /**
  * الوظيفة الرئيسية لوحدة Summarizer.
- * تحلل رسالة المستخدم لاستخلاص "ملف الموقف" المنظم.
  * @param {string} userMessage
  * @param {object[]} candidates
  * @returns {object} 
