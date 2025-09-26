@@ -1,6 +1,6 @@
 // intelligence/linguistic_core/generator.js
 import { GENERATIVE_LEXICON } from './dictionaries.js';
-import { sample } from '../HybridComposer.js'; // سنفترض أن الدوال المساعدة موجودة في HybridComposer مؤقتًا
+import { sample } from './utils.js'; // استيراد الدالة من الملف المحلي الصحيح
 
 /**
  * يولد ردًا جديدًا بناءً على ملخص الموقف.
