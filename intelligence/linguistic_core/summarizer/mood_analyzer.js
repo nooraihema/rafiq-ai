@@ -1,8 +1,8 @@
 // intelligence/linguistic_core/summarizer/mood_analyzer.js
 // Version 7.0: The Ultimate Adaptive & Self-Refining Psychometric Engine
 
-import { Dictionaries } from '../../dictionaries/index.js';
-import { safeStr } from '../../utils.js';
+import { Dictionaries } from '../dictionaries/index.js';
+import { safeStr } from '../utils.js';
 
 // خريطة المشاعر الأساسية للمزاج
 const EMOTION_TO_MOOD_MAP = {
