@@ -1,24 +1,39 @@
 // intelligence/linguistic_core/dictionaries/concepts.js
-// Version 2.0: Now supports multi-concept mapping and mood weighting.
+// Version 3.0: Optimized for direct lookups. The key is now the concept name.
 
-export const CONCEPT_MAP = {
+export const CONCEPT_DEFINITIONS = {
   // Supportive Mood Concepts
-  "حزن": { concepts: ["sadness"], mood_weights: { supportive: 1.0 } },
-  "حزين": { concepts: ["sadness"], mood_weights: { supportive: 1.0 } },
-  "مكتئب": { concepts: ["sadness", "depression_symptom"], mood_weights: { supportive: 1.2 } },
-  "يأس": { concepts: ["sadness", "helplessness"], mood_weights: { supportive: 1.5 } },
-  "وحدة": { concepts: ["loneliness"], mood_weights: { supportive: 1.0 } },
+  "sadness": { mood_weights: { supportive: 1.0 } },
+  "depression_symptom": { mood_weights: { supportive: 1.2 } },
+  "helplessness": { mood_weights: { supportive: 1.5, empowering: 0.5 } },
+  "loneliness": { mood_weights: { supportive: 1.0 } },
+  "grief": { mood_weights: { supportive: 2.0 } }, // Grief is a strong indicator
 
   // Calming Mood Concepts
-  "قلق": { concepts: ["anxiety"], mood_weights: { calming: 1.0 } },
-  "قلقان": { concepts: ["anxiety"], mood_weights: { calming: 1.0 } },
-  "خايف": { concepts: ["anxiety", "fear"], mood_weights: { calming: 1.2 } },
-  "خوف": { concepts: ["fear"], mood_weights: { calming: 1.0 } },
-  "متوتر": { concepts: ["anxiety"], mood_weights: { calming: 1.0 } },
-  "مخنوق": { concepts: ["sadness", "anxiety"], mood_weights: { supportive: 0.6, calming: 0.6 } }, // <--- مثال لمفهوم مختلط
+  "anxiety": { mood_weights: { calming: 1.0, supportive: 0.3 } },
+  "fear": { mood_weights: { calming: 1.2 } },
 
   // Empowering Mood Concepts
-  "طاقة": { concepts: ["helplessness", "passion_loss"], mood_weights: { empowering: 0.8, supportive: 0.5 } }, // يحتاج تمكين ودعم
-  "شغف": { concepts: ["passion_loss"], mood_weights: { empowering: 1.0 } },
-  "هدف": { concepts: ["goal_setting"], mood_weights: { empowering: 1.2 } },
+  "passion_loss": { mood_weights: { empowering: 1.0, supportive: 0.4 } },
+  "goal_setting": { mood_weights: { empowering: 1.2 } },
+  "low_self_esteem": { mood_weights: { empowering: 1.0, supportive: 0.8 } }
+};
+
+// This map links user's words (stems) to one or more concepts
+export const CONCEPT_MAP = {
+  "حزن": ["sadness"],
+  "حزين": ["sadness"],
+  "مكتئب": ["sadness", "depression_symptom"],
+  "مخنوق": ["sadness", "anxiety"],
+  "يأس": ["sadness", "helplessness"],
+  "وحدة": ["loneliness"],
+  "قلق": ["anxiety"],
+  "قلقان": ["anxiety"],
+  "خايف": ["anxiety", "fear"],
+  "خوف": ["fear"],
+  "متوتر": ["anxiety"],
+  "طاقة": ["helplessness", "passion_loss"],
+  "شغف": ["passion_loss"],
+  "هدف": ["goal_setting"],
+  "ضعيف": ["helplessness", "low_self_esteem"],
 };
