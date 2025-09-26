@@ -1,9 +1,8 @@
-// intelligence/linguistic_core/tokenizer/index.js
-// Version 5.0: The Semantic Understanding Engine
-// This version evolves from a tokenizer into a true NLU engine by:
-// 1. Implementing advanced morphological analysis (stemming with more affixes).
-// 2. Supporting multi-concept mapping for richer semantics.
-// 3. Outputting a structured SemanticMap object with comprehensive stats.
+// intelligence/lingu-istic_core/tokenizer/index.js
+// Version 5.1: Robust Module Loading
+// This version refactors internal functions to accept dictionaries as parameters,
+// ensuring that all dependencies are fully loaded before they are accessed,
+// preventing potential race conditions and module loading errors in complex environments.
 
 import { Dictionaries } from '../dictionaries/index.js';
 import { safeStr } from '../utils.js';
@@ -22,17 +21,20 @@ function normalize(text) {
         .replace(/ة/g, "ه");
 }
 
-function stem(token) {
+/**
+ * [MODIFIED] Accepts affixes as parameters to ensure they are loaded.
+ */
+function stem(token, prefixes, suffixes) {
     let currentToken = token;
     // 1. Remove prefixes
-    for (const pre of Dictionaries.PREFIXES) {
+    for (const pre of prefixes) {
         if (currentToken.startsWith(pre) && currentToken.length > pre.length + 2) {
             currentToken = currentToken.slice(pre.length);
             break; 
         }
     }
     // 2. Remove suffixes
-    for (const suf of Dictionaries.SUFFIXES) {
+    for (const suf of suffixes) {
         if (currentToken.endsWith(suf) && currentToken.length > suf.length + 2) {
             currentToken = currentToken.slice(0, -suf.length);
             break;
@@ -45,32 +47,32 @@ function stem(token) {
 // SECTION 2: SEMANTIC ANALYSIS ENGINE
 // =================================================================
 
-function analyzeToken(rawToken) {
+/**
+ * [MODIFIED] Accepts the full Dictionaries object as a parameter.
+ */
+function analyzeToken(rawToken, dictionaries) {
     const normalized = normalize(safeStr(rawToken).toLowerCase());
     
-    if (Dictionaries.STOP_WORDS.includes(normalized) || normalized.length < 2) {
-        return null; // This is a stopword or insignificant token
+    if (dictionaries.STOP_WORDS.includes(normalized) || normalized.length < 2) {
+        return null;
     }
 
-    const stem_ = stem(normalized);
+    // Pass the specific affix lists to the stem function
+    const stem_ = stem(normalized, dictionaries.PREFIXES, dictionaries.SUFFIXES);
     let concepts = [];
     
-    const staticConcepts = Dictionaries.CONCEPT_MAP[stem_] || Dictionaries.CONCEPT_MAP[normalized];
+    const staticConcepts = dictionaries.CONCEPT_MAP[stem_] || dictionaries.CONCEPT_MAP[normalized];
     if (staticConcepts) {
-        // Ensure it's always an array and add to our concepts list
         concepts.push(...(Array.isArray(staticConcepts) ? staticConcepts : [staticConcepts]));
     }
     
-    const result = {
+    return {
         original: rawToken,
         normalized: normalized,
         stem: stem_,
         tag: concepts.length > 0 ? 'concept' : 'normal',
-        concepts: uniq(concepts) // Return unique concepts
+        concepts: uniq(concepts)
     };
-
-    // console.log(`[Tokenizer:analyzeToken] Raw: '${rawToken}' -> Stem: '${result.stem}', Concepts: [${result.concepts.join(', ')}]`);
-    return result;
 }
 
 // =================================================================
@@ -83,13 +85,10 @@ function analyzeToken(rawToken) {
  * @returns {object} The comprehensive SemanticMap object.
  */
 export function tokenize(text) {
-    console.log(`\n--- [Tokenizer ENTRY] ---`);
-    console.log(`[Tokenizer] Received text: "${text ? text.slice(0, 50) : 'empty'}..."`);
-
     // Standardized output object
     const semanticMap = {
         sentences: [],
-        tokens: [], // This will hold the rich token objects per sentence
+        tokens: [],
         list: {
             allTokens: [],
             uniqueStems: [],
@@ -107,14 +106,10 @@ export function tokenize(text) {
         }
     };
 
-    if (!text) {
-        console.log("[Tokenizer] EXIT: Empty text provided.");
-        return semanticMap;
-    }
+    if (!text) return semanticMap;
 
     const sentences = safeStr(text).split(/(?<=[.؟!?])\s+/);
     semanticMap.stats.sentenceCount = sentences.length;
-    console.log(`[Tokenizer] Split into ${sentences.length} sentence(s).`);
 
     const stemFrequency = new Map();
     const conceptFrequency = new Map();
@@ -124,7 +119,8 @@ export function tokenize(text) {
         const rawTokens = sentence.split(/\s+/);
 
         for (const rawToken of rawTokens) {
-            const analyzedToken = analyzeToken(rawToken);
+            // [MODIFIED] Pass the fully imported Dictionaries object to analyzeToken
+            const analyzedToken = analyzeToken(rawToken, Dictionaries);
             if (analyzedToken) { // Ignore stopwords and empty tokens
                 sentenceTokens.push(analyzedToken);
 
@@ -156,10 +152,6 @@ export function tokenize(text) {
     semanticMap.stats.uniqueStemCount = semanticMap.list.uniqueStems.length;
     semanticMap.stats.conceptCount = semanticMap.list.allConcepts.length;
 
-    console.log(`[Tokenizer] Analysis Complete. Concepts found: [${semanticMap.list.allConcepts.join(', ')}].`);
-    console.log(`[Tokenizer] Final Stats:`, semanticMap.stats);
-    console.log(`--- [Tokenizer EXIT] ---\n`);
-    
     return semanticMap;
 }
 
