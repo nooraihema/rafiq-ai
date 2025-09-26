@@ -18,7 +18,7 @@ function clamp(v, a = 0, b = 1) { return Math.max(a, Math.min(b, v)); }
 function sample(arr) { if (!arr || arr.length === 0) return null; return arr[Math.floor(Math.random() * arr.length)]; }
 function tokenizeWords(text) {
     if (!text) return [];
-    return safeStr(text).toLowerCase().split(/\s+/).map(t => t.replace(/[^\p{L}\p-N_]+/gu, "")).filter(Boolean);
+    return safeStr(text).toLowerCase().split(/\s+/).map(t => t.replace(/[^\p{L}\p{N}_]+/gu, "")).filter(Boolean);
 }
 function jaccardSim(a = "", b = "") {
     const s1 = new Set(tokenizeWords(a));
