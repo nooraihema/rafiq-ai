@@ -1,8 +1,7 @@
-
 // intelligence/linguistic_core/summarizer/index.js
-import { tokenize } from '../tokenizer/index.js';      // <-- تم تصحيح المسار
-import { createVector } from '../vectorizer/index.js';  // <-- تم تصحيح المسار
-import { Dictionaries } from '../../dictionaries/index.js'; // <-- هذا المسار صحيح
+import { tokenize } from '../tokenizer/index.js';
+import { createVector } from '../vectorizer/index.js';
+import { Dictionaries } from '../../dictionaries/index.js';
 
 /**
  * الوظيفة الرئيسية لوحدة Summarizer.
