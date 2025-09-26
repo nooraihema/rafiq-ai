@@ -5,7 +5,10 @@
 // 2. Supporting multi-concept mapping for richer semantics.
 // 3. Outputting a structured SemanticMap object with comprehensive stats.
 
-import { Dictionaries } from '../dictionaries/index.js';
+// --- [التعديل الوحيد] --- تم تغيير طريقة الاستيراد لتكون مباشرة وصريحة لكل قاموس
+import { CONCEPT_MAP } from '../dictionaries/concepts.js';
+import { STOP_WORDS } from '../dictionaries/stop_words.js';
+import { PREFIXES, SUFFIXES } from '../dictionaries/affixes.js';
 import { safeStr } from '../utils.js';
 
 // =================================================================
@@ -24,15 +27,15 @@ function normalize(text) {
 
 function stem(token) {
     let currentToken = token;
-    // 1. Remove prefixes
-    for (const pre of Dictionaries.PREFIXES) {
+    // 1. Remove prefixes - Now uses the directly imported PREFIXES array
+    for (const pre of PREFIXES) {
         if (currentToken.startsWith(pre) && currentToken.length > pre.length + 2) {
             currentToken = currentToken.slice(pre.length);
             break; 
         }
     }
-    // 2. Remove suffixes
-    for (const suf of Dictionaries.SUFFIXES) {
+    // 2. Remove suffixes - Now uses the directly imported SUFFIXES array
+    for (const suf of SUFFIXES) {
         if (currentToken.endsWith(suf) && currentToken.length > suf.length + 2) {
             currentToken = currentToken.slice(0, -suf.length);
             break;
@@ -48,14 +51,16 @@ function stem(token) {
 function analyzeToken(rawToken) {
     const normalized = normalize(safeStr(rawToken).toLowerCase());
     
-    if (Dictionaries.STOP_WORDS.includes(normalized) || normalized.length < 2) {
+    // Uses the directly imported STOP_WORDS array
+    if (STOP_WORDS.includes(normalized) || normalized.length < 2) {
         return null;
     }
 
     const stem_ = stem(normalized);
     let concepts = [];
     
-    const staticConcepts = Dictionaries.CONCEPT_MAP[stem_] || Dictionaries.CONCEPT_MAP[normalized];
+    // Uses the directly imported CONCEPT_MAP object
+    const staticConcepts = CONCEPT_MAP[stem_] || CONCEPT_MAP[normalized];
     if (staticConcepts) {
         // Ensure it's always an array and add to our concepts list
         concepts.push(...(Array.isArray(staticConcepts) ? staticConcepts : [staticConcepts]));
