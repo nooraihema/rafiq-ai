@@ -1,17 +1,17 @@
 // intelligence/linguistic_core/summarizer/index.js
-// Version 3.0: Contextual Understanding
-// This version integrates specialized analyzers for mood and narrative tension,
-// creating a much richer and more nuanced summary of the user's situation.
+// Version 3.1: Corrected Data Handling
+// This version fixes the mismatch in data structure expected from the tokenizer,
+// ensuring it correctly reads from the rich semanticMap object.
 
 import { tokenize } from '../tokenizer/index.js';
 import { analyzeMood } from './mood_analyzer.js';
-import { detectTension } from './tension_detector.js'; // <-- 1. استيراد الوحدة الجديدة
+import { detectTension } from './tension_detector.js';
 
 /**
- * الوظيفة الرئيسية لوحدة Summarizer (الإصدار المطور).
+ * الوظيفة الرئيسية لوحدة Summarizer (الإصدار المصحح).
  * @param {string} userMessage
  * @param {object} fingerprint - بصمة الرسالة الكاملة.
- * @param {object[]} candidates - (غير مستخدم حاليًا، لكنه موجود للمستقبل).
+ * @param {object[]} candidates
  * @param {string} [lastMood='supportive'] - الحالة المزاجية من الرد السابق.
  * @returns {object} - "ملف الموقف" المطور والكامل.
  */
@@ -19,19 +19,17 @@ export function summarize(userMessage, fingerprint = {}, candidates = [], lastMo
     // 1. نحصل على الخريطة الدلالية الكاملة من tokenizer.
     const semanticMap = tokenize(userMessage);
 
-    // 2. نستخرج البيانات اللازمة من الخريطة والبصمة.
-    const conceptFrequencies = semanticMap.frequencies.concepts;
-    const allConcepts = semanticMap.list.allConcepts;
+    // 2. [تصحيح] نستخرج البيانات من الأماكن الصحيحة في الخريطة الدلالية.
+    const conceptFrequencies = semanticMap.frequencies.concepts; // هذا هو كائن التكرارات
+    const allConcepts = semanticMap.list.allConcepts; // هذه هي قائمة المفاهيم
     const primaryEmotion = fingerprint?.primaryEmotion?.type || null;
 
-    // 3. [تطوير] استدعاء الوحدات المتخصصة.
-    const moodAnalysis = analyzeMood(conceptFrequencies, primaryEmotion, lastMood);
-    const narrativeTension = detectTension(allConcepts); // <-- 2. استخدام الوحدة الجديدة
+    // 3. استدعاء الوحدات المتخصصة بالبيانات الصحيحة.
+    const moodAnalysis = analyzeMood(conceptFrequencies, fingerprint, lastMood);
+    const narrativeTension = detectTension(allConcepts);
 
-    // 4. ترتيب المفاهيم حسب الأهمية (منطق إحصائي بسيط حاليًا).
-    const sortedConcepts = Object.entries(conceptFrequencies)
-        .sort(([, a], [, b]) => b - a)
-        .map(([concept]) => concept);
+    // 4. ترتيب المفاهيم (هذا الجزء لم يعد ضروريًا لأن tokenizer يقوم به، ولكن سنبقيه للوضوح).
+    const sortedConcepts = allConcepts; // القائمة تأتي مرتبة ضمنيًا من tokenizer
 
     // 5. بناء "ملف الموقف" النهائي والكامل.
     return {
@@ -42,7 +40,7 @@ export function summarize(userMessage, fingerprint = {}, candidates = [], lastMo
         moodConfidence: moodAnalysis.confidence,
         moodIntensity: moodAnalysis.intensity,
         moodDistribution: moodAnalysis.distribution,
-        narrativeTension: narrativeTension, // <-- 3. إضافة نتيجة تحليل التوتر
-        implicitNeed: "support", // سيتم تطويره في المرحلة التالية
+        narrativeTension: narrativeTension,
+        implicitNeed: "support",
     };
 }
