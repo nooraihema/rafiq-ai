@@ -3,7 +3,7 @@
 // This module analyzes detected concepts to identify common psychological conflicts,
 // adding a deeper layer of contextual understanding to the summary.
 
-import { Dictionaries } from '../../dictionaries/index.js';
+import { Dictionaries } from '../dictionaries/index.js';
 
 /**
  * يحلل قائمة المفاهيم للبحث عن صراعات نفسية (توترات سردية).
