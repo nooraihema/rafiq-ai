@@ -1,36 +1,39 @@
 // intelligence/linguistic_core/index.js
-import { summarize } from './summarizer.js';
-import { generateReply } from './generator.js';
+import { summarize } from './summarizer/index.js';      // <-- تم تصحيح المسار
+import { generateReply } from './generator/index.js';       // <-- تم تصحيح المسار
 
 /**
- * الدالة الرئيسية للمكتبة اللغوية.
- * تستقبل كل المدخلات الخام وتنفذ خط التجميع كاملاً لتوليد رد متقدم.
+ * الدالة الرئيسية للمكتبة اللغوية (الواجهة العامة).
  * @param {string} userMessage 
  * @param {object[]} candidates 
- * @returns {object|null} - كائن الرد النهائي، أو null في حالة الفشل.
+ * @returns {object|null}
  */
 export function generateAdvancedReply(userMessage, candidates) {
-  try {
-    // 1. التلخيص واستخلاص المعاني
-    const summary = summarize(userMessage, candidates);
+    try {
+        console.log("[Linguistic Core] ==> STAGE 1: Summarizing...");
+        const summary = summarize(userMessage, candidates);
+        console.log("[Linguistic Core] Summary created:", summary);
 
-    // 2. التوليد
-    const replyText = generateReply(summary);
+        console.log("[Linguistic Core] ==> STAGE 2: Generating reply...");
+        const replyText = generateReply(summary);
+        console.log("[Linguistic Core] Generated reply text:", replyText);
 
-    if (!replyText) return null;
+        if (!replyText) {
+            console.log("[Linguistic Core] Generation failed. Returning null.");
+            return null;
+        }
 
-    // 3. إعادة كائن رد متوافق مع النظام
-    return {
-      reply: replyText,
-      source: 'linguistic_core_v1',
-      confidence: 0.95,
-      metadata: {
-        produced_by: 'generative_engine',
-        summary: summary,
-      }
-    };
-  } catch (error) {
-    console.error("Error in linguistic_core:", error);
-    return null;
-  }
+        return {
+            reply: replyText,
+            source: 'linguistic_core_v1',
+            confidence: 0.95,
+            metadata: {
+                produced_by: 'generative_engine',
+                summary: summary,
+            }
+        };
+    } catch (error) {
+        console.error("[Linguistic Core] FATAL ERROR:", error);
+        return null;
+    }
 }
