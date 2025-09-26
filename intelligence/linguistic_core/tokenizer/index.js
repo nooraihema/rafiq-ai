@@ -19,10 +19,7 @@ function cleanToken(token) {
 export function tokenize(text) {
     if (!text) return { sentences: [], tokens: [] };
 
-    // 1. تقسيم النص إلى جمل
     const sentences = safeStr(text).split(/(?<=[.؟!?])\s+/);
-
-    // 2. تقسيم كل جملة إلى كلمات، تنظيفها، وإزالة الكلمات الشائعة
     const tokens = sentences.map(sentence => 
         sentence.split(/\s+/)
             .map(cleanToken)
