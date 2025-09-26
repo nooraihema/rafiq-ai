@@ -5,8 +5,8 @@
 // 2. Supporting multi-concept mapping for richer semantics.
 // 3. Outputting a structured SemanticMap object with comprehensive stats.
 
-import { Dictionaries } from '../../dictionaries/index.js';
-import { safeStr } from '../../utils.js';
+import { Dictionaries } from '../dictionaries/index.js';
+import { safeStr } from '../utils.js';
 
 // =================================================================
 // SECTION 1: ADVANCED LINGUISTIC PROCESSING ENGINES
