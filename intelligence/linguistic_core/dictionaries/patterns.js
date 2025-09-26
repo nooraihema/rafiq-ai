@@ -12,3 +12,27 @@ export const CAUSAL_PATTERNS = [
     },
     // ... سنضيف العشرات من هذه الأنماط في المستقبل
 ];
+
+// --- [إضافة جديدة] ---
+// قاموس جديد للتوترات السردية (الصراعات النفسية الشائعة)
+export const NARRATIVE_TENSIONS = [
+    {
+        // الصراع بين الرغبة في التغيير والخوف منه
+        concepts: ["goal_setting", "fear"],
+        tension_name: "change_vs_fear",
+        description: "صراع بين الرغبة في تحقيق هدف جديد والخوف من الفشل أو المجهول."
+    },
+    {
+        // الصراع بين الشعور بالذنب والرغبة في مسامحة النفس
+        concepts: ["guilt", "self_compassion"],
+        tension_name: "guilt_vs_forgiveness",
+        description: "صراع بين لوم الذات على أخطاء الماضي والرغبة في التسامح والمضي قدمًا."
+    },
+    {
+        // الصراع بين الشعور بالوحدة والخوف من التواصل الاجتماعي
+        concepts: ["loneliness", "anxiety"],
+        tension_name: "loneliness_vs_social_anxiety",
+        description: "صراع بين الشعور بالوحدة والرغبة في التواصل، والخوف أو القلق من التفاعلات الاجتماعية."
+    },
+    // ... يمكن إضافة العشرات من هذه الصراعات النفسية
+];
