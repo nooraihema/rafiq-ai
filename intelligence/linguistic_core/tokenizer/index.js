@@ -1,6 +1,6 @@
 // intelligence/linguistic_core/tokenizer/index.js
-import { Dictionaries } from '../../dictionaries/index.js';
-import { safeStr } from '../../utils.js';
+import { Dictionaries } from '../dictionaries/index.js'; // <-- تصحيح المسار
+import { safeStr } from '../utils.js';
 
 /**
  * ينظف الكلمة من أي رموز غير الحروف والأرقام.
