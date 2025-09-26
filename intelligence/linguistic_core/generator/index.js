@@ -1,18 +1,17 @@
 // intelligence/linguistic_core/generator/index.js
-import { Dictionaries } from '../../dictionaries/index.js';
-import { sample } from '../../utils.js';
+import { Dictionaries } from '../dictionaries/index.js'; // <-- تصحيح المسار
+import { sample } from '../utils.js';
 
 /**
- * الوظيفة الرئيسية لوحدة Generator (حاليا تستخدم قوالب بسيطة).
+ * الوظيفة الرئيسية لوحدة Generator.
  * @param {object} summary - "ملف الموقف" من Summarizer.
  * @returns {string} - الرد المولد.
  */
 export function generateReply(summary) {
-    const mood = 'supportive'; // سيتم تحديده ديناميكيًا في المستقبل
+    const mood = 'supportive';
     const lexicon = Dictionaries.GENERATIVE_LEXICON[mood];
     
     const opener = sample(lexicon.openers);
-    const connector = sample(lexicon.connectors);
     const closer = sample(lexicon.closers);
     const concept = summary.dominantConcept;
 
