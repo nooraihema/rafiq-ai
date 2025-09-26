@@ -1,18 +1,17 @@
 // intelligence/linguistic_core/dictionaries/concepts.js
-
-// يربط الكلمات العامية بالمفاهيم النفسية الأساسية.
+// الآن يدعم مصفوفة من المفاهيم لكل كلمة
 export const CONCEPT_MAP = {
-  "حزن": "sadness",
-  "حزين": "sadness",
-  "مكتئب": "sadness",
-  "مخنوق": "sadness",
-  "يأس": "sadness",
-  "قلق": "anxiety",
-  "قلقان": "anxiety",
-  "خايف": "anxiety",
-  "خوف": "anxiety",
-  "متوتر": "anxiety",
-  "طاقة": "helplessness", // فقدان الطاقة هو أحد مظاهر قلة الحيلة
-  "شغف": "passion_loss",
-  // ... سيتم توسيع هذا القاموس بشكل كبير لاحقًا
+  "حزن": ["sadness"],
+  "حزين": ["sadness"],
+  "مكتئب": ["sadness", "depression_symptom"],
+  "مخنوق": ["sadness", "anxiety"],
+  "يأس": ["sadness", "helplessness"],
+  "قلق": ["anxiety"],
+  "قلقان": ["anxiety"],
+  "خايف": ["anxiety", "fear"],
+  "خوف": ["fear"],
+  "متوتر": ["anxiety"],
+  "طاقة": ["helplessness", "passion_loss"],
+  "شغف": ["passion_loss"],
+  "ضعيف": ["helplessness", "low_self_esteem"]
 };
