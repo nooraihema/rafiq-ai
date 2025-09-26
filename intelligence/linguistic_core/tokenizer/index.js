@@ -49,7 +49,7 @@ function analyzeToken(rawToken) {
     const normalized = normalize(safeStr(rawToken).toLowerCase());
     
     if (Dictionaries.STOP_WORDS.includes(normalized) || normalized.length < 2) {
-        return null;
+        return null; // This is a stopword or insignificant token
     }
 
     const stem_ = stem(normalized);
@@ -61,13 +61,16 @@ function analyzeToken(rawToken) {
         concepts.push(...(Array.isArray(staticConcepts) ? staticConcepts : [staticConcepts]));
     }
     
-    return {
+    const result = {
         original: rawToken,
         normalized: normalized,
         stem: stem_,
         tag: concepts.length > 0 ? 'concept' : 'normal',
         concepts: uniq(concepts) // Return unique concepts
     };
+
+    // console.log(`[Tokenizer:analyzeToken] Raw: '${rawToken}' -> Stem: '${result.stem}', Concepts: [${result.concepts.join(', ')}]`);
+    return result;
 }
 
 // =================================================================
@@ -80,6 +83,9 @@ function analyzeToken(rawToken) {
  * @returns {object} The comprehensive SemanticMap object.
  */
 export function tokenize(text) {
+    console.log(`\n--- [Tokenizer ENTRY] ---`);
+    console.log(`[Tokenizer] Received text: "${text ? text.slice(0, 50) : 'empty'}..."`);
+
     // Standardized output object
     const semanticMap = {
         sentences: [],
@@ -101,10 +107,14 @@ export function tokenize(text) {
         }
     };
 
-    if (!text) return semanticMap;
+    if (!text) {
+        console.log("[Tokenizer] EXIT: Empty text provided.");
+        return semanticMap;
+    }
 
     const sentences = safeStr(text).split(/(?<=[.؟!?])\s+/);
     semanticMap.stats.sentenceCount = sentences.length;
+    console.log(`[Tokenizer] Split into ${sentences.length} sentence(s).`);
 
     const stemFrequency = new Map();
     const conceptFrequency = new Map();
@@ -146,6 +156,10 @@ export function tokenize(text) {
     semanticMap.stats.uniqueStemCount = semanticMap.list.uniqueStems.length;
     semanticMap.stats.conceptCount = semanticMap.list.allConcepts.length;
 
+    console.log(`[Tokenizer] Analysis Complete. Concepts found: [${semanticMap.list.allConcepts.join(', ')}].`);
+    console.log(`[Tokenizer] Final Stats:`, semanticMap.stats);
+    console.log(`--- [Tokenizer EXIT] ---\n`);
+    
     return semanticMap;
 }
 
