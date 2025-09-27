@@ -1,5 +1,6 @@
+
 // intelligence/linguistic_core/summarizer/mood_analyzer.js
-// Version 7.0: The Ultimate Adaptive & Self-Refining Psychometric Engine
+// Version 7.1: The Ultimate Adaptive & Self-Refining Psychometric Engine (Fixed & Hardened)
 
 import { Dictionaries } from '../dictionaries/index.js';
 import { safeStr } from '../utils.js';
@@ -20,13 +21,10 @@ const BASE_SMOOTHING_FACTOR = 0.25;
  * @param {number} feedback - درجة النجاح (0-1)
  */
 export function updateWeights(concept, mood, feedback) {
-    // Note: This function mutates the dictionary in memory.
-    // In a real scenario, this would trigger a save to a persistent store.
     const conceptData = Dictionaries.CONCEPT_DEFINITIONS[concept];
     if (!conceptData || !conceptData.mood_weights) return;
 
     if (!conceptData.mood_weights[mood]) conceptData.mood_weights[mood] = 0.1;
-    // Simple reinforcement learning step
     conceptData.mood_weights[mood] = conceptData.mood_weights[mood] * 0.9 + feedback * 0.1;
 }
 
@@ -43,7 +41,7 @@ export function analyzeMood(semanticMap, fingerprint = {}, lastMood = 'supportiv
     const moodScores = Object.fromEntries(Dictionaries.AVAILABLE_MOODS.map(mood => [mood, 0.0]));
     const primaryEmotion = fingerprint?.primaryEmotion?.type || null;
     const originalMessage = safeStr(fingerprint?.originalMessage);
-    
+
     // --- 1. التنعيم التكيفي مع التضاؤل ---
     let temporalFactor = BASE_SMOOTHING_FACTOR / (1 + (moodStreak * 0.5));
     if (primaryEmotion && lastMood !== EMOTION_TO_MOOD_MAP[primaryEmotion]) temporalFactor /= 2;
@@ -54,8 +52,8 @@ export function analyzeMood(semanticMap, fingerprint = {}, lastMood = 'supportiv
         moodScores[EMOTION_TO_MOOD_MAP[primaryEmotion]] += 1.5;
     }
 
-    // --- 3. نقاط المفاهيم ---
-    const conceptFrequencies = semanticMap.frequencies.concepts;
+    // --- 3. نقاط المفاهيم مع حماية من undefined ---
+    const conceptFrequencies = semanticMap?.frequencies?.concepts || {};
     for (const [concept, freq] of Object.entries(conceptFrequencies)) {
         const conceptData = Dictionaries.CONCEPT_DEFINITIONS[concept];
         if (conceptData?.mood_weights) {
@@ -67,9 +65,9 @@ export function analyzeMood(semanticMap, fingerprint = {}, lastMood = 'supportiv
         }
     }
 
-    // --- 4. المعدلات السياقية المتقدمة ---
+    // --- 4. المعدلات السياقية المتقدمة مع حماية من undefined ---
     let intensityModifier = 1.0;
-    const normalizedTokens = semanticMap.list.allTokens.map(t => t.normalized);
+    const normalizedTokens = (semanticMap?.list?.allTokens || []).map(t => t.normalized);
     for (const token of normalizedTokens) {
         if (Dictionaries.INTENSIFIERS[token]) {
             intensityModifier += (Dictionaries.INTENSIFIERS[token] - 1.0) * 0.5;
@@ -92,7 +90,7 @@ export function analyzeMood(semanticMap, fingerprint = {}, lastMood = 'supportiv
     const sortedMoods = Object.entries(probabilities).sort(([, a], [, b]) => b - a);
     const winnerMood = sortedMoods[0][0];
     const winnerProb = sortedMoods[0][1];
-    const runnerUps = sortedMoods.slice(1).filter(([, prob]) => (winnerProb / prob) < 1.5 && prob > 0.1); // Added a minimum threshold
+    const runnerUps = sortedMoods.slice(1).filter(([, prob]) => (winnerProb / prob) < 1.5 && prob > 0.1);
     let finalMood = winnerMood;
     let isComposite = false;
     if (runnerUps.length > 0) {
@@ -112,3 +110,4 @@ export function analyzeMood(semanticMap, fingerprint = {}, lastMood = 'supportiv
 
     return { mood: finalMood, confidence, intensity, distribution: probabilities, isComposite };
 }
+
