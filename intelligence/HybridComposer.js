@@ -1,7 +1,6 @@
-// intelligence/HybridComposer.js (v11.0 - The Final Conductor)
-// This definitive version correctly integrates with the mood-aware ContextTracker (v9.2)
-// and the fully-featured Linguistic Core. It properly handles the user state lifecycle,
-// passing it to the core for analysis and receiving the updated state back for persistence.
+// intelligence/HybridComposer.js (v11.1 - Safe Metadata Handling)
+// This version fixes a critical TypeError by ensuring the metadata object
+// is safely initialized before attempting to modify its properties, preserving all other logic.
 
 import { generateAdvancedReply } from './linguistic_core/index.js';
 
@@ -100,7 +99,7 @@ function smartWeave(activeCandidate, newCandidate, fingerprint, scoredCandidates
 // =================================================================
 
 export function synthesizeHybridResponse(candidates = [], briefing = {}, context = {}, options = {}) {
-    console.log(`\n\n- - - [HybridComposer ENTRY v11.0] ---`);
+    console.log(`\n\n- - - [HybridComposer ENTRY v11.1] ---`);
     const { tracker = null, fingerprint = {}, user_message = "", userId = 'anon' } = context;
 
     // --- SAFETY & PRE-CHECKS ---
@@ -118,8 +117,6 @@ export function synthesizeHybridResponse(candidates = [], briefing = {}, context
         // --- PRIMARY STRATEGY: Attempt to use the Linguistic Core ---
         console.log("\n[HybridComposer] --- Attempting Primary Strategy: Linguistic Core ---");
         
-        // --- [CORRECTION] ---
-        // Use the new, safe `getUserState` method from the upgraded tracker.
         const userState = tracker?.getUserState ? tracker.getUserState() : {};
 
         const advancedReply = generateAdvancedReply(
@@ -132,12 +129,16 @@ export function synthesizeHybridResponse(candidates = [], briefing = {}, context
         if (advancedReply && advancedReply.reply) {
             console.log("[HybridComposer] SUCCESS: Linguistic Core produced a valid response.");
             
-            // [CORRECTION] Use the new `setUserState` method to persist the updated state.
             if (advancedReply.updatedUserState && tracker?.setUserState) {
                 tracker.setUserState(advancedReply.updatedUserState);
             }
 
             let finalDecision = { ...advancedReply };
+
+            // --- [التصحيح الوحيد] ---
+            // نضمن وجود كائن metadata قبل محاولة تعديله
+            finalDecision.metadata = finalDecision.metadata || {};
+
             finalDecision.reply = polishReply(finalDecision.reply);
             finalDecision.reply = safeTruncateText(finalDecision.reply, 2500);
             finalDecision.metadata.produced_at = nowISO();
@@ -157,8 +158,8 @@ export function synthesizeHybridResponse(candidates = [], briefing = {}, context
 
         // --- FALLBACK STRATEGY: Use the reliable v6.1 Maestro Logic ---
         console.log("\n[HybridComposer] --- LINGUISTIC CORE FAILED ---");
-        // ... (Fallback logic remains unchanged)
-        const scored = analyzeCandidates(candidates, tracker, fingerprint);
+        
+        const scored = analyzeCandidates(candidates, tracker);
         const { activeProtocol, potentialNewProtocols } = briefing || {};
         const activeCandidate = activeProtocol ? pickBestForProtocol(scored, activeProtocol.intent.tag) : null;
         const newCandidate = potentialNewProtocols?.[0] ? pickBestForProtocol(scored, potentialNewProtocols[0].tag) : null;
