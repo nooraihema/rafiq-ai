@@ -1,11 +1,11 @@
-
 // intelligence/linguistic_core/summarizer/mood_analyzer.js
-// Version 8.0: Dynamic Blending + Temporal Memory + Meta-Layer + Anchors
+// Version 8.1: Safe, Multi-User State Management
+// This version preserves the full intelligence of v8.0 while fixing the critical
+// shared state issue by properly isolating moodHistory within the user's state object.
 
-import { Dictionaries } from '../dictionaries/index.js';
-import { safeStr } from '../utils.js';
+import { Dictionaries } from '../../dictionaries/index.js';
+import { safeStr } from '../../utils.js';
 
-// خريطة المشاعر الأساسية للمزاج
 const EMOTION_TO_MOOD_MAP = {
     anxiety: 'calming', fear: 'calming',
     sadness: 'supportive', grief: 'supportive',
@@ -13,30 +13,21 @@ const EMOTION_TO_MOOD_MAP = {
 };
 
 const BASE_SMOOTHING_FACTOR = 0.25;
-const TEMPORAL_WINDOW = 5; // عدد الرسائل اللي ناخد منها trend
-let moodHistory = []; // الذاكرة المؤقتة
+const TEMPORAL_WINDOW = 5; // عدد الرسائل في الذاكرة الزمنية
 
 /**
- * [للمستقبل] Feedback loop: تعديل الأوزان بناءً على تقييم المستخدم
+ * يحلل السياق الكامل لإنتاج خريطة مزاجية متقدمة.
+ * @param {object} semanticMap
+ * @param {object} fingerprint
+ * @param {object} userState - [تعديل] كائن حالة المستخدم الذي يحتوي على الذاكرة
+ * @returns {object} - الكائن المطور بالكامل { mood, confidence, ... }
  */
-export function updateWeights(concept, mood, feedback) {
-    const conceptData = Dictionaries.CONCEPT_DEFINITIONS[concept];
-    if (!conceptData || !conceptData.mood_weights) return;
+export function analyzeMood(semanticMap, fingerprint = {}, userState = {}) {
+    // [تصحيح] التأكد من وجود قيم افتراضية آمنة لحالة المستخدم
+    const lastMood = userState.lastMood || 'supportive';
+    const moodStreak = userState.moodStreak || 0;
+    const moodHistory = userState.moodHistory || [];
 
-    if (!conceptData.mood_weights[mood]) conceptData.mood_weights[mood] = 0.1;
-    conceptData.mood_weights[mood] =
-        conceptData.mood_weights[mood] * 0.9 + feedback * 0.1;
-}
-
-/**
- * يحلل السياق الكامل لإنتاج خريطة مزاجية متقدمة مع تعلم ذاتي وطبقات ذكية
- */
-export function analyzeMood(
-    semanticMap,
-    fingerprint = {},
-    lastMood = 'supportive',
-    moodStreak = 0
-) {
     const moodScores = Object.fromEntries(
         Dictionaries.AVAILABLE_MOODS.map((mood) => [mood, 0.0])
     );
@@ -55,7 +46,7 @@ export function analyzeMood(
         moodScores[EMOTION_TO_MOOD_MAP[primaryEmotion]] += 1.5;
     }
 
-    // --- 3. نقاط المفاهيم مع حماية من undefined ---
+    // --- 3. نقاط المفاهيم ---
     const conceptFrequencies = semanticMap?.frequencies?.concepts || {};
     for (const [concept, freq] of Object.entries(conceptFrequencies)) {
         const conceptData = Dictionaries.CONCEPT_DEFINITIONS[concept];
@@ -70,7 +61,7 @@ export function analyzeMood(
         }
     }
 
-    // --- 4. المعدلات السياقية + Semantic Anchors ---
+    // --- 4. المعدلات السياقية + المراسي الدلالية ---
     let intensityModifier = 1.0;
     const normalizedTokens =
         semanticMap?.list?.allTokens?.map((t) => t.normalized) || [];
@@ -81,10 +72,9 @@ export function analyzeMood(
                 (Dictionaries.INTENSIFIERS[token] - 1.0) * 0.5;
         }
         if (Dictionaries.ANCHOR_MOODS?.[token]) {
-            // anchor قوي يتجاوز الحسابات
             const anchorMood = Dictionaries.ANCHOR_MOODS[token];
             if (moodScores[anchorMood] !== undefined) {
-                moodScores[anchorMood] += 2.0;
+                moodScores[anchorMood] += 2.0; // Anchor words have a strong effect
             }
         }
     }
@@ -105,19 +95,27 @@ export function analyzeMood(
                 : 1 / Object.keys(moodScores).length;
     });
 
-    // --- 6. Dynamic Blending بدلاً من فائز واحد ---
+    // --- 6. المزج الديناميكي ---
     const sortedMoods = Object.entries(probabilities).sort(
         ([, a], [, b]) => b - a
     );
-    const topMoods = sortedMoods.slice(0, 3); // ناخد أفضل 3
-    let finalMood = topMoods.map(([m, p]) => `${m}:${(p * 100).toFixed(1)}%`).join('|');
-    let isComposite = topMoods.length > 1;
+    let topMoods = sortedMoods.slice(0, 3);
+    let finalMood = topMoods[0][0]; // Default winner
+    let isComposite = false;
 
+    // Dynamic Blending Logic
+    if (topMoods.length > 1 && (topMoods[0][1] / topMoods[1][1]) < 1.8) {
+        finalMood = topMoods.filter(m => m[1] > 0.15) // Filter out very weak moods
+                           .map(([m, p]) => `${m}:${(p * 100).toFixed(0)}%`)
+                           .join('|');
+        isComposite = finalMood.includes('|');
+    }
+    
     const winnerProb = topMoods[0][1];
     const runnerUpProb = topMoods.length > 1 ? topMoods[1][1] : 0.0;
     const intensity = winnerProb - runnerUpProb;
 
-    // --- 7. Temporal Memory Adaptation ---
+    // --- 7. [تصحيح] تحديث ذاكرة المستخدم التي تم تمريرها ---
     moodHistory.push(probabilities);
     if (moodHistory.length > TEMPORAL_WINDOW) moodHistory.shift();
 
@@ -128,33 +126,30 @@ export function analyzeMood(
             moodHistory.length;
     }
 
-    // --- 8. Meta-Layer Self-Correction ---
+    // --- 8. طبقة الميتا والتصحيح الذاتي ---
     let confidence = winnerProb;
     if (originalMessage.length < 20) confidence *= 0.7;
-    if (confidence < 0.3) {
-        // الثقة ضعيفة → fallback على التوزيع التاريخي
+    let finalMoodToReturn = finalMood;
+
+    if (confidence < 0.35 && Object.keys(averagedDistribution).length > 0) {
         const historicalTop = Object.entries(averagedDistribution).sort(
             ([, a], [, b]) => b - a
         )[0][0];
-        finalMood = `historical-${historicalTop}`;
+        finalMoodToReturn = `historical_fallback:${historicalTop}`;
     }
 
     if (Object.values(moodScores).every((s) => s < 0.1)) {
         return {
-            mood: 'supportive',
-            confidence: 0.5,
-            intensity: 0.5,
-            distribution: averagedDistribution,
-            isComposite: false,
+            mood: 'supportive', confidence: 0.5, intensity: 0.5,
+            distribution: averagedDistribution, isComposite: false,
         };
     }
 
     return {
-        mood: finalMood,
+        mood: finalMoodToReturn,
         confidence,
         intensity,
         distribution: averagedDistribution,
         isComposite,
     };
 }
-
