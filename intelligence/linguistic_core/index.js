@@ -1,10 +1,12 @@
 // intelligence/linguistic_core/index.js
-// Version 2.0: The Central Conductor for the Linguistic Core
-// This file orchestrates the entire process from tokenization to final response generation
-// by invoking the specialized modules (tokenizer, summarizer, brain) in the correct sequence.
+// Version 3.0: The Brain's Chief Conductor
+// This file is the sole entry point to the linguistic core. It orchestrates
+// the primary modules (tokenizer, summarizer) and passes their rich output,
+// along with pluggable analyzers, to the Brain for final processing.
 
 import { tokenize } from './tokenizer/index.js';
 import { summarize } from './summarizer/index.js';
+import { analyzeMood } from './summarizer/mood_analyzer.js'; // <-- 1. استيراد المحلل المتخصص
 import { processMessage } from './brain/index.js';
 
 /**
@@ -12,32 +14,35 @@ import { processMessage } from './brain/index.js';
  * @param {string} userMessage 
  * @param {object} fingerprint
  * @param {string} userId
- * @param {string} lastMood
- * @param {number} moodStreak
+ * @param {object} userState - [تعديل] كائن حالة المستخدم الكامل
  * @returns {object|null} - كائن الرد النهائي، أو null في حالة الفشل.
  */
-export function generateAdvancedReply(userMessage, fingerprint, userId, lastMood, moodStreak) {
+export function generateAdvancedReply(userMessage, fingerprint, userId, userState) {
     try {
-        console.log("[Linguistic Core] ==> STAGE 1: Tokenizing & Semantic Mapping...");
+        console.log("[Linguistic Core] ==> STAGE 1: Tokenizing...");
         const semanticMap = tokenize(userMessage);
         console.log("[Linguistic Core] Semantic Map created. Concepts:", semanticMap.list.allConcepts);
 
-        console.log("[Linguistic Core] ==> STAGE 2: Summarizing situation...");
-        // Summarizer now needs the full semantic map
-        const summary = summarize(semanticMap, fingerprint, [], lastMood, moodStreak);
+        console.log("[Linguistic Core] ==> STAGE 2: Summarizing...");
+        // [تعديل] Summarizer الآن يستقبل userState الكامل
+        const summary = summarize(semanticMap, fingerprint, userState);
         console.log("[Linguistic Core] Summary created:", { mood: summary.mood, tension: summary.narrativeTension?.name });
 
         console.log("[Linguistic Core] ==> STAGE 3: Invoking The Brain...");
-        // The brain now receives the pre-processed summary and semantic map
+        
+        // [تعديل] تجهيز "المكونات الإضافية" التي سيستخدمها الدماغ
+        const brainOptions = { 
+            debug: true,
+            // نحن نوصل "محلل المزاج" الذي بنيناه بـ "مقبس" الدماغ
+            moodAnalyzer: (map, fp, state) => analyzeMood(map, fp, state) 
+        };
+        
         const brainResult = processMessage({
             semanticMap,
-            summary, // Pass the rich summary object
+            summary,
             fingerprint,
             userId,
-            // We pass the specialized analyzers as options to the brain
-            options: { 
-                debug: true 
-            }
+            options: brainOptions
         });
         
         console.log("[Linguistic Core] Brain processing complete.");
@@ -47,7 +52,10 @@ export function generateAdvancedReply(userMessage, fingerprint, userId, lastMood
             return null;
         }
 
-        return brainResult; // The brain's output is now the final output
+        // نضيف حالة المستخدم المحدثة إلى المخرجات ليتم حفظها لاحقًا
+        brainResult.updatedUserState = userState;
+        
+        return brainResult;
 
     } catch (error) {
         console.error("[Linguistic Core] FATAL ERROR:", error);
