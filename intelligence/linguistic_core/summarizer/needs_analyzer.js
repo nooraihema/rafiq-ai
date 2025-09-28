@@ -3,8 +3,8 @@
 // This engine analyzes multiple signals from the user's message to infer
 // their core psychological need in the current conversational turn.
 
-import { Dictionaries } from '../../dictionaries/index.js';
-import { safeStr } from '../../utils.js';
+import { Dictionaries } from '../dictionaries/index.js';
+import { safeStr } from '../utils.js';
 
 /**
  * يحلل بصمة الرسالة والخريطة الدلالية لاستنتاج الحاجة النفسية الأساسية للمستخدم.
