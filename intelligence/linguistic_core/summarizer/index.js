@@ -1,46 +1,60 @@
 // intelligence/linguistic_core/summarizer/index.js
-// Version 3.1: Corrected Data Handling
-// This version fixes the mismatch in data structure expected from the tokenizer,
-// ensuring it correctly reads from the rich semanticMap object.
+// Version 4.0: The Master Orchestrator
+// This version acts as a true orchestrator, passing the complete semantic map and
+// user state to the specialized analyzers to leverage their full capabilities.
 
 import { tokenize } from '../tokenizer/index.js';
 import { analyzeMood } from './mood_analyzer.js';
 import { detectTension } from './tension_detector.js';
+// We will build this in the next step
+// import { analyzeNeeds } from './needs_analyzer.js';
 
 /**
- * الوظيفة الرئيسية لوحدة Summarizer (الإصدار المصحح).
+ * الوظيفة الرئيسية لوحدة Summarizer.
+ * يقوم بتنسيق عمل كل المحللات لإنتاج "ملف موقف نفسي" متكامل.
  * @param {string} userMessage
- * @param {object} fingerprint - بصمة الرسالة الكاملة.
- * @param {object[]} candidates
- * @param {string} [lastMood='supportive'] - الحالة المزاجية من الرد السابق.
- * @returns {object} - "ملف الموقف" المطور والكامل.
+ *- * @param {object} fingerprint - بصمة الرسالة الكاملة.
+ * @param {object} userState - [إضافة جديدة] كائن حالة المستخدم الكامل (يحتوي على lastMood, moodStreak, إلخ).
+ * @returns {object} - "ملف الموقف" النهائي.
  */
-export function summarize(userMessage, fingerprint = {}, candidates = [], lastMood = 'supportive') {
-    // 1. نحصل على الخريطة الدلالية الكاملة من tokenizer.
+export function summarize(userMessage, fingerprint = {}, userState = {}) {
+    // 1. [الأساس] نحصل على الخريطة الدلالية الكاملة. هي مصدر الحقيقة لكل التحليلات التالية.
     const semanticMap = tokenize(userMessage);
 
-    // 2. [تصحيح] نستخرج البيانات من الأماكن الصحيحة في الخريطة الدلالية.
-    const conceptFrequencies = semanticMap.frequencies.concepts; // هذا هو كائن التكرارات
-    const allConcepts = semanticMap.list.allConcepts; // هذه هي قائمة المفاهيم
-    const primaryEmotion = fingerprint?.primaryEmotion?.type || null;
+    // 2. [التنسيق] نستدعي الخبراء المتخصصين ونمرر لهم كل ما يحتاجونه.
+    
+    // خبير المزاج يحتاج الخريطة الكاملة، البصمة، وحالة المستخدم.
+    const moodAnalysis = analyzeMood(semanticMap, fingerprint, userState);
 
-    // 3. استدعاء الوحدات المتخصصة بالبيانات الصحيحة.
-    const moodAnalysis = analyzeMood(conceptFrequencies, fingerprint, lastMood);
-    const narrativeTension = detectTension(allConcepts);
+    // خبير التوتر يحتاج فقط قائمة المفاهيم.
+    const narrativeTension = detectTension(semanticMap.list.allConcepts);
+    
+    // خبير الاحتياجات (سيتم بناؤه لاحقًا) سيحتاج البصمة.
+    // const implicitNeed = analyzeNeeds(fingerprint);
 
-    // 4. ترتيب المفاهيم (هذا الجزء لم يعد ضروريًا لأن tokenizer يقوم به، ولكن سنبقيه للوضوح).
-    const sortedConcepts = allConcepts; // القائمة تأتي مرتبة ضمنيًا من tokenizer
+    // 3. [التجميع] نقوم ببناء ملف الموقف النهائي من نتائج الخبراء.
+    const allConcepts = semanticMap.list.allConcepts;
 
-    // 5. بناء "ملف الموقف" النهائي والكامل.
     return {
-        allConcepts: sortedConcepts,
-        dominantConcept: sortedConcepts[0] || null,
-        secondaryConcepts: sortedConcepts.slice(1),
+        // معلومات المفاهيم مباشرة من tokenizer
+        allConcepts: allConcepts,
+        dominantConcept: allConcepts[0] || null,
+        secondaryConcepts: allConcepts.slice(1),
+        
+        // معلومات المزاج مباشرة من mood_analyzer
         mood: moodAnalysis.mood,
         moodConfidence: moodAnalysis.confidence,
         moodIntensity: moodAnalysis.intensity,
         moodDistribution: moodAnalysis.distribution,
+        isComposite: moodAnalysis.isComposite,
+
+        // معلومات الصراع مباشرة من tension_detector
         narrativeTension: narrativeTension,
-        implicitNeed: "support",
+
+        // الحاجة (سيتم تطويرها)
+        implicitNeed: "support", // Placeholder for now
+        
+        // تمرير الخريطة الكاملة لمن يحتاجها لاحقًا (مثل الدماغ)
+        _rawSemanticMap: semanticMap 
     };
 }
