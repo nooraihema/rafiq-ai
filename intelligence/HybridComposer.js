@@ -1,8 +1,7 @@
-// intelligence/HybridComposer.js (v10.0 - The Maestro with a Linguistic Core)
-// This version integrates the new `linguistic_core` library as the primary strategy.
-// It attempts to generate a sophisticated, human-like response first.
-// If the linguistic core fails to produce a high-quality result, it gracefully
-// falls back to the robust and reliable v6.1 persona-based weaving logic.
+// intelligence/HybridComposer.js (v10.1 - Upgraded Core Integration)
+// This version maintains the robust structure of v10.0, but updates the call
+// to the linguistic core to pass the full, rich context it now requires,
+// including the complete user state for advanced memory and mood analysis.
 
 import { generateAdvancedReply } from './linguistic_core/index.js';
 
@@ -105,8 +104,8 @@ function smartWeave(activeCandidate, newCandidate, fingerprint, scoredCandidates
 // =================================================================
 
 export function synthesizeHybridResponse(candidates = [], briefing = {}, context = {}, options = {}) {
-    console.log(`\n\n- - - [HybridComposer ENTRY v10.0] ---`);
-    const { tracker = null, fingerprint = {}, user_message = "" } = context;
+    console.log(`\n\n- - - [HybridComposer ENTRY v10.1] ---`);
+    const { tracker = null, fingerprint = {}, user_message = "", userId = 'anon' } = context;
 
     // --- SAFETY & PRE-CHECKS ---
     if (!Array.isArray(candidates) || candidates.length === 0) {
@@ -122,12 +121,20 @@ export function synthesizeHybridResponse(candidates = [], briefing = {}, context
     try {
         // --- [NEW] PRIMARY STRATEGY: Attempt to use the Linguistic Core ---
         console.log("\n[HybridComposer] --- Attempting Primary Strategy: Linguistic Core ---");
-        const advancedReply = generateAdvancedReply(user_message, candidates);
+        
+        // --- [التعديل الوحيد] ---
+        // قمنا بتمرير كل البيانات التي تحتاجها المكتبة المطورة، بما في ذلك `userState` الكامل.
+        const advancedReply = generateAdvancedReply(user_message, fingerprint, userId, tracker.getState());
 
         if (advancedReply && advancedReply.reply) {
             console.log("[HybridComposer] SUCCESS: Linguistic Core produced a valid response.");
             console.log(`[HybridComposer] Generated Reply: { source: '${advancedReply.source}', reply: '${advancedReply.reply.slice(0, 90)}...' }`);
             
+            // [تعديل] تحديث حالة الـ tracker بالبيانات الجديدة التي أعادها "الدماغ"
+            if(advancedReply.updatedUserState) {
+                tracker.setState(advancedReply.updatedUserState);
+            }
+
             // Final polishing and returning the advanced reply
             let finalDecision = { ...advancedReply };
             finalDecision.reply = polishReply(finalDecision.reply);
