@@ -1,7 +1,7 @@
-// intelligence/shared/context_tracker.js v9.2 - Mood-Aware State Management
-// This version adds explicit tracking for the conversational mood (lastMood, moodStreak),
-// providing the necessary state for advanced modules like the mood_analyzer and the Brain.
-// It exposes safe getters and updates the serialization process to persist this new state.
+// intelligence/shared/context_tracker.js v9.3 - State Definition Fix
+// This version fixes a ReferenceError in analyzeState by ensuring the `state` object
+// is declared at the beginning of the function, before any potential use.
+// It preserves all mood-aware functionalities from v9.2.
 
 import { DEBUG } from './config.js';
 
@@ -81,7 +81,6 @@ export class ContextTracker {
             moodStreak: 0,
             moodHistory: [],
         };
-        // Restore mood state if it was saved in the user profile
         if (userProfile.shortMemory?.moodState) {
             this.moodState = { ...this.moodState, ...userProfile.shortMemory.moodState };
         }
@@ -96,18 +95,16 @@ export class ContextTracker {
         return this.moodState.moodStreak;
     }
 
-    // A single, safe method to get all user state needed by the linguistic core
     getUserState() {
         return { 
             lastMood: this.moodState.lastMood,
             moodStreak: this.moodState.moodStreak,
-            moodHistory: [...this.moodState.moodHistory] // Return a copy
+            moodHistory: [...this.moodState.moodHistory]
         };
     }
     
     // --- [NEW v9.2] SETTER FOR MOOD STATE ---
-    // The Brain will return the updated state, and this method will set it.
-    setUserState(newState) {
+    setUserState(newState = {}) {
         if (newState.lastMood !== undefined) this.moodState.lastMood = newState.lastMood;
         if (newState.moodStreak !== undefined) this.moodState.moodStreak = newState.moodStreak;
         if (newState.moodHistory !== undefined) this.moodState.moodHistory = newState.moodHistory;
@@ -129,7 +126,6 @@ export class ContextTracker {
 
     addTurn(fingerprint, responsePayload, opts = {}) {
         this.sessionContext.turn_counter += 1;
-
         const entry = {
             timestamp: new Date().toISOString(),
             user_fingerprint: fingerprint || null,
@@ -140,15 +136,11 @@ export class ContextTracker {
                 sessionContextAtTurn: this.getSessionContext()
             }
         };
-
         this.history.push(entry);
-
         if (this.history.length > this.MAX_HISTORY) {
             this.history.splice(0, this.history.length - this.MAX_HISTORY);
         }
-
         if (DEBUG) console.log(`[ContextTracker:${this.userId}] addTurn — history length:`, this.history.length);
-
         this._lastAnalyzedState = null;
     }
 
@@ -172,13 +164,119 @@ export class ContextTracker {
     }
 
     detectPatterns() {
-        const patterns = { /* ... */ }; // Logic remains the same
-        // ...
+        const patterns = {
+            repeatedNeeds: {},
+            repeatedConcepts: {},
+            repeatedRecipes: {},
+            stuckNeedsSequence: false,
+            stuckConceptsSequence: false
+        };
+        const needsSeq = this.history.map(h => safeGet(h, 'user_fingerprint.inferredNeed', null)).filter(Boolean);
+        const conceptsSeq = this.history.map(h => safeGet(h, 'user_fingerprint.concepts', [])).map(arr => arr.map(c => c.concept).join('|'));
+        const recipesSeq = this.history.map(h => safeGet(h, 'ai_response.recipe', [])).map(r => r.join('|'));
+        
+        needsSeq.forEach(n => patterns.repeatedNeeds[n] = (patterns.repeatedNeeds[n] || 0) + 1);
+        conceptsSeq.forEach(c => { if(c) patterns.repeatedConcepts[c] = (patterns.repeatedConcepts[c] || 0) + 1; });
+        recipesSeq.forEach(r => { if(r) patterns.repeatedRecipes[r] = (patterns.repeatedRecipes[r] || 0) + 1; });
+        
+        if (needsSeq.length >= LOOP_DETECTION_WINDOW) {
+            const last = needsSeq.slice(-LOOP_DETECTION_WINDOW);
+            patterns.stuckNeedsSequence = last.every(x => x === last[0]) && last[0] !== null;
+        }
+        if (conceptsSeq.length >= LOOP_DETECTION_WINDOW) {
+            const lastC = conceptsSeq.slice(-LOOP_DETECTION_WINDOW);
+            patterns.stuckConceptsSequence = lastC.every(x => x === lastC[0]) && lastC[0] !== '';
+        }
         return patterns;
     }
 
     analyzeState() {
-        // ... (This extensive logic remains the same)
+        if (this._lastAnalyzedState) return this._lastAnalyzedState;
+
+        // --- [FIX] --- Define the state object at the beginning of the function.
+        const state = {
+            recent_concepts: new Map(),
+            recent_needs: new Map(),
+            recent_recipes: new Map(),
+            is_stuck_in_loop: false,
+            emotional_trend: 'stable',
+            weightedIntensity: 0.0,
+            averageEnergyIndex: 0.0,
+            summary: '',
+            satisfactionTrend: 'unknown',
+            patterns: {},
+            last_turn: this.history.length ? this.history[this.history.length - 1] : null
+        };
+
+        if (this.history.length === 0) {
+            this._lastAnalyzedState = state;
+            return state;
+        }
+
+        let weightedIntensitySum = 0, weightSum = 0, energySum = 0;
+        let satisfactionCounts = { positive: 0, negative: 0, neutral: 0, unknown: 0 };
+
+        for (let i = 0; i < this.history.length; i++) {
+            const idxFromEnd = this.history.length - 1 - i;
+            const turn = this.history[idxFromEnd];
+            const w = Math.pow(this.decayBase, i);
+            const intensity = clamp01(safeGet(turn, 'user_fingerprint.primaryEmotion.intensity', 0.5));
+            weightedIntensitySum += intensity * w;
+            weightSum += w;
+            const energy = this.computeEnergyIndexFromFingerprint(turn.user_fingerprint);
+            energySum += energy * w;
+            const concepts = Array.isArray(safeGet(turn, 'user_fingerprint.concepts', [])) ? turn.user_fingerprint.concepts : [];
+            concepts.forEach(c => state.recent_concepts.set(c.concept, (state.recent_concepts.get(c.concept) || 0) + w));
+            const need = safeGet(turn, 'user_fingerprint.inferredNeed', null);
+            if (need) state.recent_needs.set(need, (state.recent_needs.get(need) || 0) + w);
+            const recipe = safeGet(turn, 'ai_response.recipe', []) || [];
+            const recipeKey = Array.isArray(recipe) ? recipe.join('|') : String(recipe);
+            if (recipeKey) state.recent_recipes.set(recipeKey, (state.recent_recipes.get(recipeKey) || 0) + w);
+            const s = turn.satisfaction || 'unknown';
+            if (!satisfactionCounts[s]) satisfactionCounts[s] = 0;
+            satisfactionCounts[s] += 1 * w;
+        }
+
+        state.weightedIntensity = weightSum > 0 ? parseFloat((weightedIntensitySum / weightSum).toFixed(3)) : 0.0;
+        state.averageEnergyIndex = weightSum > 0 ? parseFloat((energySum / weightSum).toFixed(3)) : 0.0;
+        
+        const oldest = this.history[0];
+        const newest = this.history[this.history.length - 1];
+        const oldestIntensity = clamp01(safeGet(oldest, 'user_fingerprint.primaryEmotion.intensity', state.weightedIntensity));
+        const newestIntensity = clamp01(safeGet(newest, 'user_fingerprint.primaryEmotion.intensity', state.weightedIntensity));
+        
+        if (newestIntensity <= oldestIntensity - 0.2) state.emotional_trend = 'improving';
+        else if (newestIntensity >= oldestIntensity + 0.2) state.emotional_trend = 'worsening';
+        else state.emotional_trend = 'stable';
+
+        const pos = satisfactionCounts.positive || 0;
+        const neg = satisfactionCounts.negative || 0;
+        if (pos > neg * 1.2 && pos > 0) state.satisfactionTrend = 'positive';
+        else if (neg > pos * 1.2 && neg > 0) state.satisfactionTrend = 'negative';
+        else state.satisfactionTrend = (pos === 0 && neg === 0) ? 'unknown' : 'mixed';
+        
+        const conceptsSorted = [...state.recent_concepts.entries()].sort((a,b) => b[1]-a[1]).map(e => e[0]);
+        const needsSorted = [...state.recent_needs.entries()].sort((a,b) => b[1]-a[1]).map(e => e[0]);
+        
+        const summaryParts = [];
+        if (needsSorted.length) summaryParts.push(`الاحتياجات: ${needsSorted.slice(0,3).join('، ')}`);
+        if (conceptsSorted.length) summaryParts.push(`الموضوعات: ${conceptsSorted.slice(0,5).join('، ')}`);
+        summaryParts.push(`اتجاه المشاعر: ${state.emotional_trend}`);
+        summaryParts.push(`مؤشر الطاقة: ${state.averageEnergyIndex}`);
+        state.summary = summaryParts.join(' | ');
+        
+        const patterns = this.detectPatterns();
+        state.patterns = patterns;
+        state.is_stuck_in_loop = patterns.stuckNeedsSequence || patterns.stuckConceptsSequence;
+        
+        this._lastAnalyzedState = state;
+
+        if (DEBUG) console.log(`[ContextTracker:${this.userId}] analyzeState =>`, {
+            weightedIntensity: state.weightedIntensity, avgEnergy: state.averageEnergyIndex,
+            emotionalTrend: state.emotional_trend, summary: state.summary,
+            is_stuck_in_loop: state.is_stuck_in_loop
+        });
+
         return state;
     }
 
@@ -196,14 +294,11 @@ export class ContextTracker {
         };
     }
 
-    /**
-     * [MODIFIED v9.2] Serialization now includes the mood state.
-     */
     serialize() {
         return {
             history: JSON.parse(JSON.stringify(this.history)),
             sessionContext: this.sessionContext,
-            moodState: this.moodState // <-- NEW
+            moodState: this.moodState
         };
     }
 
@@ -215,7 +310,6 @@ export class ContextTracker {
             if (typeof serializedData.sessionContext === 'object') {
                 this.sessionContext = { ...this.sessionContext, ...serializedData.sessionContext };
             }
-            // [NEW v9.2] Restore mood state
             if (typeof serializedData.moodState === 'object') {
                 this.moodState = { ...this.moodState, ...serializedData.moodState };
             }
