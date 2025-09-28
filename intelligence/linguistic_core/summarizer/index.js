@@ -1,20 +1,19 @@
 // intelligence/linguistic_core/summarizer/index.js
-// Version 4.0: The Master Orchestrator
-// This version acts as a true orchestrator, passing the complete semantic map and
-// user state to the specialized analyzers to leverage their full capabilities.
+// Version 5.0: The Complete Psychometric Orchestrator
+// This final version orchestrates all specialized analyzers (mood, tension, needs)
+// to produce a comprehensive, multi-layered summary of the user's psychological state.
 
 import { tokenize } from '../tokenizer/index.js';
 import { analyzeMood } from './mood_analyzer.js';
 import { detectTension } from './tension_detector.js';
-// We will build this in the next step
-// import { analyzeNeeds } from './needs_analyzer.js';
+import { analyzeNeeds } from './needs_analyzer.js'; // <-- 1. استيراد الوحدة الجديدة
 
 /**
  * الوظيفة الرئيسية لوحدة Summarizer.
  * يقوم بتنسيق عمل كل المحللات لإنتاج "ملف موقف نفسي" متكامل.
  * @param {string} userMessage
- *- * @param {object} fingerprint - بصمة الرسالة الكاملة.
- * @param {object} userState - [إضافة جديدة] كائن حالة المستخدم الكامل (يحتوي على lastMood, moodStreak, إلخ).
+ * - * @param {object} fingerprint - بصمة الرسالة الكاملة.
+ * @param {object} userState - كائن حالة المستخدم الكامل (يحتوي على lastMood, moodStreak, إلخ).
  * @returns {object} - "ملف الموقف" النهائي.
  */
 export function summarize(userMessage, fingerprint = {}, userState = {}) {
@@ -23,14 +22,14 @@ export function summarize(userMessage, fingerprint = {}, userState = {}) {
 
     // 2. [التنسيق] نستدعي الخبراء المتخصصين ونمرر لهم كل ما يحتاجونه.
     
-    // خبير المزاج يحتاج الخريطة الكاملة، البصمة، وحالة المستخدم.
+    // خبير المزاج يحتاج الخريطة، البصمة، وحالة المستخدم.
     const moodAnalysis = analyzeMood(semanticMap, fingerprint, userState);
 
-    // خبير التوتر يحتاج فقط قائمة المفاهيم.
+    // خبير التوتر يحتاج قائمة المفاهيم.
     const narrativeTension = detectTension(semanticMap.list.allConcepts);
     
-    // خبير الاحتياجات (سيتم بناؤه لاحقًا) سيحتاج البصمة.
-    // const implicitNeed = analyzeNeeds(fingerprint);
+    // [جديد] خبير الاحتياجات يحتاج البصمة والخريطة.
+    const implicitNeed = analyzeNeeds(fingerprint, semanticMap); // <-- 2. استخدام الوحدة الجديدة
 
     // 3. [التجميع] نقوم ببناء ملف الموقف النهائي من نتائج الخبراء.
     const allConcepts = semanticMap.list.allConcepts;
@@ -51,8 +50,8 @@ export function summarize(userMessage, fingerprint = {}, userState = {}) {
         // معلومات الصراع مباشرة من tension_detector
         narrativeTension: narrativeTension,
 
-        // الحاجة (سيتم تطويرها)
-        implicitNeed: "support", // Placeholder for now
+        // الحاجة الضمنية مباشرة من needs_analyzer
+        implicitNeed: implicitNeed, // <-- 3. إضافة نتيجة تحليل الاحتياجات
         
         // تمرير الخريطة الكاملة لمن يحتاجها لاحقًا (مثل الدماغ)
         _rawSemanticMap: semanticMap 
