@@ -3,8 +3,8 @@
 // This version preserves the full intelligence of v8.0 while fixing the critical
 // shared state issue by properly isolating moodHistory within the user's state object.
 
-import { Dictionaries } from '../../dictionaries/index.js';
-import { safeStr } from '../../utils.js';
+import { Dictionaries } from '../dictionaries/index.js';
+import { safeStr } from '../utils.js';
 
 const EMOTION_TO_MOOD_MAP = {
     anxiety: 'calming', fear: 'calming',
