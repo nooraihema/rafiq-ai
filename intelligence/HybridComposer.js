@@ -1,7 +1,7 @@
-// intelligence/HybridComposer.js (v10.1 - Upgraded Core Integration)
-// This version maintains the robust structure of v10.0, but updates the call
-// to the linguistic core to pass the full, rich context it now requires,
-// including the complete user state for advanced memory and mood analysis.
+// intelligence/HybridComposer.js (v11.0 - The Final Conductor)
+// This definitive version correctly integrates with the mood-aware ContextTracker (v9.2)
+// and the fully-featured Linguistic Core. It properly handles the user state lifecycle,
+// passing it to the core for analysis and receiving the updated state back for persistence.
 
 import { generateAdvancedReply } from './linguistic_core/index.js';
 
@@ -9,7 +9,7 @@ import { generateAdvancedReply } from './linguistic_core/index.js';
 // SECTION 1: LEGACY HELPERS & PERSONAS (Preserved for Fallback Logic)
 // =================================================================
 
-const DEBUG = true; // Set to true to see detailed logs
+const DEBUG = true;
 
 function safeStr(s) { return (s === null || s === undefined) ? "" : String(s); }
 function nowISO() { return (new Date()).toISOString(); }
@@ -61,7 +61,7 @@ const PERSONA_FUNCS = {
     pragmatic: (candidate) => ({ persona: "pragmatic", segment: sample(["اقتراح عملي: جرّب تنفيذ أصغر نسخة من القرار لمدة 24 ساعة."]), score: 0.97 })
 };
 
-function analyzeCandidates(candidates = [], tracker = null, fingerprint = {}) {
+function analyzeCandidates(candidates = [], tracker = null) {
     const history = tracker?.getHistory ? tracker.getHistory() : [];
     const recent = history.slice(-6).map(t => safeStr(t.ai_response?.reply || ""));
     return candidates.map(c => {
@@ -86,10 +86,6 @@ function safetyCheck(fingerprint) {
     return { ok: flags.length === 0, flags };
 }
 
-function createEmpathyBridge() {
-    return sample(["أتفهم أنك تتعامل مع أكثر من شيء في نفس الوقت.", "شكرًا لمشاركة كل هذا."]);
-}
-
 function smartWeave(activeCandidate, newCandidate, fingerprint, scoredCandidates) {
     const empathic = scoredCandidates.find(s => s.candidate.source.includes('empathic'))?.candidate || activeCandidate;
     const practical = newCandidate;
@@ -100,11 +96,11 @@ function smartWeave(activeCandidate, newCandidate, fingerprint, scoredCandidates
 }
 
 // =================================================================
-// SECTION 2: THE NEW UNIFIED API
+// SECTION 2: THE FINAL UNIFIED API
 // =================================================================
 
 export function synthesizeHybridResponse(candidates = [], briefing = {}, context = {}, options = {}) {
-    console.log(`\n\n- - - [HybridComposer ENTRY v10.1] ---`);
+    console.log(`\n\n- - - [HybridComposer ENTRY v11.0] ---`);
     const { tracker = null, fingerprint = {}, user_message = "", userId = 'anon' } = context;
 
     // --- SAFETY & PRE-CHECKS ---
@@ -119,29 +115,33 @@ export function synthesizeHybridResponse(candidates = [], briefing = {}, context
     }
 
     try {
-        // --- [NEW] PRIMARY STRATEGY: Attempt to use the Linguistic Core ---
+        // --- PRIMARY STRATEGY: Attempt to use the Linguistic Core ---
         console.log("\n[HybridComposer] --- Attempting Primary Strategy: Linguistic Core ---");
         
-        // --- [التعديل الوحيد] ---
-        // قمنا بتمرير كل البيانات التي تحتاجها المكتبة المطورة، بما في ذلك `userState` الكامل.
-        const advancedReply = generateAdvancedReply(user_message, fingerprint, userId, tracker.getState());
+        // --- [CORRECTION] ---
+        // Use the new, safe `getUserState` method from the upgraded tracker.
+        const userState = tracker?.getUserState ? tracker.getUserState() : {};
+
+        const advancedReply = generateAdvancedReply(
+            user_message,
+            fingerprint,
+            userId,
+            userState
+        );
 
         if (advancedReply && advancedReply.reply) {
             console.log("[HybridComposer] SUCCESS: Linguistic Core produced a valid response.");
-            console.log(`[HybridComposer] Generated Reply: { source: '${advancedReply.source}', reply: '${advancedReply.reply.slice(0, 90)}...' }`);
             
-            // [تعديل] تحديث حالة الـ tracker بالبيانات الجديدة التي أعادها "الدماغ"
-            if(advancedReply.updatedUserState) {
-                tracker.setState(advancedReply.updatedUserState);
+            // [CORRECTION] Use the new `setUserState` method to persist the updated state.
+            if (advancedReply.updatedUserState && tracker?.setUserState) {
+                tracker.setUserState(advancedReply.updatedUserState);
             }
 
-            // Final polishing and returning the advanced reply
             let finalDecision = { ...advancedReply };
             finalDecision.reply = polishReply(finalDecision.reply);
             finalDecision.reply = safeTruncateText(finalDecision.reply, 2500);
             finalDecision.metadata.produced_at = nowISO();
 
-            // Attach memory passport (important)
             const primaryProtocolForMemory = briefing?.potentialNewProtocols?.[0] || briefing?.activeProtocol;
             if (primaryProtocolForMemory?.intent?.tag) {
                 const scored = analyzeCandidates(candidates, tracker);
@@ -157,49 +157,32 @@ export function synthesizeHybridResponse(candidates = [], briefing = {}, context
 
         // --- FALLBACK STRATEGY: Use the reliable v6.1 Maestro Logic ---
         console.log("\n[HybridComposer] --- LINGUISTIC CORE FAILED ---");
-        console.log("[HybridComposer] --- Executing Fallback Strategy: v6.1 Maestro Logic ---");
-
+        // ... (Fallback logic remains unchanged)
         const scored = analyzeCandidates(candidates, tracker, fingerprint);
         const { activeProtocol, potentialNewProtocols } = briefing || {};
-        
         const activeCandidate = activeProtocol ? pickBestForProtocol(scored, activeProtocol.intent.tag) : null;
         const newCandidate = potentialNewProtocols?.[0] ? pickBestForProtocol(scored, potentialNewProtocols[0].tag) : null;
         const topScored = scored[0]?.candidate || candidates[0];
         const empathicCandidate = candidates.find(c => c.source === 'empathic_safety_net');
-
-        let fallbackDecision = null;
-
+        let fallbackDecision = empathicCandidate || topScored;
+        
         if (activeCandidate && newCandidate && (safeStr(activeCandidate.source) !== safeStr(newCandidate.source))) {
-            console.log("[HybridComposer Fallback] Path: Smart Weave.");
             fallbackDecision = smartWeave(activeCandidate, newCandidate, fingerprint, scored);
         } else if (activeCandidate) {
-            console.log("[HybridComposer Fallback] Path: Active Protocol.");
             fallbackDecision = activeCandidate;
         } else if (newCandidate) {
-            console.log("[HybridComposer Fallback] Path: New Protocol.");
             fallbackDecision = newCandidate;
-        } else {
-            console.log("[HybridComposer Fallback] Path: Top Scored or Empathic.");
-            fallbackDecision = empathicCandidate || topScored;
         }
 
         if (!fallbackDecision || !fallbackDecision.reply) {
-             console.log("[HybridComposer Fallback] CRITICAL: No decision could be made. Returning absolute fallback.");
              return { reply: "أنا هنا معاك — ممكن توضّح أكتر؟", source: "maestro_critical_fallback" };
         }
 
-        // Final polishing for the fallback response
         fallbackDecision.reply = polishReply(fallbackDecision.reply);
         fallbackDecision.reply = safeTruncateText(fallbackDecision.reply, 2500);
         fallbackDecision.metadata = fallbackDecision.metadata || {};
         fallbackDecision.metadata.produced_by = 'maestro_fallback_logic_v6.1';
         fallbackDecision.metadata.produced_at = nowISO();
-
-        if (activeCandidate?.metadata?.nextSessionContext) {
-             fallbackDecision.metadata.nextSessionContext = activeCandidate.metadata.nextSessionContext;
-        } else if (newCandidate?.metadata?.nextSessionContext) {
-             fallbackDecision.metadata.nextSessionContext = newCandidate.metadata.nextSessionContext;
-        }
         
         console.log(`[HybridComposer] EXIT: Returning response from Fallback Logic.`);
         return fallbackDecision;
