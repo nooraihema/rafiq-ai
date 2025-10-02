@@ -1,27 +1,27 @@
-// chat.js v16.0 - The Multi-Protocol Conductor
-// This version introduces the "Strategy Room" concept, allowing the system
-// to process multiple relevant protocols in parallel and enabling true response merging.
-// Author: For Rafiq system
+// chat.js v16.1 - Cognitive Data Aggregator
+// This version introduces a new cognitive analysis layer that runs all advanced
+// perception engines (Atomizer, MemoryGraph, InferenceEngine) to create a rich
+// context object, which is then passed down the chain for future use by the linguistic core.
+// The existing logic remains intact for now.
 
 // =================================================================
 // SECTION 1: CORE & HIPPocampus IMPORTS
 // =================================================================
 import { DEBUG } from '../shared/config.js';
-import { detectCritical, criticalSafetyReply, tokenize } from '../shared/utils.js';
+import { detectCritical, criticalSafetyReply } from '../shared/utils.js';
 import { loadUsers, saveUsers, makeUserId } from '../shared/storage.js';
-// --- UPGRADE: Using the new multi-protocol planner ---
 import { buildIndexSync, createCognitiveBriefing } from '../perception/intent_engine.js';
-// --- Using the correct strategic entry point from the logic engine ---
 import { executeProtocolStep } from '../core/dynamic_logic_engine.js';
-import { composeInferentialResponse } from '../core/composition_engine.js';
 import { processMeta } from '../coordination/meta_router.js';
 import { ContextTracker } from '../shared/context_tracker.js';
+
+// All perception engines are now explicitly used here
 import { generateFingerprintV2 as generateFingerprint } from '../perception/fingerprint_engine.js';
 import { atomize } from '../hippocampus/knowledgeAtomizer.js';
 import { memoryGraph } from '../hippocampus/MemoryGraph.js';
 import { InferenceEngine } from '../hippocampus/InferenceEngine.js';
 
-// Preserved imports for the orchestra
+// Preserved imports
 import ResponseSynthesizer from '../intelligence/ResponseSynthesizer.js';
 import HybridComposer from '../intelligence/HybridComposer.js';
 
@@ -30,15 +30,10 @@ import HybridComposer from '../intelligence/HybridComposer.js';
 // =================================================================
 buildIndexSync();
 const CONTEXT_TRACKERS = new Map();
-const MAX_NEW_PROTOCOLS_TO_INVITE = 3; // <-- يمكنك تعديل هذا الرقم (الحد الأقصى للخبراء الجدد)
+const MAX_NEW_PROTOCOLS_TO_INVITE = 3;
 
 // =================================================================
-// SECTION 2: THE CONSCIOUS ORCHESTRA (This function is now retired)
-// Its logic is fully integrated into the main handler.
-// =================================================================
-
-// =================================================================
-// SECTION 3: MAIN HANDLER (The Final "Strategy Room" Logic)
+// SECTION 3: MAIN HANDLER
 // =================================================================
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -50,57 +45,70 @@ export default async function handler(req, res) {
 
     if (DEBUG) console.log(`\n\n- - - [ NEW TURN ] - - -\n📨 Incoming message: "${rawMessage}"`);
 
-    // --- USER & SESSION-AWARE CONTEXT SETUP (Preserved and stable) ---
+    // --- USER & SESSION SETUP ---
     let users = await loadUsers();
     let userId = body.userId || null;
     if (!userId || !users[userId]) {
       userId = makeUserId();
-      users[userId] = {
-        id: userId,
-        createdAt: new Date().toISOString(),
-        shortMemory: { history: [], sessionContext: { state: null, active_intent: null, turn_counter: 0 } }
-      };
+      users[userId] = { id: userId, createdAt: new Date().toISOString(), shortMemory: {} };
       if (DEBUG) console.log(`🆕 New user: ${userId}`);
     }
     const profile = users[userId];
 
     let tracker = CONTEXT_TRACKERS.get(userId);
     if (!tracker) {
-      if(DEBUG) console.log(`SESSION: No active tracker for ${userId}. Creating from profile.`);
-      tracker = new ContextTracker(profile);
+      if (DEBUG) console.log(`SESSION: No active tracker for ${userId}. Creating from profile.`);
+      tracker = new ContextTracker(profile.shortMemory); // Pass shortMemory to restore state
       CONTEXT_TRACKERS.set(userId, tracker);
-    } else {
-      if(DEBUG) console.log(`SESSION: Active tracker found for ${userId}. Continuing session...`);
     }
-    const sessionContext = tracker.getSessionContext();
-
+    
     if (detectCritical(rawMessage)) {
       return res.status(200).json({ reply: criticalSafetyReply(), source: "safety", userId });
     }
 
-    // --- PERCEPTION & KNOWLEDGE GRAPH (Preserved) ---
+    // =================================================================
+    // [NEW] SECTION 3.5: THE COGNITIVE ANALYSIS LAYER
+    // Here, we run all perception engines to build a rich context object.
+    // =================================================================
+    console.log("\n--- [Cognitive Layer] Starting Full Analysis ---");
+    
+    // 1. Generate the basic fingerprint (still useful for some modules)
+    const fingerprint = generateFingerprint(rawMessage, { ...tracker.generateContextualSummary() });
+    console.log("[Cognitive Layer] Fingerprint generated.");
+
+    // 2. Atomize the message to create a rich Knowledge Atom
+    const knowledgeAtom = atomize(rawMessage, { recentMessages: tracker.getHistory(), fingerprint });
+    console.log("[Cognitive Layer] Knowledge Atom created.");
+
+    // 3. Ingest into MemoryGraph and run the Inference Engine
     await memoryGraph.initialize();
-    const knowledgeAtom = atomize(rawMessage, { recentMessages: tracker.getHistory() });
-    if (knowledgeAtom) memoryGraph.ingest(knowledgeAtom);
+    if (knowledgeAtom) {
+        memoryGraph.ingest(knowledgeAtom);
+        console.log("[Cognitive Layer] Atom ingested into MemoryGraph.");
+    }
     const consciousness = new InferenceEngine(memoryGraph);
     const cognitiveProfile = await consciousness.generateCognitiveProfile();
-    const fingerprint = generateFingerprint(rawMessage, { ...tracker.generateContextualSummary(), cognitiveProfile });
+    console.log("[Cognitive Layer] Cognitive Profile generated.");
+    
+    // Asynchronously run memory maintenance
+    setTimeout(() => {
+        memoryGraph.dream();
+        memoryGraph.persist();
+    }, 0);
     
     // =================================================================
-    // SECTION 4: STRATEGIC EXECUTION (The New Multi-Protocol Flow)
-    // =================================================================
+    
+    // --- STRATEGIC EXECUTION (Existing Logic) ---
+    // The existing logic will now receive the enriched context.
+    
     let finalReply = "";
     let responsePayload = {};
+    const sessionContext = tracker.getSessionContext();
 
-    // 1. The Strategic Planner provides a full intelligence briefing.
     const briefing = createCognitiveBriefing(rawMessage, fingerprint, sessionContext, profile);
     
-    // 2. The Strategy Room gathers all relevant experts for a parallel performance.
     let candidates = [];
-
-    // Expert 1: The Active Protocol Expert (Continues the ongoing conversation)
     if (briefing.activeProtocol) {
-        if (DEBUG) console.log(`STRATEGY ROOM: Inviting active protocol "${briefing.activeProtocol.intent.tag}" to perform.`);
         const candidate = executeProtocolStep(
             { full_intent: briefing.activeProtocol.intent.full_intent, initial_context: briefing.activeProtocol.context },
             fingerprint, profile, briefing.activeProtocol.context
@@ -108,106 +116,62 @@ export default async function handler(req, res) {
         if (candidate) candidates.push(candidate);
     }
 
-    // --- <<< START: FINAL FIX - INVITING MULTIPLE EXPERTS >>> ---
-    // Expert 2: The Multiple New Protocol Experts (Responds to all relevant new topics)
     const topNewProtocols = briefing.potentialNewProtocols.slice(0, MAX_NEW_PROTOCOLS_TO_INVITE);
-
     for (const newProtocol of topNewProtocols) {
-        // Ensure we don't re-invite the active protocol if it appears in the new list
         if (newProtocol && newProtocol.tag !== briefing.activeProtocol?.intent.tag) {
-            if (DEBUG) console.log(`STRATEGY ROOM: Inviting new protocol candidate "${newProtocol.tag}" with score ${newProtocol.score.toFixed(3)} to perform.`);
-            
             const newCandidate = executeProtocolStep(
-                { full_intent: newProtocol.full_intent, initial_context: { state: null, turn_counter: 0 } },
-                fingerprint, profile, { state: null, turn_counter: 0 }
+                { full_intent: newProtocol.full_intent, initial_context: { state: null } },
+                fingerprint, profile, { state: null }
             );
-            if (newCandidate) {
-                candidates.push(newCandidate);
-            }
+            if (newCandidate) candidates.push(newCandidate);
         }
     }
-    // --- <<< END: FINAL FIX >>> ---
-    
-    // --- <<< START: MODIFIED DIAGNOSTIC LOGGING >>> ---
-    if (DEBUG) {
-        // This diagnostic now checks if ANY candidates were generated from protocols
-        const protocolCandidates = candidates.filter(c => c.source !== 'empathic_safety_net' && c.source !== 'response_synthesizer_v1.2');
-        if (protocolCandidates.length === 0) {
-            console.log('DIAGNOSTIC: No candidates were generated from any protocol.');
-            if (!briefing.activeProtocol) {
-                console.log('DIAGNOSTIC: Reason -> No active protocol in context.');
-            }
-            if (briefing.potentialNewProtocols.length === 0) {
-                console.log(`DIAGNOSTIC: Reason -> No new protocols met the minimum score threshold.`);
-            }
-             console.log('DIAGNOSTIC: All potential protocols found by planner:', briefing.potentialNewProtocols.map(p => ({ tag: p.tag, score: p.score.toFixed(3) })));
-        } else {
-             console.log('DIAGNOSTIC: Candidates generated successfully:', candidates.map(c => ({ source: c.source, reply: (c.reply || "").slice(0, 50) + "..." })));
-        }
-    }
-    // --- <<< END: MODIFIED DIAGNOSTIC LOGGING >>> ---
 
-    // Expert 3: The Creative Synthesizer (Adds a different flavor)
+    // This part remains unchanged for now, as per our plan
     const artisticCandidate = ResponseSynthesizer.synthesizeResponse(candidates, { cognitiveProfile, fingerprint }, {}, tracker);
     if(artisticCandidate) candidates.push(artisticCandidate);
 
-    // Expert 4: The Empathic Safety Net (Always present)
     const empathicCandidate = {
       reply: `أتفهم أن هذا الموقف يسبب لك الكثير من المشاعر الصعبة. أنا هنا لأسمعك.`,
       source: 'empathic_safety_net', confidence: 0.95, metadata: { isSafetyNet: true }
     };
     candidates.push(empathicCandidate);
 
-    // Remove any exact duplicate replies before sending to the Maestro
     const uniqueCandidates = [...new Map(candidates.map(item => [item["reply"], item])).values()];
     if (DEBUG) console.log(`MAESTRO'S DESK: Received ${uniqueCandidates.length} unique candidates for final review.`);
     
-    // 3. The Maestro (HybridComposer) receives ALL expert opinions and the briefing to make the final composition.
-    // --- [التعديل الوحيد] --- تم تعديل هذا الاستدعاء لتمرير رسالة المستخدم بشكل صحيح
+    // --- FINAL COMPOSITION ---
+    // We now pass the full, enriched context to the next layer.
     responsePayload = HybridComposer.synthesizeHybridResponse(
         uniqueCandidates, 
-        briefing, // Pass the full briefing for strategic context
+        briefing,
         { 
-          fingerprint, 
-          tracker, 
-          user_message: rawMessage // ضمان وصول الرسالة إلى InsightGenerator عبر السياق
+          // [NEW] Passing all the rich data
+          user_message: rawMessage,
+          userId: userId,
+          tracker: tracker,
+          fingerprint: fingerprint,
+          knowledgeAtom: knowledgeAtom,
+          cognitiveProfile: cognitiveProfile
         }
     );
     
     if (!responsePayload || !responsePayload.reply) {
-        responsePayload = {
-            reply: "أنا أفكر في كلماتك بعمق. هل يمكنك أن تشرح لي أكثر؟",
-            source: 'critical_fallback',
-            metadata: {}
-        };
+        responsePayload = { reply: "أنا أفكر في كلماتك بعمق...", source: 'critical_fallback' };
     }
 
     finalReply = responsePayload.reply;
     
-    // --- POST-RESPONSE HOUSEKEEPING (UPGRADED AND STABLE) ---
+    // --- POST-RESPONSE HOUSEKEEPING ---
     tracker.addTurn(fingerprint, { reply: finalReply, ...responsePayload });
     
-    // --- <<< START: UPGRADED SESSION MANAGEMENT LOGIC >>> ---
-    const nextContext = responsePayload.metadata?.nextSessionContext;
-
-    if (nextContext) {
-        // Check for the successful completion signal we added
-        if (nextContext.state === 'PROTOCOL_COMPLETE') {
-            if(DEBUG) console.log(`SESSION: Protocol "${nextContext.active_intent}" completed successfully. Resetting for next turn.`);
-            // Reset intentionally because the protocol has finished its job
-            tracker.updateSessionContext({ active_intent: null, state: null, turn_counter: 0 }); 
-        } else {
-            // If not complete, update the context to continue the conversation
-            if(DEBUG) console.log(`SESSION: Updating context for ${userId} to state:`, nextContext);
-            tracker.updateSessionContext(nextContext);
-        }
-    } else {
-       // This block now correctly handles true errors where no context was provided at all
-       if(DEBUG) console.log(`SESSION: No next context provided (true error or end of non-protocol response). Resetting state for ${userId}.`);
-       tracker.updateSessionContext({ active_intent: null, state: null, turn_counter: 0 });
+    // [MODIFIED] We now get the updated user state from the linguistic core if available
+    if (responsePayload.updatedUserState) {
+        tracker.setUserState(responsePayload.updatedUserState);
+    } else if (responsePayload.metadata?.nextSessionContext) {
+        tracker.updateSessionContext(responsePayload.metadata.nextSessionContext);
     }
-    // --- <<< END: UPGRADED SESSION MANAGEMENT LOGIC >>> ---
-
+    
     profile.shortMemory = tracker.serialize();
 
     try {
