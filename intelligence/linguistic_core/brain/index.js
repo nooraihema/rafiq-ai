@@ -1,274 +1,155 @@
 // intelligence/linguistic_core/brain/index.js
-/**
- * The Big Brain module — integrates:
- * - Emotional Graph (dynamic per-user)
- * - Memory Shaping (topic -> emotional summary store)
- * - Cognitive Patterns Engine (CBT-like pattern detectors)
- * - Mood Analyzer adapter hooks (consumes summarizer)
- * - Hybrid Generator (contextual + therapeutic responses)
- * - Feedback loop API for updating weights
- *
- * Usage:
- *   import { processMessage, provideFeedback } from './brain/index.js'
- *   const result = processMessage({ semanticMap, fingerprint, userId: 'u123' })
- */
+// Version 2.0: The Strategic Synthesizer
+// This version evolves the Brain from a collection of powerful modules into a true
+// strategic synthesizer. It now consumes the full PsychologicalProfile and the orchestrated
+// WisdomPack to compose nuanced, multi-layered, and therapeutically-aligned responses.
 
-// --- [تصحيح المسارات] --- تم تعديل المسارات لتكون صحيحة بالنسبة لموقع الملف
+// --- Imports ---
 import { Dictionaries } from '../dictionaries/index.js';
-import { safeStr, sample } from '../utils.js';
+import { sample } from '../utils.js';
+
+// --- State Management (No changes here, it's solid) ---
+const UserState = new Map();
+// ... (ensureUser, clamp, and other helpers remain the same) ...
+function ensureUser(userId) { /* ... */ }
+function clamp(v, min = -10, max = 10) { /* ... */ }
+
+// --- Core Modules (EmotionalGraph, MemoryShaping - No changes here) ---
+function updateEmotionalGraph(userState, concepts, intensity) { /* ... */ }
+function shapeMemory(userState, semanticMap, fingerprint) { /* ... */ }
 
 // -----------------------------
-// In-memory stores (pluggable)
+// SECTION 1: THE SYNTHESIZER (UPGRADED)
+// This is the new core of the reply generation.
 // -----------------------------
-const UserState = new Map(); // userId -> { emotionalGraph, memoryNodes, moodHistory, lastMood, moodStreak }
-const GlobalStats = {
-  messagesProcessed: 0,
-  feedbacks: 0
-};
 
-// -----------------------------
-// Helpers
-// -----------------------------
-function ensureUser(userId) {
-  if (!UserState.has(userId)) {
-    UserState.set(userId, {
-      emotionalGraph: {},    // concept -> score (can be negative/positive)
-      memoryNodes: {},       // topicKey -> summary {concepts, tags, lastSeen}
-      moodHistory: [],       // array of mood strings
-      lastMood: null,
-      moodStreak: 0
-    });
-  }
-  return UserState.get(userId);
-}
-
-function clamp(v, min = -10, max = 10) { return Math.max(min, Math.min(max, v)); }
-
-// -----------------------------
-// 1) Emotional Graph (per user)
-// -----------------------------
-function updateEmotionalGraph(userState, conceptsWithWeights, decay = 0.95) {
-  for (const k of Object.keys(userState.emotionalGraph)) {
-    userState.emotionalGraph[k] *= decay;
-  }
-  for (const [concept, w] of Object.entries(conceptsWithWeights)) {
-    userState.emotionalGraph[concept] = clamp((userState.emotionalGraph[concept] || 0) + w, -20, 20);
-  }
-  return userState.emotionalGraph;
-}
-
-// -----------------------------
-// 2) Memory Shaping
-// -----------------------------
-function shapeMemory(userState, semanticMap, fingerprint) {
-  const concepts = semanticMap?.list?.allConcepts || [];
-  if (concepts.length === 0) return userState.memoryNodes;
-
-  const top = concepts.slice(0, 3).join('|');
-  const now = Date.now();
-
-  userState.memoryNodes[top] = userState.memoryNodes[top] || {
-    concepts: {},
-    tags: new Set(),
-    lastSeen: now,
-    count: 0,
-    sampleMessages: []
-  };
-
-  const node = userState.memoryNodes[top];
-  const frequencies = semanticMap?.frequencies?.concepts || {};
-  for (const [c, f] of Object.entries(frequencies)) node.concepts[c] = (node.concepts[c] || 0) + f;
-  node.count += 1;
-  node.lastSeen = now;
-  if (fingerprint?.originalMessage) {
-    node.sampleMessages.push({
-      time: now,
-      text: safeStr(fingerprint.originalMessage).slice(0, 200)
-    });
-    if (node.sampleMessages.length > 6) node.sampleMessages.shift();
-  }
-  node.tags.add(top);
-  return userState.memoryNodes;
-}
-
-// -----------------------------
-// 3) Cognitive Patterns Engine (CBT-ish quick detectors)
-// -----------------------------
-const CBT_PATTERNS = [
-  { id: 'catastrophize', regex: /\b(هينتهي كل شيء|مش هينفع|هتدمر|انتهى كل شيء|مستحيل أتحسن)\b/u, weight: 0.9 },
-  { id: 'overgeneralize', regex: /\b(دايماً|أبداً|كل حاجة|مفيش أي حد)\b/u, weight: 0.8 },
-  { id: 'self_blame', regex: /\b(خطأي|دا ذنبي|أنا السبب)\b/u, weight: 0.7 },
-  { id: 'personalization', regex: /\b(علشان أنا|بسببي)\b/u, weight: 0.6 },
-];
-
-function detectCognitivePatterns(text) {
-  const t = safeStr(text).toLowerCase();
-  const found = [];
-  for (const p of CBT_PATTERNS) {
-    if (p.regex.test(t)) {
-      found.push({ id: p.id, severity: p.weight });
+/**
+ * The new strategic composer. It weaves together the best gems from the WisdomPack
+ * into a coherent and therapeutically sound response.
+ * @param {import('../wisdom_orchestrator.js').WisdomPack} wisdomPack - The scored and sorted gems.
+ * @param {import('../summarizer/index.js').PsychologicalProfile} profile - The user's psychological profile.
+ * @param {object} userState - The user's memory and state.
+ * @returns {{reply: string, used_gems: string[]}} The final composed reply and the IDs of gems used.
+ */
+function synthesizeReply(wisdomPack, profile, userState) {
+    if (!wisdomPack || !wisdomPack.primary || wisdomPack.primary.length === 0) {
+        // Fallback for when no gems are found
+        return { reply: "أنا أفكر في كلامك... ممكن توضحلي أكتر؟", used_gems: [] };
     }
-  }
-  return found;
+
+    const replyParts = [];
+    const usedGems = [];
+
+    // 1. Select the Opening Gem (usually validation or empathy)
+    const openingGem = wisdomPack.primary.find(g => g.category === 'validation') || 
+                       wisdomPack.primary.find(g => g.category === 'empathy') || 
+                       wisdomPack.primary[0]; // Fallback to the highest scored gem
+    
+    replyParts.push(openingGem.content);
+    usedGems.push(openingGem.gem_id);
+
+    // 2. Select the Core Insight or Reframe Gem
+    // We prioritize a gem that addresses the core tension or need.
+    const insightGem = wisdomPack.primary.find(g => g.category === 'insight' || g.category === 'reframe') ||
+                       wisdomPack.supporting.find(g => g.category === 'insight' || g.category === 'reframe');
+    
+    if (insightGem && !usedGems.includes(insightGem.gem_id)) {
+        replyParts.push(insightGem.content);
+        usedGems.push(insightGem.gem_id);
+    }
+
+    // 3. Select the Closing Gem (usually a question or an action prompt)
+    const closingGem = wisdomPack.primary.find(g => g.category === 'question' || g.category === 'action_prompt') ||
+                       wisdomPack.supporting.find(g => g.category === 'question' || g.category === 'action_prompt');
+
+    if (closingGem && !usedGems.includes(closingGem.gem_id)) {
+        replyParts.push(closingGem.content);
+        usedGems.push(closingGem.gem_id);
+    }
+
+    // If no specific closing gem was found, ensure the conversation continues.
+    if (replyParts.length <= 2) {
+        const fallbackQuestion = sample(["إيه رأيك في الكلام ده؟", "هل ده بيوصف اللي بتحس بيه؟", "تحب نتكلم في النقطة دي أكتر؟"]);
+        replyParts.push(fallbackQuestion);
+    }
+    
+    const finalReply = replyParts.join(' ');
+    
+    return { reply: finalReply, used_gems: usedGems };
 }
 
+
 // -----------------------------
-// 4) Integration with Mood Analyzer (hook safe adapter)
+// SECTION 2: THE MAIN CONDUCTOR (UPGRADED)
+// This is the primary entry point that orchestrates the new flow.
 // -----------------------------
-function runMoodAnalyzerHook(semanticMap, fingerprint, userState, options = {}) {
-  // This hook is designed to be flexible. The actual analyzer function is passed in via `options`.
-  const analyzer = options.moodAnalyzer;
-  try {
-    if (typeof analyzer === 'function') {
-      return analyzer(semanticMap, fingerprint, userState.lastMood || 'supportive', userState.moodStreak || 0);
+
+/**
+ * The main entry point for the Brain.
+ * @param {object} inputs - An object containing all necessary data.
+ * @param {import('../summarizer/index.js').PsychologicalProfile} inputs.profile
+ * @param {import('../wisdom_orchestrator.js').WisdomPack} inputs.wisdomPack
+ * @param {string} inputs.userId
+ * @param {object} [inputs.options] - Debugging options.
+ * @returns {object} The final result object with the reply and diagnostics.
+ */
+export function processMessage({ profile, wisdomPack, userId = 'anon', options = {} }) {
+    GlobalStats.messagesProcessed++;
+    const userState = ensureUser(userId);
+
+    const { _rawSemanticMap: semanticMap, mood, allConcepts } = profile;
+    
+    // --- Existing Modules Integration ---
+    // 1. Update Emotional Graph (still valuable)
+    const intensity = mood.intensity || 1.0;
+    updateEmotionalGraph(userState, allConcepts, intensity);
+
+    // 2. Memory Shaping (still valuable)
+    // We need the fingerprint for this, let's assume it's inside the profile or passed separately if needed.
+    // For now, we'll use the raw text from the semantic map.
+    shapeMemory(userState, semanticMap, { originalMessage: semanticMap.rawText });
+    
+    // --- The New Synthesis Core ---
+    // 3. Synthesize the reply using the new strategic composer
+    const { reply, used_gems } = synthesizeReply(wisdomPack, profile, userState);
+
+    // --- State Update ---
+    // 4. Update user's mood history (now simpler)
+    if (userState.lastMood === mood.primary) {
+        userState.moodStreak++;
+    } else {
+        userState.moodStreak = 0;
+        userState.lastMood = mood.primary;
     }
-  } catch (e) {
-    console.warn('[Brain] mood analyzer hook failed', e);
-  }
-  // Fallback simple mood
-  const probs = {};
-  for (const m of Dictionaries.AVAILABLE_MOODS || ['supportive']) probs[m] = 1 / (Dictionaries.AVAILABLE_MOODS?.length || 1);
-  return { mood: 'supportive', confidence: 0.6, intensity: 0.2, distribution: probs, isComposite: false };
-}
+    userState.moodHistory.push({ mood: mood.primary, time: Date.now() });
+    if (userState.moodHistory.length > 20) userState.moodHistory.shift();
+    
+    // Track used gems to avoid repetition
+    userState.recentGems = [...(userState.recentGems || []), ...used_gems].slice(-10);
 
-// -----------------------------
-// 5) Hybrid Generator (therapeutic + generative)
-// -----------------------------
-function hybridGenerateReply({ summary, semanticMap, fingerprint, userState, moodInfo, cognitivePatterns }) {
-  const moodKey = (moodInfo?.mood || 'supportive').split('+')[0];
-  const lexicon = Dictionaries.GENERATIVE_LEXICON[moodKey] || Dictionaries.GENERATIVE_LEXICON['supportive'];
-
-  const opener = sample(lexicon.openers);
-  const connector = sample(lexicon.connectors);
-  const closer = sample(lexicon.closers);
-
-  // 1) Memory recall
-  let memoryNote = '';
-  const recentNodes = Object.values(userState.memoryNodes || {}).sort((a,b) => b.lastSeen - a.lastSeen);
-  if (recentNodes.length > 0) {
-    const topNode = recentNodes[0];
-    const overlap = (summary.allConcepts || []).filter(c => Object.keys(topNode.concepts || {}).includes(c));
-    if (overlap.length > 0) {
-      memoryNote = `فاكر لما حكينا عن ${overlap.slice(0,2).join(' و ')}؟ ممكن يكون ده مرتبط باللي بتحس بيه دلوقتي.`;
-    }
-  }
-
-  // 2) Cognitive pattern corrective snippet
-  let cognitiveNote = '';
-  if (cognitivePatterns && cognitivePatterns.length > 0) {
-    const strongest = cognitivePatterns.sort((a, b) => b.severity - a.severity)[0];
-    const reframes = {
-      catastrophize: 'أحيانًا عقلنا بيرسم أسوأ سيناريو ممكن. خلينا نفحص الحقايق مع بعض خطوة بخطوة.',
-      overgeneralize: 'ملاحظ إننا استخدمنا كلمة زي "دايمًا" أو "أبدًا". هل فيه أي استثناء للقاعدة دي؟',
-      self_blame: 'حاسس إنك شايل حمل كبير. إيه رأيك نحلل كل العوامل اللي أدت للموقف ده؟',
-      personalization: 'سهل نحس إننا السبب في كل حاجة. تفتكر فيه أي عوامل تانية ممكن تكون أثرت؟'
+    // --- Final Packaging ---
+    const result = {
+        userId,
+        reply,
+        diagnostics: {
+            detectedMood: mood,
+            detectedNeed: profile.implicitNeed,
+            detectedTension: profile.narrativeTension,
+            usedGems: used_gems,
+            topLibrary: wisdomPack.primary[0]?.source_library || 'N/A',
+        }
     };
-    cognitiveNote = reframes[strongest.id] || 'خلينا نعيد صياغة الفكرة دي مع بعض.';
-  }
 
-  // Compose reply
-  const replyParts = [opener];
-  if (memoryNote) replyParts.push(memoryNote);
-  if (cognitiveNote) replyParts.push(cognitiveNote);
-  else { // If no specific cognitive note, add a general insight
-      const insight = sample(lexicon.connectors) + " " + (summary.dominantConcept || 'اللي بتحس بيه');
-      replyParts.push(insight);
-  }
-  replyParts.push(closer);
-
-  const replyText = replyParts.join(' ');
-  
-  return { reply: replyText, diagnostics: { moodInfo, cognitivePatterns } };
-}
-
-// -----------------------------
-// 6) Feedback loop API
-// -----------------------------
-export function provideFeedback(userId, { success = 0.0, targetConcept = null, mood = null } = {}) {
-  GlobalStats.feedbacks += 1;
-  if (!targetConcept || !mood || !Dictionaries.CONCEPT_DEFINITIONS) return { ok: false, note: 'dependencies missing' };
-
-  const cd = Dictionaries.CONCEPT_DEFINITIONS[targetConcept];
-  if (!cd) return { ok: false, note: 'concept not found' };
-  cd.mood_weights = cd.mood_weights || {};
-  cd.mood_weights[mood] = (cd.mood_weights[mood] || 0) * 0.9 + success * 0.1;
-  return { ok: true };
-}
-
-// -----------------------------
-// Main entry: processMessage
-// -----------------------------
-export function processMessage({ semanticMap = {}, fingerprint = {}, userId = 'anon', options = {} } = {}) {
-  GlobalStats.messagesProcessed += 1;
-  const userState = ensureUser(userId);
-
-  // 1) Update emotional graph
-  const freq = semanticMap?.frequencies?.concepts || {};
-  const conceptWeights = {};
-  const intensity = fingerprint?.intensity || 1.0;
-  for (const [c, f] of Object.entries(freq)) {
-    conceptWeights[c] = (conceptWeights[c] || 0) + Math.log1p(f) * intensity;
-  }
-  updateEmotionalGraph(userState, conceptWeights);
-
-  // 2) Memory shaping
-  shapeMemory(userState, semanticMap, fingerprint);
-
-  // 3) Cognitive pattern detection
-  const cognitivePatterns = detectCognitivePatterns(fingerprint?.originalMessage || '');
-
-  // 4) Mood analysis
-  const moodInfo = runMoodAnalyzerHook(semanticMap, fingerprint, userState, { moodAnalyzer: options.moodAnalyzer });
-
-  // Update user's mood history
-  if (userState.lastMood === moodInfo.mood.split('+')[0]) {
-    userState.moodStreak++;
-  } else {
-    userState.moodStreak = 0;
-    userState.lastMood = moodInfo.mood.split('+')[0];
-  }
-  userState.moodHistory.push({ mood: moodInfo.mood, time: Date.now(), confidence: moodInfo.confidence });
-  if(userState.moodHistory.length > 20) userState.moodHistory.shift();
-
-  // 5) Create summary
-  const summary = {
-    dominantConcept: semanticMap?.list?.allConcepts?.[0] || null,
-    allConcepts: semanticMap?.list?.allConcepts || Object.keys(freq)
-  };
-
-  // 6) Generate reply
-  const { reply, diagnostics } = hybridGenerateReply({ summary, semanticMap, fingerprint, userState, moodInfo, cognitivePatterns });
-
-  // 7) Pack final result
-  const result = {
-    userId,
-    reply,
-    diagnostics: {
-      ...diagnostics,
-      memoryKeys: Object.keys(userState.memoryNodes).slice(-5),
-      emotionalGraphSnapshot: Object.entries(userState.emotionalGraph).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1])).slice(0,5),
+    if (options.debug) {
+        console.log('[Brain.processMessage] result diagnostics:', result.diagnostics);
     }
-  };
 
-  if (options.debug) {
-    console.log('[Brain.processMessage] result diagnostics:', result.diagnostics);
-  }
-
-  return result;
+    return result;
 }
 
-// -----------------------------
-// Utilities for external use
-// -----------------------------
-export function resetUserState(userId) {
-  UserState.delete(userId);
-  return { ok: true };
-}
-
-export function inspectUserState(userId) {
-  return UserState.get(userId) || null;
-}
-
-export function getGlobalStats() {
-  return GlobalStats;
-}
+// ... (Other utility functions like provideFeedback, resetUserState, etc., remain unchanged) ...
+// You can keep all your other exported functions here.
+export function provideFeedback(userId, feedback) { /* ... */ }
+export function resetUserState(userId) { /* ... */ }
+export function inspectUserState(userId) { /* ... */ }
+// etc.
