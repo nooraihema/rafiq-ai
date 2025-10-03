@@ -1,69 +1,60 @@
-
 // intelligence/linguistic_core/generator/index.js
-// Version 2.0: The Creative Synthesizer
-// This version is designed to be a pure "synthesis" engine. It receives a rich,
-// pre-analyzed summary object and creatively composes a response based on it,
-// without performing any analysis itself.
+// Version 3.0: The Eloquent Weaver
+// This version simplifies the generator's role. It no longer makes strategic decisions.
+// Its sole responsibility is to take a pre-selected, ordered array of gems
+// from the Brain and weave them into a natural, flowing, and coherent paragraph.
 
-import { Dictionaries } from '../dictionaries/index.js';
 import { sample } from '../utils.js';
 
+// A small set of transition words to connect gems smoothly.
+const TRANSITIONS = [
+    'وفي نفس الوقت،', 
+    'وبجانب ده،', 
+    'وده بيخليني أفكر في نقطة تانية، وهي إن', 
+    'وفوق كل ده،', 
+    'ولهذا السبب،'
+];
+
 /**
- * الوظيفة الرئيسية لوحدة Generator.
- * @param {object} summary - "ملف الموقف النفسي" الكامل والجاهز من Summarizer.
- * @returns {string} - الرد النهائي المؤلف.
+ * The main function of the new Generator.
+ * Weaves an array of selected gems into a final, polished reply.
+ * @param {import('../wisdom_orchestrator.js').ScoredGem[]} selectedGems - An ordered array of gems chosen by the Brain.
+ * @returns {string} - The final, composed reply string.
  */
-export function generateReply(summary) {
-    // 1. استخلاص البيانات الجاهزة من الملخص. لا حاجة لأي تحليل هنا.
-    const {
-        mood,
-        moodConfidence,
-        narrativeTension,
-        dominantConcept,
-        implicitNeed,
-    } = summary;
-
-    // 2. اختيار القاموس اللغوي بناءً على الحالة المزاجية المحددة مسبقًا.
-    const moodKey = mood.split('+')[0]; // نأخذ المزاج الأساسي في حالة المزاج المركب
-    const lexicon = Dictionaries.GENERATIVE_LEXICON[moodKey] || Dictionaries.GENERATIVE_LEXICON['supportive'];
-
-    const opener = sample(lexicon.openers);
-    const connector = sample(lexicon.connectors);
-    const closer = sample(lexicon.closers);
-
-    // 3. [الأولوية القصوى] التعامل مع التوتر السردي إذا وجد.
-    if (narrativeTension) {
-        // إذا كان هناك صراع، يجب أن يكون هو محور الرد
-        const tensionDescription = `أتفهم أنك تعيش في صراع بين "${narrativeTension.conflictingConcepts[0]}" و "${narrativeTension.conflictingConcepts[1]}".`;
-        return `${opener}. ${tensionDescription} ${closer}`;
+export function weaveGemsIntoReply(selectedGems) {
+    if (!selectedGems || selectedGems.length === 0) {
+        // Fallback in case the Brain sends an empty list.
+        return "أنا أفكر في كلامك... ممكن توضحلي أكتر؟";
     }
 
-    // 4. [الأولوية الثانية] البحث عن "نمط سببي" ذكي.
-    if (dominantConcept) {
-        for (const pattern of Dictionaries.CAUSAL_PATTERNS) {
-            if (pattern.concepts.includes(dominantConcept)) {
-                console.log(`[Generator] Found Causal Pattern for: '${dominantConcept}'`);
-                return `${opener}. ${pattern.hypothesis} ${closer}`;
-            }
+    // 1. Extract the content from the gem objects.
+    const gemContents = selectedGems.map(gem => gem.content);
+
+    // 2. Handle the simple cases first.
+    if (gemContents.length === 1) {
+        return gemContents[0]; // If there's only one gem, return it as is.
+    }
+    
+    // 3. Weave multiple gems into a paragraph.
+    let finalReply = gemContents[0]; // Start with the first gem.
+    
+    for (let i = 1; i < gemContents.length; i++) {
+        const currentPart = gemContents[i];
+        
+        // Logic to add a transition word, but not always, for a more natural feel.
+        // And avoid adding a transition before a question.
+        if (i === 1 && !currentPart.includes('؟')) {
+             // Use a transition for the second part to connect it to the first.
+            finalReply += ` ${sample(TRANSITIONS)} ${currentPart.toLowerCase()}`;
+        } else {
+             // For subsequent parts, just add a space and the sentence.
+            finalReply += ` ${currentPart}`;
         }
     }
     
-    // 5. [الخطة الاحتياطية] بناء رد يعتمد على الحاجة والمفهوم المهيمن.
-    if (dominantConcept === "unknown" || !dominantConcept) {
-        return `${opener}. من الواضح أنك تمر بشيء عميق قد يكون من الصعب وصفه بالكلمات. ${closer}`;
-    }
+    // 4. Basic final polishing.
+    // (Future versions could add more advanced NLP polishing here).
+    finalReply = finalReply.replace(/\s+/g, ' ').trim(); // Clean up extra spaces.
 
-    // البحث عن الكلمة العربية للمفهوم
-    const arabicTerm = Object.keys(Dictionaries.CONCEPT_MAP).find(key => 
-        (Array.isArray(Dictionaries.CONCEPT_MAP[key]) ? Dictionaries.CONCEPT_MAP[key].includes(dominantConcept) : Dictionaries.CONCEPT_MAP[key] === dominantConcept)
-    ) || dominantConcept;
-    
-    let needSentence = "";
-    if (implicitNeed === 'validation') {
-        needSentence = `من الطبيعي جدًا أن تشعر بهذا. مشاعرك حقيقية ومهمة.`;
-    } else if (implicitNeed === 'guidance') {
-        needSentence = `خلينا نفكر مع بعض في خطوات بسيطة ممكن تساعد في الموقف ده.`;
-    }
-
-    return `${opener}، ${connector} يبدو أن موضوع '${arabicTerm}' هو أكثر ما يؤثر عليك الآن. ${needSentence} ${closer}`;
+    return finalReply;
 }
