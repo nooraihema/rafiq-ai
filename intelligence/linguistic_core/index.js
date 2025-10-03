@@ -1,64 +1,76 @@
 // intelligence/linguistic_core/index.js
-// Version 3.0: The Brain's Chief Conductor
-// This file is the sole entry point to the linguistic core. It orchestrates
-// the primary modules (tokenizer, summarizer) and passes their rich output,
-// along with pluggable analyzers, to the Brain for final processing.
+// Version 4.0: The Unified Cognitive Cycle Conductor
+// This file orchestrates the complete cognitive cycle:
+// 1. Understanding (Summarizer) -> Creates the Psychological Profile.
+// 2. Strategy (Wisdom Orchestrator) -> Creates the WisdomPack.
+// 3. Synthesis (Brain & Generator) -> Composes the final reply.
 
 import { tokenize } from './tokenizer/index.js';
-import { summarize } from './summarizer/index.js';
-import { analyzeMood } from './summarizer/mood_analyzer.js'; // <-- 1. استيراد المحلل المتخصص
+import { createPsychologicalProfile } from './summarizer/index.js';
+import { orchestrateWisdom } from './wisdom_orchestrator.js';
 import { processMessage } from './brain/index.js';
+import { weaveGemsIntoReply } from './generator/index.js';
 
 /**
- * الدالة الرئيسية للمكتبة اللغوية (الواجهة العامة).
- * @param {string} userMessage 
- * @param {object} fingerprint
- * @param {string} userId
- * @param {object} userState - [تعديل] كائن حالة المستخدم الكامل
- * @returns {object|null} - كائن الرد النهائي، أو null في حالة الفشل.
+ * The primary, sole entry point for the entire advanced linguistic core.
+ * @param {string} userMessage - The raw user message.
+ * @param {object[]} allWisdomLibraries - An array of all loaded wisdom library files.
+ * @param {object} [fingerprint={}] - Legacy fingerprint object for integration.
+ * @param {string} [userId='anon'] - The user's unique ID.
+ * @param {object} [userState={}] - The user's current state object.
+ * @returns {Promise<object|null>} - The final result object containing the reply and updated state, or null on failure.
  */
-export function generateAdvancedReply(userMessage, fingerprint, userId, userState) {
+export async function generateAdvancedReply(
+    userMessage, 
+    allWisdomLibraries, 
+    fingerprint = {}, 
+    userId = 'anon', 
+    userState = {}
+) {
     try {
-        console.log("[Linguistic Core] ==> STAGE 1: Tokenizing...");
+        // --- PRE-PROCESSING ---
+        // Create the foundational SemanticMap once.
         const semanticMap = tokenize(userMessage);
-        console.log("[Linguistic Core] Semantic Map created. Concepts:", semanticMap.list.allConcepts);
 
-        console.log("[Linguistic Core] ==> STAGE 2: Summarizing...");
-        // [تعديل] Summarizer الآن يستقبل userState الكامل
-        const summary = summarize(semanticMap, fingerprint, userState);
-        console.log("[Linguistic Core] Summary created:", { mood: summary.mood, tension: summary.narrativeTension?.name });
+        // --- STAGE 1: UNDERSTANDING ---
+        console.log("[Conductor] ==> STAGE 1: Creating Psychological Profile...");
+        const { profile, updatedUserState } = createPsychologicalProfile(semanticMap, fingerprint, userState);
+        console.log(`[Conductor] Profile created. Need: '${profile.implicitNeed.dominant}', Mood: '${profile.mood.primary}'`);
 
-        console.log("[Linguistic Core] ==> STAGE 3: Invoking The Brain...");
-        
-        // [تعديل] تجهيز "المكونات الإضافية" التي سيستخدمها الدماغ
-        const brainOptions = { 
-            debug: true,
-            // نحن نوصل "محلل المزاج" الذي بنيناه بـ "مقبس" الدماغ
-            moodAnalyzer: (map, fp, state) => analyzeMood(map, fp, state) 
-        };
-        
+        // --- STAGE 2: STRATEGY ---
+        console.log("[Conductor] ==> STAGE 2: Orchestrating Wisdom...");
+        const recentGems = userState.recentGems || [];
+        const wisdomPack = orchestrateWisdom(profile, allWisdomLibraries, recentGems);
+        console.log(`[Conductor] WisdomPack created. Found ${wisdomPack.primary.length} primary gems.`);
+
+        // --- STAGE 3: SYNTHESIS ---
+        console.log("[Conductor] ==> STAGE 3: Invoking Brain for Synthesis...");
         const brainResult = processMessage({
-            semanticMap,
-            summary,
-            fingerprint,
+            profile,
+            wisdomPack,
             userId,
-            options: brainOptions
+            userState: updatedUserState, // Pass the state that was updated by the summarizer
+            options: { debug: true }
         });
-        
-        console.log("[Linguistic Core] Brain processing complete.");
 
         if (!brainResult || !brainResult.reply) {
-            console.error("[Linguistic Core] Brain did not produce a valid reply.");
+            console.error("[Conductor] Brain did not produce a valid reply.");
+            // We can still use the generator with the top gem as a fallback
+            const fallbackReply = weaveGemsIntoReply(wisdomPack.primary.slice(0, 1));
+            if (fallbackReply) {
+                 return { reply: fallbackReply, updatedUserState: brainResult.updatedUserState || updatedUserState };
+            }
             return null;
         }
-
-        // نضيف حالة المستخدم المحدثة إلى المخرجات ليتم حفظها لاحقًا
-        brainResult.updatedUserState = userState;
         
+        console.log("[Conductor] Cognitive Cycle Complete.");
+        
+        // The brainResult should already contain the updated user state.
         return brainResult;
 
-    } catch (error) {
-        console.error("[Linguistic Core] FATAL ERROR:", error);
-        return null;
+    } catch (error)
+    {
+        console.error("[Conductor] FATAL ERROR in Cognitive Cycle:", error);
+        return null; // Return null to allow fallback logic to handle the error.
     }
 }
