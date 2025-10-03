@@ -1,23 +1,19 @@
 // intelligence/linguistic_core/tokenizer/index.js
-// Version 5.0: The Semantic Understanding Engine
-// This version evolves from a tokenizer into a true NLU engine by:
-// 1. Implementing advanced morphological analysis (stemming with more affixes).
-// 2. Supporting multi-concept mapping for richer semantics.
-// 3. Outputting a structured SemanticMap object with comprehensive stats.
+// Version 6.0: The Semantic Understanding Engine
+// This version refines the output into a standardized SemanticMap, improves
+// efficiency, and lays the groundwork for future n-gram analysis.
 
-// --- [التعديل الوحيد] --- تم تغيير طريقة الاستيراد لتكون مباشرة وصريحة لكل قاموس
-import { CONCEPT_MAP } from '../dictionaries/concepts.js';
-import { STOP_WORDS } from '../dictionaries/stop_words.js';
-import { PREFIXES, SUFFIXES } from '../dictionaries/affixes.js';
+import Dictionaries from '../dictionaries/index.js'; // Import the central hub
 import { safeStr } from '../utils.js';
 
 // =================================================================
-// SECTION 1: ADVANCED LINGUISTIC PROCESSING ENGINES
+// SECTION 1: LINGUISTIC NORMALIZATION & STEMMING
 // =================================================================
 
+/** Normalizes Arabic text for consistent processing. */
 function normalize(text) {
     return text
-        .replace(/[\u064B-\u0652]/g, "")
+        .replace(/[\u064B-\u0652]/g, "") // Remove harakat
         .replace(/[إأآا]/g, "ا")
         .replace(/ى/g, "ي")
         .replace(/[ؤ]/g, "و")
@@ -25,17 +21,16 @@ function normalize(text) {
         .replace(/ة/g, "ه");
 }
 
+/** A simple rule-based stemmer for Arabic. */
 function stem(token) {
     let currentToken = token;
-    // 1. Remove prefixes - Now uses the directly imported PREFIXES array
-    for (const pre of PREFIXES) {
+    for (const pre of Dictionaries.PREFIXES) {
         if (currentToken.startsWith(pre) && currentToken.length > pre.length + 2) {
             currentToken = currentToken.slice(pre.length);
             break; 
         }
     }
-    // 2. Remove suffixes - Now uses the directly imported SUFFIXES array
-    for (const suf of SUFFIXES) {
+    for (const suf of Dictionaries.SUFFIXES) {
         if (currentToken.endsWith(suf) && currentToken.length > suf.length + 2) {
             currentToken = currentToken.slice(0, -suf.length);
             break;
@@ -44,117 +39,103 @@ function stem(token) {
     return currentToken;
 }
 
-// =================================================================
-// SECTION 2: SEMANTIC ANALYSIS ENGINE
-// =================================================================
-
-function analyzeToken(rawToken) {
-    const normalized = normalize(safeStr(rawToken).toLowerCase());
-    
-    // Uses the directly imported STOP_WORDS array
-    if (STOP_WORDS.includes(normalized) || normalized.length < 2) {
-        return null;
-    }
-
-    const stem_ = stem(normalized);
-    let concepts = [];
-    
-    // Uses the directly imported CONCEPT_MAP object
-    const staticConcepts = CONCEPT_MAP[stem_] || CONCEPT_MAP[normalized];
-    if (staticConcepts) {
-        // Ensure it's always an array and add to our concepts list
-        concepts.push(...(Array.isArray(staticConcepts) ? staticConcepts : [staticConcepts]));
-    }
-    
-    return {
-        original: rawToken,
-        normalized: normalized,
-        stem: stem_,
-        tag: concepts.length > 0 ? 'concept' : 'normal',
-        concepts: uniq(concepts) // Return unique concepts
-    };
-}
 
 // =================================================================
-// SECTION 3: THE SEMANTIC MAP GENERATOR API
+// SECTION 2: THE SEMANTIC MAP GENERATOR API
 // =================================================================
+
+/**
+ * @typedef {Object} AnalyzedToken
+ * @property {string} original - The original word from the text.
+ * @property {string} normalized - The normalized form of the word.
+ * @property {string} stem - The stemmed form of the word.
+ * @property {string[]} concepts - An array of concept IDs linked to this token.
+ */
+
+/**
+ * @typedef {Object} SemanticMap
+ * @property {string} rawText - The original input text.
+ * @property {AnalyzedToken[]} tokens - A flat array of all analyzed tokens (excluding stopwords).
+ * @property {string[]} allConcepts - A flat array of all unique concepts found in the text.
+ * @property {Object.<string, number>} conceptFrequency - A map of concepts to their frequencies.
+ * @property {Object.<string, number>} stemFrequency - A map of stems to their frequencies.
+ * @property {{tokenCount: number, conceptCount: number, uniqueConceptCount: number}} stats - Key statistics.
+ */
 
 /**
  * The main exported function. Transforms raw text into a rich SemanticMap.
  * @param {string} text The raw user input.
- * @returns {object} The comprehensive SemanticMap object.
+ * @returns {SemanticMap} The comprehensive SemanticMap object.
  */
-export function tokenize(text) {
-    // Standardized output object
-    const semanticMap = {
-        sentences: [],
-        tokens: [], // This will hold the rich token objects per sentence
-        list: {
-            allTokens: [],
-            uniqueStems: [],
-            allConcepts: []
-        },
-        frequencies: {
-            stems: {},
-            concepts: {}
-        },
-        stats: {
-            sentenceCount: 0,
-            tokenCount: 0,
-            uniqueStemCount: 0,
-            conceptCount: 0,
-        }
-    };
+export function createSemanticMap(text) {
+    const rawText = safeStr(text);
+    const initialTokens = rawText.split(/[\s،.]+/).filter(Boolean);
 
-    if (!text) return semanticMap;
-
-    const sentences = safeStr(text).split(/(?<=[.؟!?])\s+/);
-    semanticMap.stats.sentenceCount = sentences.length;
-
-    const stemFrequency = new Map();
+    const analyzedTokens = [];
     const conceptFrequency = new Map();
+    const stemFrequency = new Map();
 
-    for (const sentence of sentences) {
-        const sentenceTokens = [];
-        const rawTokens = sentence.split(/\s+/);
+    for (let i = 0; i < initialTokens.length; i++) {
+        const rawToken = initialTokens[i];
+        const normalized = normalize(rawToken.toLowerCase());
+        
+        if (Dictionaries.STOP_WORDS.includes(normalized) || normalized.length < 2) {
+            continue;
+        }
 
-        for (const rawToken of rawTokens) {
-            const analyzedToken = analyzeToken(rawToken);
-            if (analyzedToken) { // Ignore stopwords and empty tokens
-                sentenceTokens.push(analyzedToken);
-
-                // Update frequencies
-                const stemKey = analyzedToken.stem;
-                stemFrequency.set(stemKey, (stemFrequency.get(stemKey) || 0) + 1);
-
-                if (analyzedToken.concepts.length > 0) {
-                    analyzedToken.concepts.forEach(concept => {
-                        conceptFrequency.set(concept, (conceptFrequency.get(concept) || 0) + 1);
-                    });
-                }
+        const stem_ = stem(normalized);
+        let concepts = [];
+        
+        // Check for multi-word concepts first (bigrams)
+        if (i + 1 < initialTokens.length) {
+            const bigram = `${normalized} ${normalize(initialTokens[i+1].toLowerCase())}`;
+            const bigramStem = `${stem_} ${stem(normalize(initialTokens[i+1].toLowerCase()))}`;
+            const bigramConcepts = Dictionaries.CONCEPT_MAP[bigram] || Dictionaries.CONCEPT_MAP[bigramStem];
+            if (bigramConcepts) {
+                concepts.push(...bigramConcepts);
+                i++; // Skip the next token as it has been processed
             }
         }
-        semanticMap.tokens.push(sentenceTokens);
+
+        // If no bigram was found, check for single word concepts
+        if (concepts.length === 0) {
+            const staticConcepts = Dictionaries.CONCEPT_MAP[stem_] || Dictionaries.CONCEPT_MAP[normalized];
+            if (staticConcepts) {
+                concepts.push(...(Array.isArray(staticConcepts) ? staticConcepts : [staticConcepts]));
+            }
+        }
+
+        const tokenData = {
+            original: rawToken,
+            normalized: normalized,
+            stem: stem_,
+            concepts: [...new Set(concepts)] // Ensure uniqueness
+        };
+        
+        analyzedTokens.push(tokenData);
+
+        // Update frequencies
+        stemFrequency.set(stem_, (stemFrequency.get(stem_) || 0) + 1);
+        tokenData.concepts.forEach(concept => {
+            conceptFrequency.set(concept, (conceptFrequency.get(concept) || 0) + 1);
+        });
     }
+
+    const allUniqueConcepts = Array.from(conceptFrequency.keys());
     
-    // Populate the final SemanticMap object
-    const allAnalyzedTokens = semanticMap.tokens.flat();
-    semanticMap.stats.tokenCount = allAnalyzedTokens.length;
-
-    semanticMap.list.allTokens = allAnalyzedTokens;
-    semanticMap.list.uniqueStems = Array.from(stemFrequency.keys());
-    semanticMap.list.allConcepts = Array.from(conceptFrequency.keys());
-
-    semanticMap.frequencies.stems = Object.fromEntries(stemFrequency);
-    semanticMap.frequencies.concepts = Object.fromEntries(conceptFrequency);
+    /** @type {SemanticMap} */
+    const semanticMap = {
+        rawText: rawText,
+        tokens: analyzedTokens,
+        allConcepts: allUniqueConcepts,
+        conceptFrequency: Object.fromEntries(conceptFrequency),
+        stemFrequency: Object.fromEntries(stemFrequency),
+        stats: {
+            tokenCount: analyzedTokens.length,
+            conceptCount: allUniqueConcepts.length > 0 ? allUniqueConcepts.map(c => conceptFrequency.get(c)).reduce((a, b) => a + b, 0) : 0,
+            uniqueConceptCount: allUniqueConcepts.length,
+        }
+    };
     
-    semanticMap.stats.uniqueStemCount = semanticMap.list.uniqueStems.length;
-    semanticMap.stats.conceptCount = semanticMap.list.allConcepts.length;
-
     return semanticMap;
-}
-
-// Helper function to get unique elements from an array
-function uniq(arr) {
-    return [...new Set(arr)];
 }
