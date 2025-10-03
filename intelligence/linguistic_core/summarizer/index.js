@@ -1,59 +1,82 @@
 // intelligence/linguistic_core/summarizer/index.js
-// Version 5.0: The Complete Psychometric Orchestrator
-// This final version orchestrates all specialized analyzers (mood, tension, needs)
-// to produce a comprehensive, multi-layered summary of the user's psychological state.
+// Version 6.0: The Complete Psychological Profile Generator
+// This module acts as the final orchestrator for the Summarizer layer.
+// It calls all specialized analyzers and synthesizes their outputs into a single,
+// comprehensive PsychologicalProfile object, ready for the Brain.
 
-import { tokenize } from '../tokenizer/index.js';
+// We don't import tokenize here anymore, as it's now a pre-step.
 import { analyzeMood } from './mood_analyzer.js';
 import { detectTension } from './tension_detector.js';
-import { analyzeNeeds } from './needs_analyzer.js'; // <-- 1. استيراد الوحدة الجديدة
+import { analyzeNeeds } from './needs_analyzer.js';
 
 /**
- * الوظيفة الرئيسية لوحدة Summarizer.
- * يقوم بتنسيق عمل كل المحللات لإنتاج "ملف موقف نفسي" متكامل.
- * @param {string} userMessage
- * - * @param {object} fingerprint - بصمة الرسالة الكاملة.
- * @param {object} userState - كائن حالة المستخدم الكامل (يحتوي على lastMood, moodStreak, إلخ).
- * @returns {object} - "ملف الموقف" النهائي.
+ * @typedef {Object} PsychologicalProfile
+ * @property {string[]} allConcepts
+ * @property {string|null} dominantConcept
+ * @property {object} mood
+ * @property {object|null} narrativeTension
+ * @property {object} implicitNeed
+ * @property {import('../tokenizer/index.js').SemanticMap} _rawSemanticMap
  */
-export function summarize(userMessage, fingerprint = {}, userState = {}) {
-    // 1. [الأساس] نحصل على الخريطة الدلالية الكاملة. هي مصدر الحقيقة لكل التحليلات التالية.
-    const semanticMap = tokenize(userMessage);
 
-    // 2. [التنسيق] نستدعي الخبراء المتخصصين ونمرر لهم كل ما يحتاجونه.
+/**
+ * The main function of the Summarizer. Orchestrates all analyzers
+ * to produce a complete Psychological Profile.
+ * @param {import('../tokenizer/index.js').SemanticMap} semanticMap - The pre-generated semantic map.
+ * @param {object} fingerprint - The legacy fingerprint object.
+ * @param {object} userState - The complete user state object.
+ * @returns {{profile: PsychologicalProfile, updatedUserState: object}} - The final profile and the updated user state.
+ */
+export function createPsychologicalProfile(semanticMap, fingerprint, userState) {
+    // This function now assumes semanticMap is already created and passed in.
+    // This adheres to the single responsibility principle.
+
+    // 1. Call the specialized experts, passing them the necessary data.
     
-    // خبير المزاج يحتاج الخريطة، البصمة، وحالة المستخدم.
+    // The Mood expert needs the map, fingerprint, and the user's state.
     const moodAnalysis = analyzeMood(semanticMap, fingerprint, userState);
 
-    // خبير التوتر يحتاج قائمة المفاهيم.
-    const narrativeTension = detectTension(semanticMap.list.allConcepts);
+    // The Tension expert needs the list of concepts.
+    const narrativeTension = detectTension(semanticMap.allConcepts);
     
-    // [جديد] خبير الاحتياجات يحتاج البصمة والخريطة.
-    const implicitNeed = analyzeNeeds(fingerprint, semanticMap); // <-- 2. استخدام الوحدة الجديدة
+    // The Needs expert needs the map, fingerprint, and the detected tension.
+    const needsAnalysis = analyzeNeeds(semanticMap, fingerprint, narrativeTension);
 
-    // 3. [التجميع] نقوم ببناء ملف الموقف النهائي من نتائج الخبراء.
-    const allConcepts = semanticMap.list.allConcepts;
+    // 2. Synthesize the final Psychological Profile from the experts' reports.
+    const allConcepts = semanticMap.allConcepts;
 
-    return {
-        // معلومات المفاهيم مباشرة من tokenizer
+    /** @type {PsychologicalProfile} */
+    const profile = {
         allConcepts: allConcepts,
         dominantConcept: allConcepts[0] || null,
-        secondaryConcepts: allConcepts.slice(1),
         
-        // معلومات المزاج مباشرة من mood_analyzer
-        mood: moodAnalysis.mood,
-        moodConfidence: moodAnalysis.confidence,
-        moodIntensity: moodAnalysis.intensity,
-        moodDistribution: moodAnalysis.distribution,
-        isComposite: moodAnalysis.isComposite,
+        // Mood analysis results
+        mood: {
+            primary: moodAnalysis.mood,
+            confidence: moodAnalysis.confidence,
+            intensity: moodAnalysis.intensity,
+            distribution: moodAnalysis.distribution,
+            isComposite: moodAnalysis.isComposite,
+            _details: moodAnalysis.details // For debugging
+        },
 
-        // معلومات الصراع مباشرة من tension_detector
-        narrativeTension: narrativeTension,
+        // Tension analysis results
+        narrativeTension: narrativeTension, // This is already a well-structured object or null
 
-        // الحاجة الضمنية مباشرة من needs_analyzer
-        implicitNeed: implicitNeed, // <-- 3. إضافة نتيجة تحليل الاحتياجات
+        // Needs analysis results
+        implicitNeed: {
+            dominant: needsAnalysis.dominant,
+            scores: needsAnalysis.scores,
+            _details: needsAnalysis.details // For debugging
+        },
         
-        // تمرير الخريطة الكاملة لمن يحتاجها لاحقًا (مثل الدماغ)
+        // Pass the full map for deep access by the Brain if needed
         _rawSemanticMap: semanticMap 
+    };
+
+    // 3. Return both the created profile and the updated user state from the mood analyzer
+    return {
+        profile: profile,
+        updatedUserState: moodAnalysis.updatedState,
     };
 }
