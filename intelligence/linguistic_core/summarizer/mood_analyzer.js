@@ -1,155 +1,144 @@
 // intelligence/linguistic_core/summarizer/mood_analyzer.js
-// Version 8.1: Safe, Multi-User State Management
-// This version preserves the full intelligence of v8.0 while fixing the critical
-// shared state issue by properly isolating moodHistory within the user's state object.
+// Version 9.0: Integrated Temporal Mood Model
+// This version merges the powerful temporal and dynamic blending logic from the original
+// engine with the rich, structured data from the new SemanticMap, creating a highly
+// accurate and context-aware mood analysis powerhouse.
 
-import { Dictionaries } from '../dictionaries/index.js';
-import { safeStr } from '../utils.js';
+import Dictionaries from '../dictionaries/index.js';
 
-const EMOTION_TO_MOOD_MAP = {
-    anxiety: 'calming', fear: 'calming',
-    sadness: 'supportive', grief: 'supportive',
-    joy: 'celebratory', pride: 'empowering',
-};
-
-const BASE_SMOOTHING_FACTOR = 0.25;
-const TEMPORAL_WINDOW = 5; // عدد الرسائل في الذاكرة الزمنية
+const TEMPORAL_WINDOW = 5; // Number of turns to keep in mood history.
 
 /**
- * يحلل السياق الكامل لإنتاج خريطة مزاجية متقدمة.
- * @param {object} semanticMap
+ * Analyzes the complete context to produce an advanced, time-aware mood map.
+ * @param {import('../tokenizer/index.js').SemanticMap} semanticMap
  * @param {object} fingerprint
- * @param {object} userState - [تعديل] كائن حالة المستخدم الذي يحتوي على الذاكرة
- * @returns {object} - الكائن المطور بالكامل { mood, confidence, ... }
+ * @param {object} userState - The complete user state object containing history.
+ * @returns {object} The fully developed mood profile { mood, confidence, ... }.
  */
 export function analyzeMood(semanticMap, fingerprint = {}, userState = {}) {
-    // [تصحيح] التأكد من وجود قيم افتراضية آمنة لحالة المستخدم
-    const lastMood = userState.lastMood || 'supportive';
-    const moodStreak = userState.moodStreak || 0;
+    // --- 1. Initialization & State Management ---
+    const moodScores = Object.fromEntries(Dictionaries.AVAILABLE_MOODS.map(mood => [mood, 0.0]));
+    const details = []; // For debugging and transparency
+
+    // Safely initialize user state for mood analysis
     const moodHistory = userState.moodHistory || [];
+    const lastMoodProfile = moodHistory.length > 0 ? moodHistory[moodHistory.length - 1] : null;
 
-    const moodScores = Object.fromEntries(
-        Dictionaries.AVAILABLE_MOODS.map((mood) => [mood, 0.0])
-    );
-    const primaryEmotion = fingerprint?.primaryEmotion?.type || null;
-    const originalMessage = safeStr(fingerprint?.originalMessage);
-
-    // --- 1. التنعيم التكيفي مع التضاؤل ---
-    let temporalFactor = BASE_SMOOTHING_FACTOR / (1 + moodStreak * 0.5);
-    if (primaryEmotion && lastMood !== EMOTION_TO_MOOD_MAP[primaryEmotion])
-        temporalFactor /= 2;
-    if (lastMood && moodScores[lastMood] !== undefined)
-        moodScores[lastMood] += temporalFactor;
-
-    // --- 2. تعزيز المشاعر الأولية ---
-    if (primaryEmotion && EMOTION_TO_MOOD_MAP[primaryEmotion]) {
-        moodScores[EMOTION_TO_MOOD_MAP[primaryEmotion]] += 1.5;
+    // --- 2. Temporal Smoothing (Based on previous turn) ---
+    if (lastMoodProfile) {
+        // Give a small boost to all moods from the previous turn, encouraging stability.
+        for (const mood in lastMoodProfile) {
+            if (moodScores.hasOwnProperty(mood)) {
+                moodScores[mood] += lastMoodProfile[mood] * 0.25; // Smoothing factor
+            }
+        }
+        details.push(`Applied temporal smoothing from last turn.`);
     }
 
-    // --- 3. نقاط المفاهيم ---
-    const conceptFrequencies = semanticMap?.frequencies?.concepts || {};
-    for (const [concept, freq] of Object.entries(conceptFrequencies)) {
-        const conceptData = Dictionaries.CONCEPT_DEFINITIONS[concept];
-        if (conceptData?.mood_weights) {
-            for (const [mood, weight] of Object.entries(
-                conceptData.mood_weights
-            )) {
-                if (moodScores[mood] !== undefined) {
-                    moodScores[mood] += weight * Math.log1p(freq);
+    // --- 3. Score Accumulation from SemanticMap ---
+    // A. From Concepts
+    for (const [concept, freq] of Object.entries(semanticMap.conceptFrequency)) {
+        const definition = Dictionaries.CONCEPT_DEFINITIONS[concept];
+        if (definition?.mood_weights) {
+            for (const [mood, weight] of Object.entries(definition.mood_weights)) {
+                if (moodScores.hasOwnProperty(mood)) {
+                    // Use Math.log1p(freq) to reduce the impact of very high frequency words
+                    const score = weight * Math.log1p(freq);
+                    moodScores[mood] += score;
+                    details.push(`+${score.toFixed(2)} from concept '${concept}' -> ${mood}`);
                 }
             }
         }
     }
 
-    // --- 4. المعدلات السياقية + المراسي الدلالية ---
+    // B. From Anchors and Intensifiers
     let intensityModifier = 1.0;
-    const normalizedTokens =
-        semanticMap?.list?.allTokens?.map((t) => t.normalized) || [];
+    for (let i = 0; i < semanticMap.tokens.length; i++) {
+        const token = semanticMap.tokens[i];
+        const normalizedToken = token.normalized;
 
-    for (const token of normalizedTokens) {
-        if (Dictionaries.INTENSIFIERS[token]) {
-            intensityModifier +=
-                (Dictionaries.INTENSIFIERS[token] - 1.0) * 0.5;
+        // Handle Intensifiers by boosting the overall intensity
+        const intensifier = Dictionaries.INTENSIFIERS[normalizedToken];
+        if (intensifier) {
+            intensityModifier += (intensifier.multiplier - 1.0); // Add the bonus factor
+            details.push(`Intensity modifier boosted by '${normalizedToken}'`);
         }
-        if (Dictionaries.ANCHOR_MOODS?.[token]) {
-            const anchorMood = Dictionaries.ANCHOR_MOODS[token];
-            if (moodScores[anchorMood] !== undefined) {
-                moodScores[anchorMood] += 2.0; // Anchor words have a strong effect
+        
+        // Handle Anchors by adding a strong, direct score
+        const anchor = Dictionaries.ANCHOR_MOODS[normalizedToken];
+        if (anchor?.mood_weights) {
+            for (const [mood, weight] of Object.entries(anchor.mood_weights)) {
+                if (moodScores.hasOwnProperty(mood)) {
+                    moodScores[mood] += weight; // Anchors have a strong, direct effect
+                    details.push(`+${weight.toFixed(2)} from anchor '${normalizedToken}' -> ${mood}`);
+                }
             }
         }
     }
-    if (originalMessage.length > 150) intensityModifier += 0.1;
-    if (originalMessage.includes('!!') || originalMessage.includes('؟؟'))
-        intensityModifier += 0.2;
+    
+    // Apply the final intensity modifier to all scores
+    if(intensityModifier > 1.0){
+        for (const mood in moodScores) {
+            if(moodScores[mood] > 0) moodScores[mood] *= intensityModifier;
+        }
+        details.push(`Applied final intensity modifier of x${intensityModifier.toFixed(2)}`);
+    }
 
-    for (const mood in moodScores) moodScores[mood] *= intensityModifier;
 
-    // --- 5. Softmax ---
-    const expScores = Object.values(moodScores).map((score) => Math.exp(score));
+    // --- 4. Normalization using Softmax ---
+    const expScores = Object.values(moodScores).map(score => Math.exp(score));
     const sumExp = expScores.reduce((a, b) => a + b, 0);
     const probabilities = {};
     Object.keys(moodScores).forEach((mood, index) => {
-        probabilities[mood] =
-            sumExp > 0
-                ? expScores[index] / sumExp
-                : 1 / Object.keys(moodScores).length;
+        probabilities[mood] = sumExp > 0 ? expScores[index] / sumExp : 1 / Object.keys(moodScores).length;
     });
 
-    // --- 6. المزج الديناميكي ---
-    const sortedMoods = Object.entries(probabilities).sort(
-        ([, a], [, b]) => b - a
-    );
-    let topMoods = sortedMoods.slice(0, 3);
-    let finalMood = topMoods[0][0]; // Default winner
+    // --- 5. Dynamic Blending & Winner Selection ---
+    const sortedMoods = Object.entries(probabilities).sort(([, a], [, b]) => b - a);
+    const winnerMood = sortedMoods[0][0];
+    const winnerProb = sortedMoods[0][1];
+    let finalMood = winnerMood;
     let isComposite = false;
 
-    // Dynamic Blending Logic
-    if (topMoods.length > 1 && (topMoods[0][1] / topMoods[1][1]) < 1.8) {
-        finalMood = topMoods.filter(m => m[1] > 0.15) // Filter out very weak moods
-                           .map(([m, p]) => `${m}:${(p * 100).toFixed(0)}%`)
-                           .join('|');
-        isComposite = finalMood.includes('|');
+    if (sortedMoods.length > 1) {
+        const runnerUpProb = sortedMoods[1][1];
+        // If the winner is not dominant enough, create a composite mood.
+        if (winnerProb / runnerUpProb < 1.8) {
+            finalMood = sortedMoods
+                .filter(([, p]) => p > 0.15) // Filter out weak signals
+                .map(([m, p]) => `${m}:${(p * 100).toFixed(0)}%`)
+                .join('|');
+            isComposite = finalMood.includes('|');
+        }
     }
-    
-    const winnerProb = topMoods[0][1];
-    const runnerUpProb = topMoods.length > 1 ? topMoods[1][1] : 0.0;
-    const intensity = winnerProb - runnerUpProb;
 
-    // --- 7. [تصحيح] تحديث ذاكرة المستخدم التي تم تمريرها ---
+    // --- 6. Confidence Calculation ---
+    let confidence = winnerProb;
+    if (semanticMap.tokens.length < 3) confidence *= 0.7; // Lower confidence for very short messages
+    if (semanticMap.allConcepts.length === 0) confidence *= 0.8; // Lower confidence if no concepts were found
+
+    // --- 7. Update User State History ---
     moodHistory.push(probabilities);
     if (moodHistory.length > TEMPORAL_WINDOW) moodHistory.shift();
 
-    const averagedDistribution = {};
-    for (const mood of Object.keys(probabilities)) {
-        averagedDistribution[mood] =
-            moodHistory.reduce((sum, hist) => sum + (hist[mood] || 0), 0) /
-            moodHistory.length;
-    }
+    // The returned object now contains the updated history, to be saved by the caller
+    const updatedState = { ...userState, moodHistory };
 
-    // --- 8. طبقة الميتا والتصحيح الذاتي ---
-    let confidence = winnerProb;
-    if (originalMessage.length < 20) confidence *= 0.7;
-    let finalMoodToReturn = finalMood;
-
-    if (confidence < 0.35 && Object.keys(averagedDistribution).length > 0) {
-        const historicalTop = Object.entries(averagedDistribution).sort(
-            ([, a], [, b]) => b - a
-        )[0][0];
-        finalMoodToReturn = `historical_fallback:${historicalTop}`;
-    }
-
-    if (Object.values(moodScores).every((s) => s < 0.1)) {
+    // Final check for a near-zero result
+    if (Object.values(moodScores).every(s => s < 0.1)) {
         return {
-            mood: 'supportive', confidence: 0.5, intensity: 0.5,
-            distribution: averagedDistribution, isComposite: false,
+            mood: 'supportive', confidence: 0.5,
+            distribution: probabilities, isComposite: false, details, updatedState
         };
     }
-
+    
     return {
-        mood: finalMoodToReturn,
-        confidence,
-        intensity,
-        distribution: averagedDistribution,
+        mood: finalMood,
+        confidence: parseFloat(confidence.toFixed(2)),
+        intensity: parseFloat(winnerProb.toFixed(2)),
+        distribution: probabilities,
         isComposite,
+        details,
+        updatedState // Pass the updated state back
     };
 }
