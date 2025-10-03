@@ -1,7 +1,7 @@
 // intelligence/linguistic_core/tokenizer/index.js
-// Version 6.0: The Semantic Understanding Engine
-// This version refines the output into a standardized SemanticMap, improves
-// efficiency, and lays the groundwork for future n-gram analysis.
+// Version 6.1: The Semantic Understanding Engine (Backward Compatible Naming)
+// This version maintains all the power of v6.0 but reverts the main function name
+// to `tokenize` for seamless integration with the existing codebase to save time.
 
 import Dictionaries from '../dictionaries/index.js'; // Import the central hub
 import { safeStr } from '../utils.js';
@@ -67,7 +67,8 @@ function stem(token) {
  * @param {string} text The raw user input.
  * @returns {SemanticMap} The comprehensive SemanticMap object.
  */
-export function createSemanticMap(text) {
+// --- [التعديل الرئيسي] --- تم إرجاع الاسم القديم هنا
+export function tokenize(text) {
     const rawText = safeStr(text);
     const initialTokens = rawText.split(/[\s،.]+/).filter(Boolean);
 
@@ -137,5 +138,7 @@ export function createSemanticMap(text) {
         }
     };
     
+    // Although the function is named tokenize, it returns a full SemanticMap.
+    // This is for backward compatibility.
     return semanticMap;
 }
