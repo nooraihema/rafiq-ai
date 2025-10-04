@@ -1,12 +1,11 @@
-// api/chat.js v16.2 - Wisdom Library Integration
-// This version is modified to fetch the complete list of loaded intents (Wisdom Libraries)
-// and pass them down the chain to the HybridComposer, enabling the new
-// strategic and tactical thinking layers.
+// api/chat.js v16.2 - Correct Wisdom Library Integration
+// This version fixes the error by calling the correct `getAllIntents` function
+// AFTER the index has been built, ensuring the full list of libraries is passed correctly.
 
 import { DEBUG } from '../shared/config.js';
 import { detectCritical, criticalSafetyReply } from '../shared/utils.js';
 import { loadUsers, saveUsers, makeUserId } from '../shared/storage.js';
-// [MODIFIED] We now need a way to get all loaded intents
+// [CORRECTED] We need the new getAllIntents function
 import { buildIndexSync, createCognitiveBriefing, getAllIntents } from '../perception/intent_engine.js';
 import { executeProtocolStep } from '../core/dynamic_logic_engine.js';
 import { processMeta } from '../coordination/meta_router.js';
@@ -25,7 +24,13 @@ import HybridComposer from '../intelligence/HybridComposer.js';
 // =================================================================
 // INITIALIZATION & CONFIG
 // =================================================================
-const allWisdomLibraries = buildIndexSync(); // Load all intents at startup
+
+// --- [CORRECTION] ---
+// Step 1: Build the index. This populates the internal variables in intent_engine.
+buildIndexSync(); 
+// Step 2: Now that the index is built, get the list of all loaded intents.
+const allWisdomLibraries = getAllIntents(); 
+
 const CONTEXT_TRACKERS = new Map();
 const MAX_NEW_PROTOCOLS_TO_INVITE = 3;
 
@@ -80,9 +85,7 @@ export default async function handler(req, res) {
         memoryGraph.persist();
     }, 0);
     
-    // --- STRATEGIC EXECUTION (OLD LOGIC - to be replaced) ---
-    // This section will be replaced by our new logic in the next phases.
-    // For now, it generates `candidates` which we will ignore in HybridComposer's primary path.
+    // --- STRATEGIC EXECUTION (OLD LOGIC) ---
     const sessionContext = tracker.getSessionContext();
     const briefing = createCognitiveBriefing(rawMessage, fingerprint, sessionContext, profile);
     let candidates = [];
@@ -102,7 +105,6 @@ export default async function handler(req, res) {
     const uniqueCandidates = [...new Map(candidates.map(item => [item["reply"], item])).values()];
     
     // --- FINAL COMPOSITION ---
-    // We now pass the full, enriched context AND all wisdom libraries to the next layer.
     let responsePayload = {};
     responsePayload = HybridComposer.synthesizeHybridResponse(
         uniqueCandidates, 
@@ -114,7 +116,7 @@ export default async function handler(req, res) {
           fingerprint: fingerprint,
           knowledgeAtom: knowledgeAtom,
           cognitiveProfile: cognitiveProfile,
-          // --- [NEW] --- Passing all loaded intents (wisdom libraries)
+          // The correctly populated list is now passed
           allWisdomLibraries: allWisdomLibraries 
         }
     );
