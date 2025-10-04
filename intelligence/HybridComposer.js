@@ -1,6 +1,6 @@
-// intelligence/HybridComposer.js (v11.1 - Safe Metadata Handling)
-// This version fixes a critical TypeError by ensuring the metadata object
-// is safely initialized before attempting to modify its properties, preserving all other logic.
+// intelligence/HybridComposer.js (v11.2 - Full Context Forwarding)
+// This version is updated to correctly receive and forward the `allWisdomLibraries`
+// array from the context object to the linguistic core, completing the data pipeline.
 
 import { generateAdvancedReply } from './linguistic_core/index.js';
 
@@ -99,8 +99,19 @@ function smartWeave(activeCandidate, newCandidate, fingerprint, scoredCandidates
 // =================================================================
 
 export function synthesizeHybridResponse(candidates = [], briefing = {}, context = {}, options = {}) {
-    console.log(`\n\n- - - [HybridComposer ENTRY v11.1] ---`);
-    const { tracker = null, fingerprint = {}, user_message = "", userId = 'anon' } = context;
+    console.log(`\n\n- - - [HybridComposer ENTRY v11.2] ---`);
+    
+    // --- [CORRECTION] ---
+    // Extract ALL properties from the rich context object passed by chat.js
+    const { 
+        tracker = null, 
+        fingerprint = {}, 
+        user_message = "", 
+        userId = 'anon',
+        knowledgeAtom = {},
+        cognitiveProfile = {},
+        allWisdomLibraries = [] // The crucial new piece of data
+    } = context;
 
     // --- SAFETY & PRE-CHECKS ---
     if (!Array.isArray(candidates) || candidates.length === 0) {
@@ -119,11 +130,14 @@ export function synthesizeHybridResponse(candidates = [], briefing = {}, context
         
         const userState = tracker?.getUserState ? tracker.getUserState() : {};
 
+        // --- [CORRECTION] ---
+        // Pass the `allWisdomLibraries` array to the linguistic core
         const advancedReply = generateAdvancedReply(
             user_message,
             fingerprint,
             userId,
-            userState
+            userState,
+            allWisdomLibraries // Pass the full list of intents
         );
 
         if (advancedReply && advancedReply.reply) {
@@ -134,11 +148,7 @@ export function synthesizeHybridResponse(candidates = [], briefing = {}, context
             }
 
             let finalDecision = { ...advancedReply };
-
-            // --- [التصحيح الوحيد] ---
-            // نضمن وجود كائن metadata قبل محاولة تعديله
             finalDecision.metadata = finalDecision.metadata || {};
-
             finalDecision.reply = polishReply(finalDecision.reply);
             finalDecision.reply = safeTruncateText(finalDecision.reply, 2500);
             finalDecision.metadata.produced_at = nowISO();
