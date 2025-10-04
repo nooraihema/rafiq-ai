@@ -1,7 +1,7 @@
 // perception/intent_engine.js v16.1 - Adapted for the New Cognitive Architecture
-// This version preserves the entire v16.0 engine but adapts its final output
-// to serve the new 'Wisdom Orchestrator' by providing a full list of candidate intents.
-// It also adds a new export to provide all loaded libraries.
+// This version preserves the entire v16.0 engine, removes duplicated function declarations,
+// adapts its final output to serve the new 'Wisdom Orchestrator',
+// and adds a new export to provide all loaded libraries.
 
 import fs from "fs";
 import path from "path";
@@ -22,8 +22,12 @@ const INTENTS_DIRS = [
 const ADAPTIVE_WEIGHTS_FILE = path.join(DATA_DIR, "adaptive_weights.json");
 const SYNONYMS_FILE = path.join(process.cwd(), "knowledge", "synonyms.json");
 
-const DEFAULT_WEIGHTS = { /* ... a lot of constants ... */ };
-// (All constants remain the same)
+const DEFAULT_WEIGHTS = {
+  wKeywords: 0.55,
+  wTfIdf: 0.12,
+  wPattern: 0.20,
+  wContext: 0.25,
+};
 const DEFAULT_TOP_N = 3;
 const PRIORITY_BOOST_FACTOR = 0.08;
 const FINGERPRINT_BOOST_FACTOR = 0.35;
@@ -35,87 +39,6 @@ let synonymData = { map: {}, weights: {} };
 let adaptiveWeights = {};
 
 // ------------------- Resilient Utilities -------------------
-function safeReadJson(filePath) {
-    // ... (Implementation remains the same)
-}
-function safeWriteJson(filePath, obj) {
-    // ... (Implementation remains the same)
-}
-
-// ... (All internal functions like loadAdaptiveWeights, loadSynonyms, buildIndexSync, scoreIntentDetailed, etc., remain COMPLETELY UNCHANGED)
-// The following is a high-level summary of the file structure. The actual code is preserved below.
-
-function loadAdaptiveWeights() { /* ... unchanged ... */ }
-function saveAdaptiveWeights() { /* ... unchanged ... */ }
-function loadSynonyms() { /* ... unchanged ... */ }
-function expandTokensWithSynonyms(tokens) { /* ... unchanged ... */ }
-function getSynonymWeight(token) { /* ... unchanged ... */ }
-function findIntentsDir() { /* ... unchanged ... */ }
-function loadIntentsRaw() { /* ... unchanged ... */ }
-function cosineScore(vecA, vecB, normA = 1, normB = 1) { /* ... unchanged ... */ }
-function autoLinkIntents() { /* ... unchanged ... */ }
-export function buildIndexSync() { /* ... unchanged ... */ }
-function adaptProtocolStructure(intentObject) { /* ... unchanged ... */ }
-function jaccardSimilarity(setA, setB) { /* ... unchanged ... */ }
-function detectStyleSignals(rawMessage) { /* ... unchanged ... */ }
-function buildReasoning(intent, breakdown, matchedTerms, contextSummary) { /* ... unchanged ... */ }
-function scoreIntentDetailed(rawMessage, msgTf, intent, options = {}) { /* ... unchanged ... */ }
-function getTopIntentsInternal(rawMessage, options = {}) { /* ... unchanged ... */ }
-export function registerIntentSuccess(userProfile, tag) { /* ... unchanged ... */ }
-export { getTopIntentsInternal as getTopIntents };
-
-
-// =================================================================
-// SECTION: THE ONLY MODIFIED/NEW PARTS
-// =================================================================
-
-/**
- * [NEW EXPORT] A simple getter to provide all loaded wisdom libraries.
- * This function solves the "getAllIntents" export error in chat.js.
- * @returns {object[]} An array of all full_intent objects loaded in memory.
- */
-export function getAllIntents() {
-    return intentIndex.map(item => item.full_intent);
-}
-
-
-/**
- * [MODIFIED] The new brain. It now returns ALL potentional intents for the
- * orchestrator to handle, instead of filtering them prematurely.
- */
-export function createCognitiveBriefing(rawMessage, fingerprint, context, userProfile) {
-    // 1. Get a ranked list of all possible protocols (this logic is preserved).
-    const allPotentialIntents = getTopIntentsInternal(rawMessage, { fingerprint, context, userProfile });
-
-    // 2. Identify the currently active protocol from memory (this logic is preserved).
-    let activeProtocol = null;
-    if (context && context.active_intent && context.state) {
-        const activeProtocolIndex = tagToIdx[context.active_intent];
-        if (activeProtocolIndex !== undefined) {
-            const adaptedActiveIntent = adaptProtocolStructure(intentIndex[activeProtocolIndex].full_intent);
-            activeProtocol = {
-                intent: { ...intentIndex[activeProtocolIndex], full_intent: adaptedActiveIntent },
-                context: context
-            };
-        }
-    }
-
-    // 3. Assemble the final intelligence briefing for the conductor.
-    if (DEBUG) console.log(`STRATEGIC PLANNER: Found ${allPotentialIntents.length} potential protocols. Active protocol is "${context?.active_intent || 'None'}".`);
-    
-    // [MODIFICATION] Instead of filtering here, we pass ALL candidates up.
-    // The new Wisdom Orchestrator will be responsible for the final selection logic.
-    return {
-        activeProtocol: activeProtocol,
-        potentialNewProtocols: allPotentialIntents // Return the full, scored, and ranked list
-    };
-}
-
-
-// =================================================================
-// (BELOW IS THE FULL, UNCHANGED CODE FROM THE ORIGINAL FILE)
-// =================================================================
-
 function safeReadJson(filePath) {
   try {
     if (!fs.existsSync(filePath)) return null;
@@ -137,6 +60,7 @@ function safeWriteJson(filePath, obj) {
   }
 }
 
+// ------------------- Adaptive weights persistence -------------------
 function loadAdaptiveWeights() {
   const aw = safeReadJson(ADAPTIVE_WEIGHTS_FILE);
   adaptiveWeights = aw && typeof aw === 'object' ? aw : {};
@@ -146,6 +70,7 @@ function saveAdaptiveWeights() {
   safeWriteJson(ADAPTIVE_WEIGHTS_FILE, adaptiveWeights);
 }
 
+// ------------------- Synonym Engine -------------------
 function loadSynonyms() {
   synonymData = { map: {}, weights: {} };
   const parsed = safeReadJson(SYNONYMS_FILE);
@@ -190,6 +115,7 @@ function getSynonymWeight(token) {
   return synonymData.weights[token] || 1.0;
 }
 
+// ------------------- Intents Loading & Indexing -------------------
 function findIntentsDir() {
   for (const d of INTENTS_DIRS) {
     if (fs.existsSync(d) && fs.statSync(d).isDirectory()) return d;
@@ -347,7 +273,7 @@ function adaptProtocolStructure(intentObject) {
 }
 
 function jaccardSimilarity(setA, setB) {
-  if (!setA || !setB || setA.size === 0 || setA.size === 0) return 0;
+  if (!setA || !setB || setA.size === 0 || setB.size === 0) return 0;
   const inter = new Set([...setA].filter(x => setB.has(x)));
   const union = new Set([...setA, ...setB]);
   return inter.size / union.size;
@@ -482,4 +408,54 @@ function getTopIntentsInternal(rawMessage, options = {}) {
   });
   results.sort((a, b) => b.score - a.score);
   return results.filter(r => r.score >= minScore).slice(0, topN);
+}
+
+// =================================================================
+// SECTION: NEW & MODIFIED EXPORTS FOR THE NEW ARCHITECTURE
+// =================================================================
+
+/**
+ * [NEW EXPORT] A simple getter to provide all loaded wisdom libraries.
+ */
+export function getAllIntents() {
+    return intentIndex.map(item => item.full_intent);
+}
+
+/**
+ * [MODIFIED] This is now the primary entry point for strategic analysis.
+ * It returns ALL potential intents for the orchestrator to handle.
+ */
+export function createCognitiveBriefing(rawMessage, fingerprint, context, userProfile) {
+    const allPotentialIntents = getTopIntentsInternal(rawMessage, { fingerprint, context, userProfile });
+    let activeProtocol = null;
+    if (context && context.active_intent && context.state) {
+        const activeProtocolIndex = tagToIdx[context.active_intent];
+        if (activeProtocolIndex !== undefined) {
+            const adaptedActiveIntent = adaptProtocolStructure(intentIndex[activeProtocolIndex].full_intent);
+            activeProtocol = {
+                intent: { ...intentIndex[activeProtocolIndex], full_intent: adaptedActiveIntent },
+                context: context
+            };
+        }
+    }
+    if (DEBUG) console.log(`STRATEGIC PLANNER: Found ${allPotentialIntents.length} potential protocols. Active protocol is "${context?.active_intent || 'None'}".`);
+    
+    return {
+        activeProtocol: activeProtocol,
+        potentialNewProtocols: allPotentialIntents
+    };
+}
+
+// --- Legacy exports for backward compatibility or other system parts ---
+export { getTopIntentsInternal as getTopIntents };
+export function registerIntentSuccess(userProfile, tag) {
+  if (!userProfile) return;
+  userProfile.intentSuccessCount = userProfile.intentSuccessCount || {};
+  userProfile.intentLastSuccess = userProfile.intentLastSuccess || {};
+  userProfile.intentSuccessCount[tag] = (userProfile.intentSuccessCount[tag] || 0) + 1;
+  userProfile.intentLastSuccess[tag] = new Date().toISOString();
+  adaptiveWeights[tag] = adaptiveWeights[tag] || {};
+  adaptiveWeights[tag].wKeywords = Math.min(0.9, (adaptiveWeights[tag].wKeywords || DEFAULT_WEIGHTS.wKeywords) + 0.02);
+  adaptiveWeights[tag].wTfIdf = Math.max(0.05, (adaptiveWeights[tag].wTfIdf || DEFAULT_WEIGHTS.wTfIdf) - 0.005);
+  saveAdaptiveWeights();
 }
