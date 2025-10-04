@@ -1,9 +1,7 @@
 
 // intelligence/linguistic_core/summarizer/index.js
-// Version 6.1: The Complete Psychological Profile Generator
-// This module acts as the final orchestrator for the Summarizer layer.
-// It calls all specialized analyzers and synthesizes their outputs into a single,
-// comprehensive PsychologicalProfile object, ready for the Brain.
+// Version 6.2: The Complete Psychological Profile Generator
+// Supports both summarize + createPsychologicalProfile for compatibility.
 
 import { analyzeMood } from './mood_analyzer.js';
 import { detectTension } from './tension_detector.js';
@@ -20,14 +18,13 @@ import { analyzeNeeds } from './needs_analyzer.js';
  */
 
 /**
- * The main function of the Summarizer. Orchestrates all analyzers
- * to produce a complete Psychological Profile.
- * @param {import('../tokenizer/index.js').SemanticMap} semanticMap - The pre-generated semantic map.
- * @param {object} fingerprint - The legacy fingerprint object.
- * @param {object} userState - The complete user state object.
- * @returns {{profile: PsychologicalProfile, updatedUserState: object}} - The final profile and the updated user state.
+ * Orchestrates all analyzers to produce a complete Psychological Profile.
+ * @param {import('../tokenizer/index.js').SemanticMap} semanticMap
+ * @param {object} fingerprint
+ * @param {object} userState
+ * @returns {{profile: PsychologicalProfile, updatedUserState: object}}
  */
-export function summarize(semanticMap, fingerprint, userState) {
+function generateProfile(semanticMap, fingerprint, userState) {
     const moodAnalysis = analyzeMood(semanticMap, fingerprint, userState);
     const narrativeTension = detectTension(semanticMap.allConcepts);
     const needsAnalysis = analyzeNeeds(semanticMap, fingerprint, narrativeTension);
@@ -36,7 +33,7 @@ export function summarize(semanticMap, fingerprint, userState) {
 
     /** @type {PsychologicalProfile} */
     const profile = {
-        allConcepts: allConcepts,
+        allConcepts,
         dominantConcept: allConcepts[0] || null,
 
         mood: {
@@ -48,7 +45,7 @@ export function summarize(semanticMap, fingerprint, userState) {
             _details: moodAnalysis.details
         },
 
-        narrativeTension: narrativeTension,
+        narrativeTension,
 
         implicitNeed: {
             dominant: needsAnalysis.dominant,
@@ -60,8 +57,13 @@ export function summarize(semanticMap, fingerprint, userState) {
     };
 
     return {
-        profile: profile,
+        profile,
         updatedUserState: moodAnalysis.updatedState,
     };
 }
+
+// ✅ Export with both names for backward compatibility
+export const summarize = generateProfile;
+export const createPsychologicalProfile = generateProfile;
+
 
