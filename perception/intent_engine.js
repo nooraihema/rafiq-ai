@@ -1,5 +1,5 @@
 // perception/intent_engine.js v16.1 - Adapted for the New Cognitive Architecture
-// This version preserves the entire v16.0 engine, removes duplicated function declarations,
+// This version preserves the entire v16.0 engine, ensures no duplicated functions,
 // adapts its final output to serve the new 'Wisdom Orchestrator',
 // and adds a new export to provide all loaded libraries.
 
@@ -38,7 +38,7 @@ export let tagToIdx = {};
 let synonymData = { map: {}, weights: {} };
 let adaptiveWeights = {};
 
-// ------------------- Resilient Utilities -------------------
+// ------------------- Resilient Utilities (Defined Once) -------------------
 function safeReadJson(filePath) {
   try {
     if (!fs.existsSync(filePath)) return null;
@@ -56,11 +56,12 @@ function safeWriteJson(filePath, obj) {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(filePath, JSON.stringify(obj, null, 2), "utf8");
   } catch (e) {
-    console.error(`❌ SAFE_WRITE_ERROR: Could not write to ${path.basename(filePath)}. Adaptive weights will not be saved. Error: ${e.message}`);
+    console.error(`❌ SAFE_WRITE_ERROR: Could not write to ${path.basename(filePath)}. Error: ${e.message}`);
   }
 }
 
-// ------------------- Adaptive weights persistence -------------------
+// ------------------- System Components (Defined Once) -------------------
+
 function loadAdaptiveWeights() {
   const aw = safeReadJson(ADAPTIVE_WEIGHTS_FILE);
   adaptiveWeights = aw && typeof aw === 'object' ? aw : {};
@@ -70,7 +71,6 @@ function saveAdaptiveWeights() {
   safeWriteJson(ADAPTIVE_WEIGHTS_FILE, adaptiveWeights);
 }
 
-// ------------------- Synonym Engine -------------------
 function loadSynonyms() {
   synonymData = { map: {}, weights: {} };
   const parsed = safeReadJson(SYNONYMS_FILE);
@@ -115,7 +115,6 @@ function getSynonymWeight(token) {
   return synonymData.weights[token] || 1.0;
 }
 
-// ------------------- Intents Loading & Indexing -------------------
 function findIntentsDir() {
   for (const d of INTENTS_DIRS) {
     if (fs.existsSync(d) && fs.statSync(d).isDirectory()) return d;
