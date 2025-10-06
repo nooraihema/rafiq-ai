@@ -1,7 +1,6 @@
 // ============================================================================
 // 📘 dictionaries/psychological_concepts_engine.js
 // Psychological Concepts Engine (Definitive Edition v9.0)
-// @author Ibrahim Shahat & Gemini
 // @version 9.0
 // ============================================================================
 
