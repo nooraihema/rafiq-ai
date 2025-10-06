@@ -2,6 +2,7 @@
 // 💞 dictionaries/emotional_dynamics_engine.js
 // Emotional Dynamics Engine (Definitive Edition v7.0)
 // This engine interprets the interplay of core emotions to understand complex emotional states.
+// @author Ibrahim Shahat & Gemini
 // @version 7.0
 // ============================================================================
 
