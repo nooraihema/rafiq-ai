@@ -1,7 +1,7 @@
 // /core/linguistic_brain.js
-// LinguisticBrain v1.3 - Robust Engine Initialization with Debug Logging
-// This version adds explicit checks and detailed console logs to ensure all
-// dictionaries are loaded correctly before instantiating the analysis engines.
+// LinguisticBrain v1.4 - Dynamic Path Resolution
+// This version uses dynamic path resolution to reliably find dictionary files,
+// avoiding issues with relative paths in serverless environments like Vercel.
 
 import { normalizeArabic, tokenize } from './utils.js';
 import { SemanticEngine } from '../analysis_engines/semantic_engine.js';
@@ -9,21 +9,34 @@ import { EmotionEngine } from '../analysis_engines/emotion_engine.js';
 import { SynthesisEngine } from '../analysis_engines/synthesis_engine.js';
 import { CatharsisEngine } from '../analysis_engines/catharsis_engine.js';
 
+// --- [تعديل جوهري] ---
+// استيراد أدوات المسارات الديناميكية
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// --- [تعديل جوهري] ---
+// اكتشاف المسار الحالي وبناء المسار المطلق للقواميس والبروتوكولات
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const baseDictionariesPath = path.join(__dirname, '../dictionaries');
+const baseProtocolsPath = path.join(__dirname, '../protocols');
+
+
 const DEFAULT_OPTIONS = {
-  debug: true, // --- [تعديل] تفعيل وضع التصحيح افتراضيًا ---
+  debug: true,
   dictionaryPaths: {
-    // --- [تعديل] استخدام أسماء مفاتيح مطابقة لأسماء الملفات لزيادة الوضوح ---
-    affixes: '../dictionaries/affixes.js',
-    emotional_anchors: '../dictionaries/emotional_anchors.js',
-    intensity_analyzer: '../dictionaries/intensity_analyzer.js',
-    psychological_concepts_engine: '../dictionaries/psychological_concepts_engine.js',
-    psychological_patterns_hyperreal: '../dictionaries/psychological_patterns_hyperreal.js',
-    behavior_values_defenses: '../dictionaries/behavior_values_defenses.js',
-    generative_responses_engine: '../dictionaries/generative_responses_engine.js',
-    stop_words: '../dictionaries/stop_words.js',
-    emotional_dynamics_engine: '../dictionaries/emotional_dynamics_engine.js'
+    // المسارات الآن هي مجرد أسماء ملفات، سيتم بناء المسار الكامل ديناميكيًا
+    affixes: 'affixes.js',
+    emotional_anchors: 'emotional_anchors.js',
+    intensity_analyzer: 'intensity_analyzer.js',
+    psychological_concepts_engine: 'psychological_concepts_engine.js',
+    psychological_patterns_hyperreal: 'psychological_patterns_hyperreal.js',
+    behavior_values_defenses: 'behavior_values_defenses.js',
+    generative_responses_engine: 'generative_responses_engine.js',
+    stop_words: 'stop_words.js',
+    emotional_dynamics_engine: 'emotional_dynamics_engine.js'
   },
-  protocolsPath: '../protocols/' 
+  protocolsPath: baseProtocolsPath
 };
 
 export class LinguisticBrain {
@@ -40,21 +53,41 @@ export class LinguisticBrain {
         if (this._isInitialized) return this;
 
         console.log('[Brain.init] Step 1: Starting dictionary loading...');
-        const dictPaths = this.options.dictionaryPaths;
-        const promises = Object.entries(dictPaths).map(async ([key, path]) => {
+        const dictFileNames = this.options.dictionaryPaths;
+        const promises = Object.entries(dictFileNames).map(async ([key, fileName]) => {
+            // --- [تعديل جوهري] ---
+            // بناء المسار الكامل لكل ملف قاموس
+            const fullPath = path.join(baseDictionariesPath, fileName);
             try {
-                const mod = await import(path);
+                // استخدام `pathToFileURL` (عبر new URL) مطلوب لـ `import()` مع المسارات المطلقة
+                const mod = await import(new URL(`file://${fullPath}`).href);
                 this.dictionaries[key] = mod.default || mod;
                 if (this.options.debug) console.log(`  ✅ Successfully loaded dictionary: '${key}'`);
             } catch (e) {
-                console.error(`  ❌ CRITICAL: Failed to load dictionary '${key}' from ${path}`, e);
+                console.error(`  ❌ CRITICAL: Failed to load dictionary '${key}' from ${fullPath}`, e);
                 this.dictionaries[key] = null;
             }
         });
         await Promise.all(promises);
         console.log('[Brain.init] Step 1: Dictionary loading finished.');
         
-        // ... (منطق تحميل البروتوكولات)
+        // ... (منطق تحميل البروتوكولات، سيستفيد أيضًا من المسار المطلق)
+        try {
+            const fs = await import('fs');
+            if (fs.existsSync(this.options.protocolsPath)) {
+                const protocolFiles = fs.readdirSync(this.options.protocolsPath).filter(file => file.endsWith('.js'));
+                 const protocolPromises = protocolFiles.map(async (file) => {
+                    const protocolPath = path.join(this.options.protocolsPath, file);
+                    try {
+                        const mod = await import(new URL(`file://${protocolPath}`).href);
+                        const protocol = mod.default || mod;
+                        if (protocol.tag) this.protocols[protocol.tag] = protocol;
+                    } catch (e) { /* ... */ }
+                });
+                await Promise.all(protocolPromises);
+            }
+        } catch(e) { /* ... */ }
+
 
         console.log('\n[Brain.init] Step 2: Validating required dictionaries before engine instantiation...');
         const requiredForSemantic = {
