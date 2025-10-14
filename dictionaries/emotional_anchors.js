@@ -587,39 +587,3 @@ export default {
   ALL_ANCHORS_LIST
 };
 
-
----
-
-شرح سريع لطريقة الاستخدام (أمثلة)
-
-1. استيراد وإنشاء محلل:
-
-
-
-import { EmotionInterpreter, simpleAffixStripper } from './dictionaries/emotional_anchors_v5.js';
-
-const interpreter = new EmotionInterpreter({
-  affixStripper: simpleAffixStripper
-});
-
-const result = interpreter.analyzeText("أنا حزين جدا ومكتئب وحاسس بالوحدة");
-console.log(result.profile);           // البروفايل العاطفي الموزون
-console.log(result.suggestedResponses); // قوالب ردود جاهزة
-
-2. إضافة مرسى جديد (تعلم تدريجي):
-
-
-
-interpreter.addAnchor("مكسور", {
-  mood_scores: { sadness: 0.95 },
-  intensity: 0.9,
-  category: "negative",
-  natural_reply_templates: ["حسيت إنك مكسور — حابب تشارك اللي حصل؟"]
-});
-
-3. تصدير قائمة مسطحة:
-
-
-
-const flat = interpreter.exportFlattenedList();
-
