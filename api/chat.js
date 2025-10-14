@@ -1,41 +1,55 @@
-// api/chat.js v16.2 - Correct Wisdom Library Integration
-// This version fixes the error by calling the correct `getAllIntents` function
-// AFTER the index has been built, ensuring the full list of libraries is passed correctly.
+// /api/chat.js
+// API Endpoint v3.0 - Fully Integrated with the New Cognitive Architecture
+// This version replaces the entire legacy pipeline with clean, powerful calls to the
+// new, unified LinguisticBrain, UserMemoryGraph, and InferenceEngine.
 
-import { DEBUG } from '../shared/config.js';
-import { detectCritical, criticalSafetyReply } from '../shared/utils.js';
-import { loadUsers, saveUsers, makeUserId } from '../shared/storage.js';
-// [CORRECTED] We need the new getAllIntents function
-import { buildIndexSync, createCognitiveBriefing, getAllIntents } from '../perception/intent_engine.js';
-import { executeProtocolStep } from '../core/dynamic_logic_engine.js';
-import { processMeta } from '../coordination/meta_router.js';
-import { ContextTracker } from '../shared/context_tracker.js';
-
-// All perception engines
-import { generateFingerprintV2 as generateFingerprint } from '../perception/fingerprint_engine.js';
-import { atomize } from '../hippocampus/knowledgeAtomizer.js';
-import { memoryGraph } from '../hippocampus/MemoryGraph.js';
-import { InferenceEngine } from '../hippocampus/InferenceEngine.js';
-
-// Preserved imports
-import ResponseSynthesizer from '../intelligence/ResponseSynthesizer.js';
-import HybridComposer from '../intelligence/HybridComposer.js';
+import { LinguisticBrain } from '../core/linguistic_brain.js';
+import { UserMemoryGraph } from '../core/memory_system.js';
+import { InferenceEngine } from '../hippocampus/inference_engine.js';
+import { makeUserId } from '../core/utils.js';
 
 // =================================================================
-// INITIALIZATION & CONFIG
+// SINGLETON MANAGEMENT (إدارة النسخ الفريدة)
+// To ensure we have one brain and one memory instance per user across requests.
 // =================================================================
 
-// --- [CORRECTION] ---
-// Step 1: Build the index. This populates the internal variables in intent_engine.
-buildIndexSync(); 
-// Step 2: Now that the index is built, get the list of all loaded intents.
-const allWisdomLibraries = getAllIntents(); 
+let brainInstance = null;
+const userMemoryGraphs = new Map(); // Stores a UserMemoryGraph instance for each user
 
-const CONTEXT_TRACKERS = new Map();
-const MAX_NEW_PROTOCOLS_TO_INVITE = 3;
+/**
+ * Initializes and returns a single instance of the LinguisticBrain.
+ */
+async function getBrainInstance() {
+    if (brainInstance) return brainInstance;
+
+    // The brain is stateless, so we only need one for the entire application.
+    // We pass null for memory here because the CatharsisEngine within the brain
+    // will receive the user-specific memory during the generateResponse call.
+    const brain = new LinguisticBrain(null); // Passing null temporarily
+    await brain.init();
+    brainInstance = brain;
+    console.log("✅ LinguisticBrain initialized successfully.");
+    return brainInstance;
+}
+
+/**
+ * Retrieves or creates a dedicated UserMemoryGraph instance for a given user.
+ * @param {string} userId
+ */
+async function getUserMemoryGraph(userId) {
+    if (userMemoryGraphs.has(userId)) {
+        return userMemoryGraphs.get(userId);
+    }
+    // Create and initialize a new memory graph for the new user.
+    const newMemoryGraph = new UserMemoryGraph({ userId });
+    await newMemoryGraph.initialize(); // Load user's past memory if it exists
+    userMemoryGraphs.set(userId, newMemoryGraph);
+    console.log(`🧠 New or returning user. Initialized memory graph for: ${userId}`);
+    return newMemoryGraph;
+}
 
 // =================================================================
-// MAIN HANDLER
+// MAIN API HANDLER
 // =================================================================
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -45,114 +59,59 @@ export default async function handler(req, res) {
     const rawMessage = (body.message || "").toString().trim();
     if (!rawMessage) return res.status(400).json({ error: "Empty message" });
 
-    if (DEBUG) console.log(`\n\n- - - [ NEW TURN ] - - -\n📨 Incoming message: "${rawMessage}"`);
+    const userId = body.userId || makeUserId();
+    console.log(`\n\n- - - [ NEW TURN: User ${userId} ] - - -\n📨 Incoming: "${rawMessage}"`);
 
-    // --- USER & SESSION SETUP ---
-    let users = await loadUsers();
-    let userId = body.userId || null;
-    if (!userId || !users[userId]) {
-      userId = makeUserId();
-      users[userId] = { id: userId, createdAt: new Date().toISOString(), shortMemory: {} };
-      if (DEBUG) console.log(`🆕 New user: ${userId}`);
-    }
-    const profile = users[userId];
+    // --- [THE NEW, INTEGRATED PIPELINE] ---
 
-    let tracker = CONTEXT_TRACKERS.get(userId);
-    if (!tracker) {
-      if (DEBUG) console.log(`SESSION: No active tracker for ${userId}. Creating from profile.`);
-      tracker = new ContextTracker(profile.shortMemory);
-      CONTEXT_TRACKERS.set(userId, tracker);
-    }
+    // 1. Get Core Components: The Brain and the User-Specific Memory
+    const brain = await getBrainInstance();
+    const memoryGraph = await getUserMemoryGraph(userId);
     
-    if (detectCritical(rawMessage)) {
-      return res.status(200).json({ reply: criticalSafetyReply(), source: "safety", userId });
-    }
+    // Inject the correct, user-specific memory into the brain's final engine for this request
+    brain.engines.catharsis.memory = memoryGraph;
 
-    // --- COGNITIVE ANALYSIS LAYER ---
-    console.log("\n--- [Cognitive Layer] Starting Full Analysis ---");
-    const fingerprint = generateFingerprint(rawMessage, { ...tracker.generateContextualSummary() });
-    const knowledgeAtom = atomize(rawMessage, { recentMessages: tracker.getHistory(), fingerprint });
-    await memoryGraph.initialize();
-    if (knowledgeAtom) {
-        memoryGraph.ingest(knowledgeAtom);
+    // 2. Conscious Mind: Perform real-time analysis of the current message
+    console.log(`[1/4] Running real-time analysis (Conscious Mind)...`);
+    const insight = await brain.analyze(rawMessage, {
+        previousEmotion: memoryGraph.workingMemory.slice(-1)[0]?.insight?.emotionProfile?.primaryEmotion
+    });
+
+    // 3. Subconscious Mind: Ingest the new experience and run deep inference
+    console.log(`[2/4] Ingesting insight into memory and running inference (Subconscious Mind)...`);
+    if (insight) {
+        memoryGraph.ingest(insight);
     }
-    const consciousness = new InferenceEngine(memoryGraph);
-    const cognitiveProfile = await consciousness.generateCognitiveProfile();
-    console.log("[Cognitive Layer] Analysis complete.");
-    
+    const inferenceEngine = new InferenceEngine(memoryGraph);
+    const cognitiveProfile = await inferenceEngine.generateCognitiveProfile();
+
+    // 4. Expressive Mind: Generate the final, soulful response
+    console.log(`[3/4] Generating response (Expressive Mind)...`);
+    const response = await brain.generateResponse(insight);
+
+    // 5. Post-Response Housekeeping (run asynchronously to not delay the user)
     setTimeout(() => {
+        console.log(`[4/4] Performing post-response housekeeping (dreaming, persisting)...`);
         memoryGraph.dream();
         memoryGraph.persist();
     }, 0);
-    
-    // --- STRATEGIC EXECUTION (OLD LOGIC) ---
-    const sessionContext = tracker.getSessionContext();
-    const briefing = createCognitiveBriefing(rawMessage, fingerprint, sessionContext, profile);
-    let candidates = [];
-    const topNewProtocols = briefing.potentialNewProtocols.slice(0, MAX_NEW_PROTOCOLS_TO_INVITE);
-    for (const newProtocol of topNewProtocols) {
-        const newCandidate = executeProtocolStep(
-            { full_intent: newProtocol.full_intent, initial_context: { state: null } },
-            fingerprint, profile, { state: null }
-        );
-        if (newCandidate) candidates.push(newCandidate);
-    }
-    const empathicCandidate = {
-      reply: `أتفهم أن هذا الموقف يسبب لك الكثير من المشاعر الصعبة.`,
-      source: 'empathic_safety_net', confidence: 0.95
-    };
-    candidates.push(empathicCandidate);
-    const uniqueCandidates = [...new Map(candidates.map(item => [item["reply"], item])).values()];
-    
-    // --- FINAL COMPOSITION ---
-    let responsePayload = {};
-    responsePayload = HybridComposer.synthesizeHybridResponse(
-        uniqueCandidates, 
-        briefing,
-        { 
-          user_message: rawMessage,
-          userId: userId,
-          tracker: tracker,
-          fingerprint: fingerprint,
-          knowledgeAtom: knowledgeAtom,
-          cognitiveProfile: cognitiveProfile,
-          // The correctly populated list is now passed
-          allWisdomLibraries: allWisdomLibraries 
-        }
-    );
-    
-    if (!responsePayload || !responsePayload.reply) {
-        responsePayload = { reply: "أنا أفكر في كلماتك بعمق...", source: 'critical_fallback' };
-    }
 
-    // --- POST-RESPONSE HOUSEKEEPING ---
-    tracker.addTurn(fingerprint, { reply: responsePayload.reply, ...responsePayload });
-    if (responsePayload.updatedUserState) {
-        tracker.setUserState(responsePayload.updatedUserState);
-    } else if (responsePayload.metadata?.nextSessionContext) {
-        tracker.updateSessionContext(responsePayload.metadata.nextSessionContext);
-    }
-    profile.shortMemory = tracker.serialize();
-    
-    try {
-      await processMeta(rawMessage, responsePayload.reply, fingerprint, profile);
-    } catch (metaErr) {
-      console.error("🚨 Meta-router error:", metaErr);
-    }
-
-    await saveUsers(users);
-
+    // 6. Send the final response to the user
+    console.log(`✅ Pipeline complete. Sending reply.`);
     return res.status(200).json({
-      reply: responsePayload.reply,
-      source: responsePayload.source,
-      tag: responsePayload.tag,
+      reply: response.responseText,
       userId,
-      metadata: responsePayload.metadata ?? null
+      _meta: {
+          realtime_insight: insight,
+          longterm_profile: cognitiveProfile,
+          response_details: response._meta
+      }
     });
+    // --- [END OF THE NEW PIPELINE] ---
 
   } catch (err) {
-    console.error("API error:", err);
-    if (DEBUG) console.error(err.stack);
-    return res.status(500).json({ error: "Internal Server Error" });
+    console.error("🚨 API Handler Error:", err);
+    // In production, avoid sending detailed stack traces to the client
+    return res.status(500).json({ error: "An internal server error occurred." });
   }
 }
