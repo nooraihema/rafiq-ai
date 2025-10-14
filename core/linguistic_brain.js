@@ -1,7 +1,7 @@
 // /core/linguistic_brain.js
-// LinguisticBrain v1.1 - The Conductor with Protocol Awareness
-// This version is now self-sufficient in loading not just dictionaries,
-// but also the entire library of therapeutic protocols.
+// LinguisticBrain v1.2 - Flexible Memory Injection
+// This version adjusts the constructor to allow memory to be injected per-request,
+// fixing the initialization error from the API layer.
 
 import { normalizeArabic, tokenize } from './utils.js';
 import { SemanticEngine } from '../analysis_engines/semantic_engine.js';
@@ -28,12 +28,11 @@ const DEFAULT_OPTIONS = {
 
 export class LinguisticBrain {
     constructor(memorySystem, opts = {}) {
-        if (!memorySystem) {
-            throw new Error("LinguisticBrain requires a memory system instance.");
-        }
-        
+        // --- [تصحيح] ---
+        // We now accept a null memorySystem during initial construction,
+        // as the user-specific memory will be injected later at the request level.
         this.options = Object.assign({}, DEFAULT_OPTIONS, opts);
-        this.memory = memorySystem;
+        this.memory = memorySystem; // This will be initially null
         
         this.dictionaries = {}; // Will be populated in init
         this.protocols = {};    // Will be populated in init
@@ -67,8 +66,6 @@ export class LinguisticBrain {
         await Promise.all(dictionaryPromises);
 
         // Step 2: Load all protocol modules from the specified directory
-        // Note: This requires a Node.js environment to access the filesystem.
-        // For browser environments, protocols might need to be imported explicitly.
         try {
             const fs = await import('fs');
             const path = await import('path');
@@ -113,6 +110,8 @@ export class LinguisticBrain {
             BEHAVIOR_VALUES: this.dictionaries.behaviorValues
         });
 
+        // The catharsis engine is initialized with the initial (null) memory.
+        // It will be updated with the correct user memory at request time.
         this.engines.catharsis = new CatharsisEngine(
             { GENERATIVE_ENGINE: this.dictionaries.generative },
             this.protocols,
