@@ -1,12 +1,23 @@
 // /core/utils.js
-// AI Toolkit v2.0 - Integrated Insight
+// AI Toolkit v2.1 - Integrated Insight with User ID generation
 // A collection of intelligent, data-aware utility functions designed to support
-// the advanced dictionaries and analysis engines. This version includes high-level
-// functions for generating integrated cognitive fingerprints.
+// the advanced dictionaries and analysis engines.
+
+// --- [إضافة جديدة] ---
+import crypto from 'crypto';
 
 // ============================================================================
 // 1. General Purpose Utilities (الأدوات العامة)
 // ============================================================================
+
+/**
+ * [إضافة جديدة]
+ * يقوم بإنشاء معرف فريد للمستخدم (User ID).
+ * @returns {string}
+ */
+export function makeUserId() {
+  return crypto.randomBytes(8).toString("hex");
+}
 
 /**
  * يختار عنصرًا عشوائيًا من مصفوفة.
@@ -179,11 +190,10 @@ export function* createDialogueSequencer(questionSequence) {
 }
 
 // ============================================================================
-// 4. Integrated Insight Utilities (أدوات الرؤى المتكاملة) - [إضافة جديدة]
+// 4. Integrated Insight Utilities (أدوات الرؤى المتكاملة)
 // ============================================================================
 
 /**
- * [إضافة جديدة]
  * يحدد القطبية العامة (إيجابي/سلبي/مختلط) بناءً على بروفايل عاطفي دقيق.
  * @param {Object.<string, number>} affectVector - البروفايل العاطفي (مخرجات `intensity_analyzer`).
  * @returns {'positive' | 'negative' | 'mixed' | 'neutral'}
@@ -199,9 +209,8 @@ export function getSentimentFromAffectVector(affectVector = {}) {
 }
 
 /**
- * [إضافة جديدة ومطورة]
  * يولد "بصمة معرفية" (Cognitive Fingerprint) متكاملة للنص.
- * هذه الدالة هي نسخة "ذكية" تستدعي المحركات المتقدمة بدلاً من الاعتماد على RegEx.
+ * هذه الدالة هي نسخة "ذكية" تستدعي المحركات المتقدمة.
  * @param {string} text - النص الخام.
  * @param {LinguisticBrain} brain - نسخة من "الدماغ اللغوي" للوصول للمحركات.
  * @returns {Promise<Object>} بصمة معرفية غنية.
@@ -211,13 +220,12 @@ export async function createCognitiveFingerprint(text, brain) {
         throw new Error("A valid LinguisticBrain instance is required.");
     }
 
-    // استخدم خط أنابيب التحليل الكامل من "الدماغ" للحصول على رؤية شاملة
     const insight = await brain.analyzeMessage(text);
+    if (!insight) return null; // Handle case where analysis fails
     
-    // استخرج أهم المعلومات لتكوين البصمة
-    const topEmotion = getTopN(insight.emotionalAnchors.normalized, 1)[0] || { key: 'neutral', score: 0 };
-    const topConcept = getTopN(insight.conceptProfile, 1)[0] || { key: 'none', score: 0 };
-    const sentiment = getSentimentFromAffectVector(insight.intensity.affectVector);
+    const topEmotion = getTopN(insight.emotionalAnchors?.normalized || {}, 1)[0] || { key: 'neutral', score: 0 };
+    const topConcept = getTopN(insight.conceptProfile || {}, 1)[0] || { key: 'none', score: 0 };
+    const sentiment = getSentimentFromAffectVector(insight.intensity?.affectVector || {});
 
     const fingerprint = {
         normalizedText: insight.normalized,
@@ -227,16 +235,15 @@ export async function createCognitiveFingerprint(text, brain) {
         primaryEmotionScore: topEmotion.score,
         primaryConcept: topConcept.key,
         primaryConceptScore: topConcept.score,
-        detectedPatterns: insight.patterns.map(p => p.pattern_id || p.pattern),
-        // تمثيل رقمي مبسط (vector) يعتمد على نتائج المحركات الدقيقة
+        detectedPatterns: (insight.patterns || []).map(p => p.pattern_id || p.pattern),
         semanticVector: {
-            sadness: insight.intensity.affectVector.sadness || 0,
-            anxiety: insight.intensity.affectVector.anxiety || 0,
-            joy: insight.intensity.affectVector.joy || 0,
-            anger: insight.intensity.affectVector.anger || 0,
+            sadness: insight.intensity?.affectVector?.sadness || 0,
+            anxiety: insight.intensity?.affectVector?.anxiety || 0,
+            joy: insight.intensity?.affectVector?.joy || 0,
+            anger: insight.intensity?.affectVector?.anger || 0,
             sentimentScore: sentiment === 'positive' ? 1 : (sentiment === 'negative' ? -1 : 0),
         },
-        fullInsight: insight // احتفظ بالتحليل الكامل كمرجع
+        fullInsight: insight
     };
 
     return fingerprint;
