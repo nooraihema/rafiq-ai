@@ -93,7 +93,7 @@ export class LinguisticBrain {
         const requiredForSemantic = {
             CONCEPT_MAP: this.dictionaries.psychological_concepts_engine?.CONCEPT_MAP,
             AFFIX_DICTIONARY: this.dictionaries.affixes?.AFFIX_DICTIONARY,
-            STOP_WORDS_SET: this.dictionaries.stop_words?.STOP_WORDS_SET,
+            STOP_WORDS_SET: this.dictionaries.stop_words,
             EMOTIONAL_ANCHORS_DICTIONARY: this.dictionaries.emotional_anchors?.EMOTIONAL_DICTIONARY
         };
 
