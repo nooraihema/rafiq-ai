@@ -456,28 +456,3 @@ export default {
   SessionMemory,
   generateResponseFromPipeline
 };
-
-
----
-
-تعليمات سريعة للاستخدام (مثال عملي)
-
-import GRE from './src/dictionaries/generative_responses_engine_vX.js';
-
-// محاكاة بيانات تتحصل عليها من التحليل:
-const conceptProfile = { anxiety: 0.85, helplessness: 0.35 };
-const emotionalProfile = { anxiety: 0.9, sadness: 0.5, calming: 0.0 };
-
-const memory = new GRE.SessionMemory();
-memory.setUserStyle({ warmth: +0.05 }); // مثال: تفضيل دفء بسيط
-
-const { text, meta } = GRE.generateResponseFromPipeline({
-  conceptProfile,
-  emotionalProfile,
-  context: "user said: ماقدرتش انام خالص الليلة",
-  memory,
-  userStyle: { warmth: 0.02 }
-});
-
-console.log(text);
-console.log(meta);
