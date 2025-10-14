@@ -1,7 +1,6 @@
 // /api/chat.js
-// API Endpoint v3.0 - Fully Integrated with the New Cognitive Architecture
-// This version replaces the entire legacy pipeline with clean, powerful calls to the
-// new, unified LinguisticBrain, UserMemoryGraph, and InferenceEngine.
+// API Endpoint v3.1 - Correct Memory Injection & Singleton Management
+// This version fixes the memory system dependency injection for the LinguisticBrain.
 
 import { LinguisticBrain } from '../core/linguistic_brain.js';
 import { UserMemoryGraph } from '../core/memory_system.js';
@@ -22,10 +21,10 @@ const userMemoryGraphs = new Map(); // Stores a UserMemoryGraph instance for eac
 async function getBrainInstance() {
     if (brainInstance) return brainInstance;
 
-    // The brain is stateless, so we only need one for the entire application.
-    // We pass null for memory here because the CatharsisEngine within the brain
-    // will receive the user-specific memory during the generateResponse call.
-    const brain = new LinguisticBrain(null); // Passing null temporarily
+    // --- [تصحيح] ---
+    // The brain is created without a memory system initially.
+    // The user-specific memory will be injected per-request.
+    const brain = new LinguisticBrain(null); // Passing null is now handled by the constructor logic
     await brain.init();
     brainInstance = brain;
     console.log("✅ LinguisticBrain initialized successfully.");
@@ -68,8 +67,15 @@ export default async function handler(req, res) {
     const brain = await getBrainInstance();
     const memoryGraph = await getUserMemoryGraph(userId);
     
-    // Inject the correct, user-specific memory into the brain's final engine for this request
-    brain.engines.catharsis.memory = memoryGraph;
+    // --- [تصحيح جوهري] ---
+    // Inject the correct, user-specific memory into the brain's final engine for this request.
+    // This ensures the response is generated with the correct context and memory.
+    if (brain.engines.catharsis) {
+        brain.engines.catharsis.memory = memoryGraph;
+    } else {
+        // This is a critical failure, the brain did not initialize correctly.
+        throw new Error("CatharsisEngine not initialized in LinguisticBrain. Check dictionary/engine paths.");
+    }
 
     // 2. Conscious Mind: Perform real-time analysis of the current message
     console.log(`[1/4] Running real-time analysis (Conscious Mind)...`);
