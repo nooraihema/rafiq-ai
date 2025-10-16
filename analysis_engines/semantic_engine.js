@@ -1,19 +1,20 @@
 // /analysis_engines/semantic_engine.js
-// Semantic Engine v2.0 - The Deep Semantic Engine
-// This version introduces advanced morphological and semantic analysis
-// to understand implicit concepts and leverage the full power of the dictionaries.
+// Semantic Engine v3.0 - The Insight Extractor
+// This hyper-aware version performs multi-layered, exhaustive searches and
+// semantic inference to extract concepts with full transparency and provenance.
 
 import { normalizeArabic, tokenize, generateNgrams } from '../core/utils.js';
 
 export class SemanticEngine {
     constructor(dictionaries) {
         if (!dictionaries || !dictionaries.CONCEPT_MAP || !dictionaries.AFFIX_DICTIONARY || !dictionaries.STOP_WORDS_SET || !dictionaries.EMOTIONAL_ANCHORS_DICTIONARY) {
-            throw new Error("SemanticEngine v2.0 requires comprehensive dictionaries: CONCEPT_MAP, AFFIX_DICTIONARY, STOP_WORDS_SET, EMOTIONAL_ANCHORS_DICTIONARY.");
+            throw new Error("SemanticEngine v3.0 requires comprehensive dictionaries: CONCEPT_MAP, AFFIX_DICTIONARY, STOP_WORDS_SET, EMOTIONAL_ANCHORS_DICTIONARY.");
         }
         this.conceptMap = dictionaries.CONCEPT_MAP;
         this.affixes = dictionaries.AFFIX_DICTIONARY;
         this.stopWords = dictionaries.STOP_WORDS_SET;
         this.emotionalAnchors = dictionaries.EMOTIONAL_ANCHORS_DICTIONARY;
+        this.debug = true; // --- تفعيل وضع التصحيح ---
 
         // Build a reverse map from roots to their corresponding emotional anchors for deep analysis
         this.rootToAnchorMap = this._buildRootToAnchorMap();
@@ -61,7 +62,7 @@ export class SemanticEngine {
         for (const stem of stemsWithSuffixes) {
             for (const suf of this.suffixes) {
                 if (stem.endsWith(suf) && stem.length > suf.length + 2) {
-                    stems.add(stem.slice(0, -suf.length));
+                    stems.add(stem.slice(0, -stem.length));
                 }
             }
         }
@@ -73,7 +74,7 @@ export class SemanticEngine {
      * @property {string} original
      * @property {string} normalized
      * @property {string} stem
-     * @property {{concept: string, weight: number}[]} concepts
+     * @property {{concept: string, weight: number, provenance: string}[]} concepts
      */
 
     /**
@@ -81,6 +82,7 @@ export class SemanticEngine {
      * @property {number} frequency
      * @property {number} totalWeight
      * @property {string[]} sourceTokens
+     * @property {Set<string>} provenance
      */
 
     /**
@@ -89,6 +91,7 @@ export class SemanticEngine {
      * @property {AnalyzedToken[]} tokens
      * @property {Object.<string, ConceptInsight>} conceptInsights
      * @property {string[]} allConcepts
+     * @property {string|null} pivotalConcept
      * @property {{tokenCount: number, conceptCount: number}} stats
      */
 
@@ -99,8 +102,10 @@ export class SemanticEngine {
      */
     analyze(text) {
         const rawText = String(text || '');
-        // Use the advanced tokenizer from utils, passing the loaded stop words
+        if (this.debug) console.log(`\n--- [SemanticEngine v3.0] Analyzing text: "${rawText}" ---`);
+        
         const initialTokens = tokenize(rawText, this.stopWords);
+        if (this.debug) console.log(`[Semantic] 1. Tokens after stopword removal:`, initialTokens);
 
         const analyzedTokens = [];
         const conceptInsights = new Map();
@@ -108,102 +113,119 @@ export class SemanticEngine {
 
         // --- Pass 1: Multi-word concepts (trigrams, then bigrams) ---
         const ngrams = [...generateNgrams(initialTokens, 3), ...generateNgrams(initialTokens, 2)];
+        if (this.debug) console.log(`[Semantic] 2. Generated n-grams for phrase matching:`, ngrams);
         
         for (const ngram of ngrams) {
-            const mappings = this.conceptMap[ngram];
+            const normalizedNgram = normalizeArabic(ngram);
+            const mappings = this.conceptMap[normalizedNgram];
             if (mappings) {
+                if (this.debug) console.log(`  > Direct N-gram Match Found: "${ngram}" ->`, mappings.map(m=>m.concept));
                 const ngramTokens = ngram.split(' ');
-                // Find the first occurrence of this ngram that hasn't been used yet
                 const startIndex = initialTokens.findIndex((t, i) => 
                     !usedIndices.has(i) && initialTokens.slice(i, i + ngramTokens.length).join(' ') === ngram
                 );
-                
                 if (startIndex !== -1) {
-                    // Mark indices as used
                     for (let i = 0; i < ngramTokens.length; i++) {
                         usedIndices.add(startIndex + i);
                     }
-                    // Update insights with the found concepts
-                    mappings.forEach(mapping => this._updateConceptInsights(conceptInsights, mapping, ngram));
+                    mappings.forEach(mapping => this._updateConceptInsights(conceptInsights, mapping, ngram, 'direct_ngram_match'));
                 }
             }
         }
 
-        // --- Pass 2: Process single words with DEEP analysis ---
+        // --- Pass 2: Process single words with HYPER-AWARE analysis ---
+        if (this.debug) console.log(`[Semantic] 3. Starting single-word deep analysis...`);
         for (let i = 0; i < initialTokens.length; i++) {
             if (usedIndices.has(i)) continue;
 
             const original = initialTokens[i];
             const normalized = normalizeArabic(original);
+            if (this.debug) console.log(`\n  --- Analyzing token: "${original}" ---`);
             
-            // Generate all possible stems for the token
             const possibleStems = this._deepStem(normalized);
             const searchTerms = [...new Set([original, normalized, ...possibleStems])];
+            if (this.debug) console.log(`    - Generated search terms:`, searchTerms);
             
-            let mappings = [];
-            let foundDirectly = false;
-
-            // 1. Attempt direct mapping from the concept map
+            let allFoundMappings = [];
+            
+            // Strategy 1: Exhaustive Direct Search
             for (const term of searchTerms) {
                 if (this.conceptMap[term]) {
-                    mappings.push(...this.conceptMap[term]);
-                    foundDirectly = true;
+                    const mappings = this.conceptMap[term];
+                    if (this.debug) console.log(`    ✅ [Direct Match] Found on term "${term}" ->`, mappings.map(m => m.concept));
+                    mappings.forEach(m => allFoundMappings.push({ ...m, provenance: 'direct_match', matchedTerm: term }));
                 }
             }
-            mappings = [...new Set(mappings.map(m => JSON.stringify(m)))].map(s => JSON.parse(s));
 
-            // 2. If no direct match, attempt semantic inference via roots
-            if (!foundDirectly) {
+            // Strategy 2: Semantic Inference via Roots (if no direct match)
+            if (allFoundMappings.length === 0) {
+                if (this.debug) console.log(`    - No direct match. Attempting semantic inference via roots...`);
                 for (const stem of possibleStems) {
                     if (this.rootToAnchorMap.has(stem)) {
-                        const anchor = this.rootToAnchorMap.get(stem)[0]; // Take the primary anchor
+                        const anchor = this.rootToAnchorMap.get(stem)[0];
                         const topEmotion = Object.keys(anchor.mood_scores || {})
-                            .sort((a, b) => anchor.mood_scores[b] - anchor.mood_scores[a])[0];
+                            .sort((a, b) => (anchor.mood_scores[b] || 0) - (anchor.mood_scores[a] || 0))[0];
                         
                         if (topEmotion) {
-                            // Infer the concept from the anchor's primary emotion
-                            mappings.push({ concept: topEmotion, weight: 0.6, inferred: true }); // Lower weight for inferred concepts
-                            break; // Stop after the first successful inference
+                            if (this.debug) console.log(`    ✅ [Inference] Stem "${stem}" links to root "${anchor.root}", inferring concept -> "${topEmotion}"`);
+                            allFoundMappings.push({ concept: topEmotion, weight: 0.65, provenance: 'root_inference', matchedTerm: stem });
+                            break; 
                         }
                     }
                 }
             }
             
+            // Remove duplicate mappings before adding to token data
+            const uniqueMappings = [...new Map(allFoundMappings.map(m => [m.concept, m])).values()];
+
             analyzedTokens.push({
                 original,
                 normalized,
-                stem: possibleStems[possibleStems.length - 1], // Use the shortest stem as the primary one
-                concepts: mappings
+                stem: possibleStems[possibleStems.length - 1],
+                concepts: uniqueMappings
             });
 
-            mappings.forEach(mapping => this._updateConceptInsights(conceptInsights, mapping, original));
+            uniqueMappings.forEach(mapping => this._updateConceptInsights(conceptInsights, mapping, original, mapping.provenance));
         }
 
         const allUniqueConcepts = Array.from(conceptInsights.keys());
+        if (this.debug) {
+             console.log(`\n[Semantic] 4. Analysis Complete. Final Insights:`);
+             // Convert Set to Array for better logging in Vercel
+             const loggableInsights = Object.fromEntries(
+                Array.from(conceptInsights.entries()).map(([key, value]) => [key, { ...value, provenance: Array.from(value.provenance) }])
+             );
+             console.log(loggableInsights);
+        }
 
-        return {
+        const finalMap = {
             rawText,
             tokens: analyzedTokens,
             conceptInsights: Object.fromEntries(conceptInsights),
             allConcepts: allUniqueConcepts,
+            pivotalConcept: this._findPivotalConcept(conceptInsights),
             stats: {
-                tokenCount: analyzedTokens.length,
+                tokenCount: initialTokens.length,
                 conceptCount: allUniqueConcepts.length,
             }
         };
+
+        if (this.debug) console.log(`--- [SemanticEngine v3.0] Finished. Pivotal concept: "${finalMap.pivotalConcept}" ---`);
+        return finalMap;
     }
     
     /**
      * Helper to update the main concept insights map.
      * @private
      */
-    _updateConceptInsights(insightsMap, mapping, sourceToken) {
+    _updateConceptInsights(insightsMap, mapping, sourceToken, provenance) {
         const { concept, weight } = mapping;
         if (!insightsMap.has(concept)) {
             insightsMap.set(concept, {
                 frequency: 0,
                 totalWeight: 0,
-                sourceTokens: []
+                sourceTokens: [],
+                provenance: new Set()
             });
         }
         const insight = insightsMap.get(concept);
@@ -212,5 +234,23 @@ export class SemanticEngine {
         if (!insight.sourceTokens.includes(sourceToken)) {
             insight.sourceTokens.push(sourceToken);
         }
+        insight.provenance.add(provenance);
+    }
+
+    /**
+     * Finds the most significant concept based on totalWeight.
+     * @private
+     */
+    _findPivotalConcept(insightsMap) {
+        if (!insightsMap || insightsMap.size === 0) return null;
+        let pivotalConcept = null;
+        let maxWeight = -1;
+        for (const [concept, insight] of insightsMap.entries()) {
+            if (insight.totalWeight > maxWeight) {
+                maxWeight = insight.totalWeight;
+                pivotalConcept = concept;
+            }
+        }
+        return pivotalConcept;
     }
 }
