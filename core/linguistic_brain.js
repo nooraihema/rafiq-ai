@@ -1,7 +1,8 @@
 // /core/linguistic_brain.js
-// LinguisticBrain v2.1 - Robust Hybrid Insight Integration with Dynamic Paths
-// This version uses dynamic path resolution for ALL external modules to ensure
-// stability in serverless environments and integrates the legacy KnowledgeAtomizer.
+// LinguisticBrain v3.0 - Pure Architecture
+// This version removes all dependencies on legacy systems (like KnowledgeAtomizer)
+// and relies entirely on the new, powerful, modular analysis engine pipeline.
+// It also includes the fix for the SemanticEngine dependency injection.
 
 import { normalizeArabic, tokenize } from './utils.js';
 import { SemanticEngine } from '../analysis_engines/semantic_engine.js';
@@ -12,14 +13,10 @@ import { CatharsisEngine } from '../analysis_engines/catharsis_engine.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// --- Dynamic Path Construction ---
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const baseDictionariesPath = path.join(__dirname, '../dictionaries');
 const baseProtocolsPath = path.join(__dirname, '../protocols');
-const legacyAtomizerPath = path.join(__dirname, '../hippocampus/KnowledgeAtomizer.js');
-const legacyKBPath = path.join(__dirname, '../knowledge/knowledge_base.js');
-
 
 const DEFAULT_OPTIONS = {
   debug: true,
@@ -37,17 +34,12 @@ const DEFAULT_OPTIONS = {
   protocolsPath: baseProtocolsPath
 };
 
-// Variable to hold the dynamically imported legacy function
-let atomize = null;
-
-
 export class LinguisticBrain {
     constructor(memorySystem, opts = {}) {
         this.options = Object.assign({}, DEFAULT_OPTIONS, opts);
         this.memory = memorySystem;
         this.dictionaries = {};
         this.protocols = {};
-        this.legacyKnowledgeBase = null;
         this.engines = { semantic: null, emotion: null, synthesis: null, catharsis: null };
         this._isInitialized = false;
     }
@@ -57,43 +49,51 @@ export class LinguisticBrain {
 
         console.log('[Brain.init] Step 1: Starting new dictionary loading...');
         const dictFileNames = this.options.dictionaryFileNames;
-        const dictionaryPromises = Object.entries(dictFileNames).map(async ([key, fileName]) => {
+        const promises = Object.entries(dictFileNames).map(async ([key, fileName]) => {
             const fullPath = path.join(baseDictionariesPath, fileName);
             try {
                 const mod = await import(new URL(`file://${fullPath}`).href);
                 this.dictionaries[key] = mod.default || mod;
-                if (this.options.debug) console.log(`  ✅ Successfully loaded new dictionary: '${key}'`);
+                if (this.options.debug) console.log(`  ✅ Successfully loaded dictionary: '${key}'`);
             } catch (e) {
-                console.error(`  ❌ CRITICAL: Failed to load new dictionary '${key}' from ${fullPath}`, e);
+                console.error(`  ❌ CRITICAL: Failed to load dictionary '${key}' from ${fullPath}`, e);
                 this.dictionaries[key] = null;
             }
         });
-        await Promise.all(dictionaryPromises);
-        console.log('[Brain.init] Step 1: New dictionary loading finished.');
+        await Promise.all(promises);
+        console.log('[Brain.init] Step 1: Dictionary loading finished.');
 
-        console.log('[Brain.init] Step 1b: Loading legacy Atomizer and its Knowledge Base...');
+        // Protocol loading logic
         try {
-            const atomizerModule = await import(new URL(`file://${legacyAtomizerPath}`).href);
-            atomize = atomizerModule.atomize;
-            if (this.options.debug) console.log('  ✅ Successfully loaded legacy Atomizer module.');
-
-            const kbModule = await import(new URL(`file://${legacyKBPath}`).href);
-            this.legacyKnowledgeBase = kbModule.default || kbModule;
-            if (this.options.debug) console.log('  ✅ Successfully loaded legacy Knowledge Base.');
-        } catch (e) {
-            console.error('  ❌ CRITICAL: Failed to load legacy Atomizer or its KB. Legacy insights will be disabled.', e);
-            atomize = () => null; // Assign a dummy function to prevent crashes
-            this.legacyKnowledgeBase = {};
+            const fs = await import('fs');
+            if (fs.existsSync(this.options.protocolsPath)) {
+                const protocolFiles = fs.readdirSync(this.options.protocolsPath).filter(file => file.endsWith('.js'));
+                 const protocolPromises = protocolFiles.map(async (file) => {
+                    const protocolPath = path.join(this.options.protocolsPath, file);
+                    try {
+                        const mod = await import(new URL(`file://${protocolPath}`).href);
+                        const protocol = mod.default || mod;
+                        if (protocol.tag) {
+                            this.protocols[protocol.tag] = protocol;
+                            if (this.options.debug) console.log(`  ✅ Successfully loaded protocol: '${protocol.tag}'`);
+                        }
+                    } catch (e) {
+                        console.error(`  ❌ CRITICAL: Failed to load protocol from ${protocolPath}`, e);
+                    }
+                });
+                await Promise.all(protocolPromises);
+            }
+        } catch(e) {
+            if (this.options.debug) console.warn(`LinguisticBrain: Could not load protocols directory. This may be normal in a browser environment.`, e.message || e);
         }
-
-        // ... (Protocol loading logic remains the same)
 
         console.log('\n[Brain.init] Step 2: Validating required dictionaries for new engines...');
         const requiredForSemantic = {
             CONCEPT_MAP: this.dictionaries.psychological_concepts_engine?.CONCEPT_MAP,
             AFFIX_DICTIONARY: this.dictionaries.affixes?.AFFIX_DICTIONARY,
             STOP_WORDS_SET: this.dictionaries.stop_words,
-            EMOTIONAL_ANCHORS_DICTIONARY: this.dictionaries.emotional_anchors?.EMOTIONAL_DICTIONARY
+            EMOTIONAL_ANCHORS_DICTIONARY: this.dictionaries.emotional_anchors?.EMOTIONAL_DICTIONARY,
+            CONCEPT_DEFINITIONS: this.dictionaries.psychological_concepts_engine?.CONCEPT_DEFINITIONS // --- [الإصلاح النهائي] ---
         };
 
         for (const [key, value] of Object.entries(requiredForSemantic)) {
@@ -135,7 +135,7 @@ export class LinguisticBrain {
         console.log('[Brain.init] Step 3: All engines instantiated successfully.');
 
         this._isInitialized = true;
-        console.log(`\n🎉 LinguisticBrain initialized successfully.`);
+        console.log(`\n🎉 LinguisticBrain initialized successfully with ${Object.keys(this.dictionaries).length} dictionaries and ${Object.keys(this.protocols).length} protocols.`);
         return this;
     }
 
@@ -148,56 +148,32 @@ export class LinguisticBrain {
         const start = Date.now();
         if (this.options.debug) console.log('\n[Brain.analyze] Starting analysis pipeline...');
         
-        // --- Pipeline: New Generation Engines ---
-        if (this.options.debug) console.log('  [1/4] Running New Generation Engines...');
+        if (this.options.debug) console.log('  [1/3] Running SemanticEngine...');
         const semanticMap = this.engines.semantic.analyze(rawText);
+
+        if (this.options.debug) console.log('  [2/3] Running EmotionEngine...');
         const emotionProfile = this.engines.emotion.analyze(rawText, {
             previousEmotion: context.previousEmotion || null
         });
+
+        if (this.options.debug) console.log('  [3/3] Running SynthesisEngine...');
         const synthesisProfile = this.engines.synthesis.analyze({
             semanticMap: semanticMap,
             emotionProfile: emotionProfile
         });
 
-        // --- Pipeline: Legacy Atomizer Consultation ---
-        if (this.options.debug) console.log('  [2/4] Running Legacy Atomizer for supplementary insights...');
-        let atomizedInsight = null;
-        try {
-            if (typeof atomize !== 'function') {
-                throw new Error("Legacy Atomizer function is not available.");
-            }
-            atomizedInsight = atomize(rawText, {
-                CONCEPTS_MAP: this.legacyKnowledgeBase?.CONCEPTS_MAP,
-                INTENSITY_MODIFIERS: this.legacyKnowledgeBase?.INTENSITY_MODIFIERS,
-                MOTIVATIONAL_MAP: this.legacyKnowledgeBase?.MOTIVATIONAL_MAP,
-                recentMessages: context.recentMessages || []
-            });
-            if (this.options.debug) console.log('    ✅ Legacy Atomizer ran successfully. Found subtext:', atomizedInsight?.subtextIntents);
-        } catch (e) {
-            console.error("    ❌ Error running legacy KnowledgeAtomizer:", e);
-        }
-
-        // --- Pipeline: Fusing All Insights ---
-        if (this.options.debug) console.log('  [3/4] Fusing all insights...');
         const comprehensiveInsight = {
             rawText,
             timestamp: new Date().toISOString(),
             semanticMap,
             emotionProfile,
             synthesisProfile,
-            legacyData: {
-                subtext: atomizedInsight?.subtextIntents || [],
-                relations: atomizedInsight?.relations || [],
-                dissonanceFlags: atomizedInsight?.dissonanceFlags || [],
-                tags: atomizedInsight?.tags || [],
-                atomId: atomizedInsight?.atomId || null
-            },
             _meta: {
                 durationMs: Date.now() - start
             }
         };
 
-        if (this.options.debug) console.log('  [4/4] Pipeline finished. Comprehensive Insight generated.');
+        if (this.options.debug) console.log('[Brain.analyze] Pipeline finished. Insight generated.');
         return comprehensiveInsight;
     }
 
