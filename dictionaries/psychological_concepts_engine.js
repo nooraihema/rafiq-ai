@@ -1,8 +1,10 @@
 // ============================================================================
 // 📘 dictionaries/psychological_concepts_engine.js
-// Psychological Concepts Engine (Definitive Edition v9.0)
+// Psychological Concepts Engine (Definitive Edition v9.1 - Enriched Map)
+// This version includes critical additions to the CONCEPT_MAP to ensure
+// the SemanticEngine can detect core concepts like depression and anxiety.
 // @author Ibrahim Shahat & Gemini
-// @version 9.0
+// @version 9.1
 // ============================================================================
 
 /**
@@ -59,6 +61,22 @@ export const CONCEPT_DEFINITIONS = {
     ],
     risk_level: 0
   },
+  
+  // --- [إضافة] تعريف لأعراض الاكتئاب ليكون القاموس كاملاً ---
+  "depression_symptom": {
+    tags: ["symptom", "state", "mood"],
+    description: "مجموعة من الأعراض المتعلقة بالمزاج المنخفض وفقدان الشغف والطاقة.",
+    example_phrase: "أشعر أن لدي اكتئاب، لا شيء له طعم.",
+    mood_weights: { supportive: 1.5, empowering: 0.2 },
+    interventions: ["professional_help_suggestion", "behavioral_activation", "self_compassion"],
+    probing_questions: ["منذ متى وأنت تشعر بهذا؟", "هل يؤثر هذا الشعور على نومك أو شهيتك؟"],
+    links: [
+      { concept: "helplessness", type: "often_co_occurs_with" },
+      { concept: "passion_loss", type: "is_a_type_of" },
+      { concept: "sadness", type: "often_co_occurs_with" }
+    ],
+    risk_level: 1
+  },
 
   // --------------------------------------------------------------------------
   // 💭 الأنماط المعرفية (Cognitive Patterns)
@@ -109,27 +127,36 @@ export const CONCEPT_DEFINITIONS = {
     ],
     risk_level: 1
   },
-  // ... (تم تطبيق نفس الهيكل على باقي المفاهيم)
+  // ... (يمكن إضافة باقي التعريفات هنا)
 };
 
 // ============================================================================
-// 🧭 Weighted Language Map (Expanded)
+// 🧭 Weighted Language Map (Expanded & Corrected)
 // ============================================================================
 export const CONCEPT_MAP = {
-  // Sadness & Related
+  // --- Sadness, Depression, Grief ---
+  "حزن": [{ concept: "sadness", weight: 1.0 }],
   "حزين": [{ concept: "sadness", weight: 1.0 }],
   "زعلان": [{ concept: "sadness", weight: 0.9 }],
-  "ضيق": [{ concept: "sadness", weight: 0.8 }, { concept: "anxiety", weight: 0.5 }],
   "مكتئب": [{ concept: "depression_symptom", weight: 1.0 }],
+  "اكتئاب": [{ concept: "depression_symptom", weight: 1.0 }],
+  "كآبة": [{ concept: "depression_symptom", weight: 1.0 }],
+  "اكتئاب شديد": [{ concept: "depression_symptom", weight: 1.0 }],
+  "عندي اكتئاب": [{ concept: "depression_symptom", weight: 0.9 }],
+  "حاسس ان عندي اكتئاب": [{ concept: "depression_symptom", weight: 0.95 }],
+  "مخنوق": [{ concept: "sadness", weight: 0.8 }, { concept: "anxiety", weight: 0.6 }, { concept: "helplessness", weight: 0.5 }],
   "قلبي واجعني": [{ concept: "sadness", weight: 0.9 }, { concept: "grief", weight: 0.6 }],
-
-  // Helplessness & Related
-  "يائس": [{ concept: "helplessness", weight: 1.0 }],
+  "ضيق": [{ concept: "sadness", weight: 0.7 }, { concept: "anxiety", weight: 0.5 }],
+  "الدنيا سودة": [{ concept: "depression_symptom", weight: 0.9 }, { concept: "helplessness", weight: 0.8 }],
+  
+  // --- Helplessness & Related ---
+  "يأس": [{ concept: "helplessness", weight: 0.9 }, { concept: "depression_symptom", weight: 0.8 }],
+  "يائس": [{ concept: "sadness", weight: 0.8 }, { concept: "helplessness", weight: 0.7 }],
   "عاجز": [{ concept: "helplessness", weight: 1.0 }],
   "مستسلم": [{ concept: "helplessness", weight: 0.8 }, { concept: "inaction", weight: 0.5 }],
   "الدنيا مقفلة": [{ concept: "helplessness", weight: 1.0 }, { concept: "catastrophizing", weight: 0.4 }],
 
-  // Existential & Identity
+  // --- Existential & Identity ---
   "مش لاقي معنى": [{ concept: "meaning_crisis", weight: 1.0 }],
   "حياتي فاضية": [{ concept: "meaning_crisis", weight: 0.9 }],
   "تايه": [{ concept: "identity_confusion", weight: 0.8 }, { concept: "helplessness", weight: 0.5 }],
@@ -148,12 +175,12 @@ export class ConceptEngine {
   }
 
   analyzeText(text) {
-    // In a real scenario, use a more advanced tokenizer that handles phrases
+    // This is a simplified placeholder. The actual analysis is done by SemanticEngine.
+    // This class is kept for structural integrity and future use.
     const tokens = text.split(/\s+/);
     const profile = {};
     const foundConcepts = [];
 
-    // This logic should be expanded to match phrases from CONCEPT_MAP
     for (const token of tokens) {
       const mappings = this.map[token];
       if (mappings) {
@@ -171,12 +198,6 @@ export class ConceptEngine {
     return { profile, concepts: foundConcepts };
   }
 
-  /**
-   * Recommends next steps for the top N most relevant concepts.
-   * @param {Object} profile - The concept profile from analyzeText.
-   * @param {number} [top_n=1] - Number of top concepts to generate recommendations for.
-   * @returns {any[]}
-   */
   recommendNextSteps(profile, top_n = 1) {
     if (!Object.keys(profile).length) return [];
 
