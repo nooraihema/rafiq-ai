@@ -1,14 +1,14 @@
 // /analysis_engines/catharsis_engine.js
-// CatharsisEngine v1.8 - Bilingual Protocol Matching Update
-// This version introduces a smarter protocol matching strategy that uses the
-// original source tokens from the SemanticMap to match against protocol keywords.
+// CatharsisEngine v1.9 - Final Fix for Protocol Matching & Gem Selection
+// This version implements a robust, bilingual matching strategy and ensures the
+// gem selection process is crash-proof.
 
 import { sample, getTopN } from '../core/utils.js';
 
 export class CatharsisEngine {
   constructor(dictionaries = {}, protocols = {}, memorySystem = {}) {
     if (!dictionaries.GENERATIVE_ENGINE || !dictionaries.GENERATIVE_ENGINE.ResponseOrchestrator) {
-      throw new Error("CatharsisEngine v1.8 requires dictionaries.GENERATIVE_ENGINE.ResponseOrchestrator.");
+      throw new Error("CatharsisEngine v1.9 requires dictionaries.GENERATIVE_ENGINE.ResponseOrchestrator.");
     }
 
     const GenerativeOrchestratorClass = dictionaries.GENERATIVE_ENGINE.ResponseOrchestrator;
@@ -90,37 +90,28 @@ export class CatharsisEngine {
     return arc;
   }
 
-  _calculateConceptualOverlap(conceptList = [], protocolKeywords = []) { /* ... (لا تغيير) ... */ }
-
   /**
-   * [BILINGUAL MATCHING v1.8]
-   * Matches protocols by comparing their Arabic keywords against the original
-   * Arabic source tokens that triggered the English concepts.
+   * [FINAL FIX] Matches protocols using all available evidence.
    */
   _matchProtocols(insight) {
     const scores = new Map();
     
-    // --- [الإصلاح] ---
-    // 1. استخلاص المفاهيم الإنجليزية كدليل.
     const concepts = Object.keys(insight?.semanticMap?.conceptInsights || {});
-    // 2. استخلاص الكلمات العربية الأصلية التي أدت لهذه المفاهيم.
-    const sourceTokens = new Set(Object.values(insight?.semanticMap?.conceptInsights || {}).flatMap(i => i.sourceTokens));
+    const sourceTokens = [...new Set(Object.values(insight?.semanticMap?.conceptInsights || {}).flatMap(i => i.sourceTokens))];
+    const allEvidence = [...new Set([...concepts, ...sourceTokens])];
 
-    if (this.debug) console.log(`[Catharsis] Matching with evidence: Concepts:[${concepts.join(', ')}] and SourceTokens:[${[...sourceTokens].join(', ')}]`);
+    if (this.debug) console.log(`[Catharsis] Matching with All Evidence:`, allEvidence);
 
     for (const [tag, protocol] of Object.entries(this.protocols || {})) {
         let score = 0;
         const keywords = protocol.nlu?.keywords?.map(k => k.word) || [];
 
-        // 3. مقارنة الكلمات العربية في البروتوكول مع الكلمات العربية المصدر.
-        const intersection = keywords.filter(kw => sourceTokens.has(kw));
+        const intersection = keywords.filter(kw => allEvidence.includes(kw));
         
         if (intersection.length > 0) {
-            score = intersection.length * 2.0; // نعطي أعلى وزن للتطابق المباشر
-            if (this.debug) console.log(`  - Protocol '${tag}' got +${score} score for direct keyword match: [${intersection.join(', ')}]`);
+            score = intersection.length * 2.0;
+            if (this.debug) console.log(`  - Protocol '${tag}' got +${score} score for direct match on: [${intersection.join(', ')}]`);
         }
-        
-        // 4. (اختياري) يمكن إضافة منطق إضافي هنا للمطابقة مع المفاهيم الإنجليزية كشبكة أمان
         
         if (score > 0) {
             scores.set(tag, score);
@@ -134,10 +125,96 @@ export class CatharsisEngine {
     return getTopN(Object.fromEntries(scores), 2).map(it => it.key);
   }
 
-  _selectGem(intent, matchedProtocols) { /* ... (لا تغيير) ... */ }
-  _blendDNA(affectVector = {}) { /* ... (لا تغيير) ... */ }
-  _evaluateEmotionalCoherence(generatedText = '', affectVector = {}, arc = []) { /* ... (لا تغيير) ... */ }
-  _applyEchoClosure(text, dnaMeta = {}) { /* ... (لا تغيير) ... */ }
+  /**
+   * [FINAL FIX] Selects a gem, ensuring it never crashes.
+   */
+  _selectGem(intent, matchedProtocols) {
+    if (this.debug) console.log(`[Catharsis] Selecting gem for intent: '${intent.intent}'`);
+    
+    const fallbackGems = ["أنا سامعك وبقلب معك.", "ده شيء صعب، وشجاعتك في قول ده واضحة.", "خليني معاك خطوة خطوة."];
+    let selection = { gem: sample(fallbackGems), source: 'fallback' };
+
+    for (const protocolTag of matchedProtocols) {
+      const protocol = this.protocols[protocolTag];
+      if (!protocol) continue;
+      if (this.debug) console.log(`  - Searching in protocol: '${protocolTag}'`);
+
+      for (const roomName in (protocol.conversation_rooms || {})) {
+        const room = protocol.conversation_rooms[roomName];
+        const key = intent.intent || intent;
+        
+        const bank = room.dynamic_gems_logic?.gems_bank || room.gems_bank;
+        if (bank?.[key]?.length) {
+          const gem = sample(bank[key]);
+          if (this.debug) console.log(`    > Found gem in bank '${roomName}': "${gem}"`);
+          selection = { gem, source: `${protocolTag}/${room.purpose}` };
+          return selection;
+        }
+      }
+    }
+
+    if (this.debug) console.log(`  - No specific gem found. Using fallback: "${selection.gem}"`);
+    return selection;
+  }
+
+  _blendDNA(affectVector = {}) {
+    if (this.generativeOrchestrator && typeof this.generativeOrchestrator.mixDNA === 'function') {
+      try {
+        return this.generativeOrchestrator.mixDNA(affectVector);
+      } catch (e) { /* fall through */ }
+    }
+    const styles = [];
+    if ((affectVector.sadness || 0) > 0.5) styles.push('poetic');
+    if ((affectVector.anxiety || 0) > 0.5) styles.push('grounded');
+    if ((affectVector.joy || 0) > 0.5) styles.push('tender');
+    if (styles.length === 0) styles.push(this.DNA_BLEND_DEFAULT);
+    return { style: styles.join('+'), meta: { blendedFrom: styles } };
+  }
+
+  _evaluateEmotionalCoherence(generatedText = '', affectVector = {}, arc = []) {
+    if (this.generativeOrchestrator && typeof this.generativeOrchestrator.evaluateEmotionCoherence === 'function') {
+      try {
+        return this.generativeOrchestrator.evaluateEmotionCoherence(generatedText, affectVector);
+      } catch (e) { /* fallback */ }
+    }
+
+    const aggregateIntentSignature = {};
+    for (const step of arc) {
+      const sig = this.INTENT_EMOTION_SIGNATURES[step.intent] || {};
+      for (const [k, v] of Object.entries(sig)) {
+        aggregateIntentSignature[k] = (aggregateIntentSignature[k] || 0) + v;
+      }
+    }
+    const keys = Array.from(new Set([...Object.keys(aggregateIntentSignature), ...Object.keys(affectVector)]));
+    let dot = 0, magA = 0, magB = 0;
+    for (const k of keys) {
+      const a = aggregateIntentSignature[k] || 0;
+      const b = affectVector[k] || 0;
+      dot += a * b;
+      magA += a * a;
+      magB += b * b;
+    }
+    if (magA === 0 || magB === 0) return 0.5;
+    const sim = dot / (Math.sqrt(magA) * Math.sqrt(magB));
+    const score = Math.min(0.95, Math.max(0.2, sim));
+    return Number(score.toFixed(3));
+  }
+
+  _applyEchoClosure(text, dnaMeta = {}) {
+    const style = (dnaMeta && (dnaMeta.style || dnaMeta)) || this.DNA_BLEND_DEFAULT;
+    const echoes = {
+      poetic: "\nأحيانًا يكفي أن نستمع لنبض داخلك بصمت.",
+      grounded: "\nخذ نفسًا عميقًا الآن — أنت على الطريق الصحيح خطوة بخطوة.",
+      tender: "\nأنت لست وحدكِ/وحيدًا؛ هذا الشعور يُرى ويُقدّر.",
+      'dynamic': "\nلو حابب، أحب أسمع منك المزيد."
+    };
+    for (const key of Object.keys(echoes)) {
+      if (style.includes(key)) {
+        return text + echoes[key];
+      }
+    }
+    return text + "\nأنا هنا إذا أحببت أن تكمل الحديث.";
+  }
 
   async generateResponse(comprehensiveInsight = {}) {
     const insight = comprehensiveInsight || {};
@@ -145,7 +222,7 @@ export class CatharsisEngine {
       console.log("\n--- [CatharsisEngine] Received Comprehensive Insight ---");
       console.log("Primary Emotion:", insight.emotionProfile?.primaryEmotion);
       console.log("Pivotal Concept:", insight.semanticMap?.pivotalConcept);
-      console.log("All Concepts:", insight.semanticMap?.allConcepts); //  لمعرفة كل المفاهيم
+      console.log("All Concepts:", insight.semanticMap?.allConcepts);
       console.log("Dominant Pattern:", insight.synthesisProfile?.dominantPattern?.pattern_id);
       console.log("Core Conflict:", insight.synthesisProfile?.coreConflict?.tension_id);
     }
