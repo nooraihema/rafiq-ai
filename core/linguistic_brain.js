@@ -1,3 +1,4 @@
+
 // /core/linguistic_brain.js
 // LinguisticBrain v3.0 - Pure Architecture
 // This version removes all dependencies on legacy systems (like KnowledgeAtomizer)
@@ -63,28 +64,41 @@ export class LinguisticBrain {
         await Promise.all(promises);
         console.log('[Brain.init] Step 1: Dictionary loading finished.');
 
-        // Protocol loading logic
+        // Protocol loading logic with detailed logging
         try {
             const fs = await import('fs');
             if (fs.existsSync(this.options.protocolsPath)) {
                 const protocolFiles = fs.readdirSync(this.options.protocolsPath).filter(file => file.endsWith('.js'));
-                 const protocolPromises = protocolFiles.map(async (file) => {
+                if (protocolFiles.length === 0 && this.options.debug) {
+                    console.warn(`⚠️ No protocol files found in ${this.options.protocolsPath}`);
+                }
+
+                const protocolPromises = protocolFiles.map(async (file) => {
                     const protocolPath = path.join(this.options.protocolsPath, file);
                     try {
                         const mod = await import(new URL(`file://${protocolPath}`).href);
                         const protocol = mod.default || mod;
-                        if (protocol.tag) {
+
+                        if (protocol && protocol.tag) {
                             this.protocols[protocol.tag] = protocol;
                             if (this.options.debug) console.log(`  ✅ Successfully loaded protocol: '${protocol.tag}'`);
+                        } else if (this.options.debug) {
+                            console.warn(`⚠️ Protocol in file '${file}' does not have a valid 'tag'. It will be ignored.`);
                         }
                     } catch (e) {
-                        console.error(`  ❌ CRITICAL: Failed to load protocol from ${protocolPath}`, e);
+                        console.error(`  ❌ Failed to load protocol from '${protocolPath}':`, e.message || e);
                     }
                 });
                 await Promise.all(protocolPromises);
+
+                if (Object.keys(this.protocols).length === 0 && this.options.debug) {
+                    console.warn(`⚠️ No protocols were successfully loaded from ${this.options.protocolsPath}`);
+                }
+            } else if (this.options.debug) {
+                console.warn(`⚠️ Protocols directory does not exist: ${this.options.protocolsPath}`);
             }
         } catch(e) {
-            if (this.options.debug) console.warn(`LinguisticBrain: Could not load protocols directory. This may be normal in a browser environment.`, e.message || e);
+            if (this.options.debug) console.warn(`⚠️ Could not load protocols directory. This may be normal in a browser environment.`, e.message || e);
         }
 
         console.log('\n[Brain.init] Step 2: Validating required dictionaries for new engines...');
@@ -93,7 +107,7 @@ export class LinguisticBrain {
             AFFIX_DICTIONARY: this.dictionaries.affixes?.AFFIX_DICTIONARY,
             STOP_WORDS_SET: this.dictionaries.stop_words,
             EMOTIONAL_ANCHORS_DICTIONARY: this.dictionaries.emotional_anchors?.EMOTIONAL_DICTIONARY,
-            CONCEPT_DEFINITIONS: this.dictionaries.psychological_concepts_engine?.CONCEPT_DEFINITIONS // --- [الإصلاح النهائي] ---
+            CONCEPT_DEFINITIONS: this.dictionaries.psychological_concepts_engine?.CONCEPT_DEFINITIONS
         };
 
         for (const [key, value] of Object.entries(requiredForSemantic)) {
@@ -204,3 +218,4 @@ export class LinguisticBrain {
 }
 
 export default LinguisticBrain;
+
