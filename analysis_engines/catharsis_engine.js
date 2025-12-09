@@ -1,10 +1,10 @@
-
 // /analysis_engines/catharsis_engine.js
-// CatharsisEngine v1.9 - Protocol-tolerant & Verbose Logs (Modified)
-// Final Fix for Protocol Matching & Gem Selection
-// This version implements a robust, bilingual matching strategy and ensures the
-// gem selection process is crash-proof. Added tolerant intent-key resolution
-// and verbose logging for debugging protocol loading/matching issues.
+// CatharsisEngine v1.9 - Protocol-tolerant & Verbose Logs (Adapted for ResponseOrchestrator v1.0)
+// Compatibility fixes:
+//  - Use ResponseOrchestrator.generate(...) when render(...) / mixDNA(...) are not available.
+//  - Build conceptProfile + emotionalProfile from comprehensiveInsight to feed the new orchestrator API.
+//  - Try both public and internal mix functions on the orchestrator, but fall back to internal heuristics.
+//  - Preserve verbose debug logs and the tolerant gem lookup.
 
 import { sample, getTopN } from '../core/utils.js';
 
@@ -15,14 +15,15 @@ export class CatharsisEngine {
     }
 
     const GenerativeOrchestratorClass = dictionaries.GENERATIVE_ENGINE.ResponseOrchestrator;
+    // The ResponseOrchestrator in the provided file expects { dnaLibrary, lexicalPools, memory }
     this.generativeOrchestrator = new GenerativeOrchestratorClass({
       dnaLibrary: dictionaries.GENERATIVE_ENGINE.EMOTIONAL_DNA || {},
       lexicalPools: dictionaries.GENERATIVE_ENGINE.LEXICAL_POOLS || {},
       memory: memorySystem
     });
 
-    this.protocols = protocols;
-    this.memory = memorySystem;
+    this.protocols = protocols || {};
+    this.memory = memorySystem || null;
     this.debug = true;
 
     // Tunables
@@ -48,7 +49,6 @@ export class CatharsisEngine {
 
     const base = (typeof intent === 'string') ? intent.toLowerCase() : (intent.intent ? String(intent.intent).toLowerCase() : '');
     const candidates = new Set();
-
     if (base) candidates.add(base);
 
     const synonymMap = {
@@ -171,7 +171,7 @@ export class CatharsisEngine {
 
   _matchProtocols(insight) {
     const scores = new Map();
-    
+
     const concepts = Object.keys(insight?.semanticMap?.conceptInsights || {});
     const sourceTokens = [...new Set(Object.values(insight?.semanticMap?.conceptInsights || {}).flatMap(i => i.sourceTokens || []))];
     const allEvidence = [...new Set([...concepts.map(c => String(c)), ...sourceTokens.map(s => String(s))])];
@@ -179,36 +179,34 @@ export class CatharsisEngine {
     if (this.debug) console.log(`[Catharsis] Matching with All Evidence:`, allEvidence);
 
     for (const [tag, protocol] of Object.entries(this.protocols || {})) {
-        let score = 0;
-        const keywords = (protocol.nlu?.keywords?.map(k => k.word) || []).map(w => String(w));
-        const lowerKeywords = keywords.map(k => k.toLowerCase());
+      let score = 0;
+      const keywords = (protocol.nlu?.keywords?.map(k => k.word) || []).map(w => String(w));
+      const lowerKeywords = keywords.map(k => k.toLowerCase());
 
-        const intersection = lowerKeywords.filter(kw => allEvidence.some(ev => String(ev).toLowerCase() === kw));
-        
-        if (intersection.length > 0) {
-            score = intersection.length * 2.0;
-            if (this.debug) console.log(`  - Protocol '${tag}' got +${score} score for direct match on: [${intersection.join(', ')}]`);
-        } else {
-          for (const kw of lowerKeywords) {
-            for (const ev of allEvidence) {
-              const evL = String(ev).toLowerCase();
-              if (evL.includes(kw) || kw.includes(evL)) {
-                score += 1.0;
-                if (this.debug) console.log(`  - Protocol '${tag}' fuzzy match +1 for keyword='${kw}' vs evidence='${evL}'`);
-              }
+      const intersection = lowerKeywords.filter(kw => allEvidence.some(ev => String(ev).toLowerCase() === kw));
+
+      if (intersection.length > 0) {
+        score = intersection.length * 2.0;
+        if (this.debug) console.log(`  - Protocol '${tag}' got +${score} score for direct match on: [${intersection.join(', ')}]`);
+      } else {
+        for (const kw of lowerKeywords) {
+          for (const ev of allEvidence) {
+            const evL = String(ev).toLowerCase();
+            if (evL.includes(kw) || kw.includes(evL)) {
+              score += 1.0;
+              if (this.debug) console.log(`  - Protocol '${tag}' fuzzy match +1 for keyword='${kw}' vs evidence='${evL}'`);
             }
           }
         }
-        
-        if (score > 0) {
-            scores.set(tag, score);
-        }
+      }
+
+      if (score > 0) scores.set(tag, score);
     }
-    
+
     if (this.debug && scores.size > 0) {
-        console.log('[Catharsis] Protocol Match Scores:', Object.fromEntries(scores));
+      console.log('[Catharsis] Protocol Match Scores:', Object.fromEntries(scores));
     } else if (this.debug) {
-        console.log('[Catharsis] No protocol scored above 0 with current evidence.');
+      console.log('[Catharsis] No protocol scored above 0 with current evidence.');
     }
 
     return getTopN(Object.fromEntries(scores), 2).map(it => it.key);
@@ -217,7 +215,7 @@ export class CatharsisEngine {
   _selectGem(intent, matchedProtocols) {
     const intentName = (intent && (intent.intent || intent)) || intent;
     if (this.debug) console.log(`[Catharsis] Selecting gem for intent: '${intentName}'`);
-    
+
     const fallbackGems = ["أنا سامعك وبقلب معك.", "ده شيء صعب، وشجاعتك في قول ده واضحة.", "خليني معاك خطوة خطوة."];
     let selection = { gem: sample(fallbackGems), source: 'fallback' };
 
@@ -264,13 +262,25 @@ export class CatharsisEngine {
   }
 
   _blendDNA(affectVector = {}) {
-    if (this.generativeOrchestrator && typeof this.generativeOrchestrator.mixDNA === 'function') {
-      try {
-        return this.generativeOrchestrator.mixDNA(affectVector);
-      } catch (e) { 
-        if (this.debug) console.warn('[blendDNA] mixDNA threw an error, falling back.', e);
+    // Prefer public mixDNA, then internal _mixDNA (ResponseOrchestrator), else fallback heuristic.
+    try {
+      if (this.generativeOrchestrator) {
+        if (typeof this.generativeOrchestrator.mixDNA === 'function') {
+          if (this.debug) console.log('[blendDNA] Using generativeOrchestrator.mixDNA');
+          return this.generativeOrchestrator.mixDNA(affectVector);
+        }
+        if (typeof this.generativeOrchestrator._mixDNA === 'function') {
+          if (this.debug) console.log('[blendDNA] Using generativeOrchestrator._mixDNA (internal)');
+          // _mixDNA expects (affectVector, topIntents) in the provided ResponseOrchestrator; call defensively.
+          try { return this.generativeOrchestrator._mixDNA(affectVector, []); } catch (e) { /* ignore */ }
+          return this.generativeOrchestrator._mixDNA(affectVector);
+        }
       }
+    } catch (e) {
+      if (this.debug) console.warn('[blendDNA] orchestrator mix attempt failed, falling back.', e);
     }
+
+    // Heuristic fallback
     const styles = [];
     if ((affectVector.sadness || 0) > 0.5) styles.push('poetic');
     if ((affectVector.anxiety || 0) > 0.5) styles.push('grounded');
@@ -280,14 +290,7 @@ export class CatharsisEngine {
   }
 
   _evaluateEmotionalCoherence(generatedText = '', affectVector = {}, arc = []) {
-    if (this.generativeOrchestrator && typeof this.generativeOrchestrator.evaluateEmotionCoherence === 'function') {
-      try {
-        return this.generativeOrchestrator.evaluateEmotionCoherence(generatedText, affectVector);
-      } catch (e) { 
-        if (this.debug) console.warn('[evaluateEmotionalCoherence] orchestrator threw, using heuristic.', e);
-      }
-    }
-
+    // keep internal heuristic evaluation (the ResponseOrchestrator doesn't export an evaluator)
     const aggregateIntentSignature = {};
     for (const step of arc) {
       const sig = this.INTENT_EMOTION_SIGNATURES[step.intent] || {};
@@ -328,7 +331,7 @@ export class CatharsisEngine {
 
   async generateResponse(comprehensiveInsight = {}) {
     const insight = comprehensiveInsight || {};
-if (this.debug) {
+    if (this.debug) {
       console.log("\n--- [CatharsisEngine] Received Comprehensive Insight ---");
       console.log("Primary Emotion:", insight.emotionProfile?.primaryEmotion);
       console.log("Pivotal Concept:", insight.semanticMap?.pivotalConcept);
@@ -336,7 +339,7 @@ if (this.debug) {
       console.log("Dominant Pattern:", insight.synthesisProfile?.dominantPattern?.pattern_id);
       console.log("Core Conflict:", insight.synthesisProfile?.coreConflict?.tension_id);
     }
-    
+
     const responseArc = this._designResponseArc(insight);
     if (this.debug) console.log("\n[Catharsis] Step 1: Designed Response Arc:", responseArc.map(a => a.intent));
 
@@ -358,101 +361,109 @@ if (this.debug) {
     const dnaBlend = this._blendDNA(affectVector);
     if (this.debug) console.log("[Catharsis] Step 4: Determined DNA Blend:", dnaBlend);
 
+    // Build conceptProfile for orchestrator.generate if needed
+    const conceptProfile = {};
+    const conceptInsights = insight.semanticMap?.conceptInsights || {};
+    for (const [k, v] of Object.entries(conceptInsights || {})) {
+      // accept common shapes {score: n} or numeric
+      if (v && typeof v === 'object') {
+        conceptProfile[k] = (v.score || v.weight || 0.0);
+      } else if (typeof v === 'number') {
+        conceptProfile[k] = v;
+      } else {
+        conceptProfile[k] = 0.0;
+      }
+    }
+
     const context = {
       username: (this.memory && this.memory.getUserProfile && this.memory.getUserProfile()?.name) || null,
       primaryEmotion: (insight.emotionProfile && insight.emotionProfile.primaryEmotion && insight.emotionProfile.primaryEmotion.name) || null,
       primaryConcept: (insight.semanticMap && insight.semanticMap.pivotalConcept) || null,
-      arc: responseArc
+      arc: responseArc,
+      rawGems
     };
 
     let finalResponse = { text: '', meta: {} };
-    try {
-      if (this.debug) console.log("[Catharsis] Rendering via GenerativeOrchestrator with rawGems:", rawGems);
-      
-      // ======= التعديل هنا =======
-      if (typeof this.generativeOrchestrator.generate === 'function') {
-        const genOutput = await this.generativeOrchestrator.generate({
-          conceptProfile: rawGems,
-          emotionalProfile: affectVector,
-          context
-        });
-        finalResponse.text = genOutput?.text || rawGems.join(' ');
-        finalResponse.meta = { dna: dnaBlend };
-      } else {
-        finalResponse.text = rawGems.join(' ');
-        finalResponse.meta = { dna: dnaBlend, error: 'No generate() function found, fallback join used.' };
-      }
-      // ============================
 
+    // Prefer orchestrator.render(rawGems, opts) if it exists (backwards-compat),
+    // otherwise use orchestrator.generate({ conceptProfile, emotionalProfile, context })
+    try {
+      if (this.generativeOrchestrator && typeof this.generativeOrchestrator.render === 'function') {
+        if (this.debug) console.log("[Catharsis] Rendering via generativeOrchestrator.render(rawGems, ...)");
+        finalResponse = await this.generativeOrchestrator.render(rawGems, { dnaStyle: dnaBlend, context });
+      } else if (this.generativeOrchestrator && typeof this.generativeOrchestrator.generate === 'function') {
+        if (this.debug) console.log("[Catharsis] Rendering via generativeOrchestrator.generate({ conceptProfile, emotionalProfile, context })");
+        // generate may be sync; normalize to promise
+        const out = this.generativeOrchestrator.generate({
+          conceptProfile,
+          emotionalProfile: affectVector,
+          context: JSON.stringify(context)
+        });
+        finalResponse = await Promise.resolve(out);
+      } else {
+        if (this.debug) console.log("[Catharsis] No orchestrator rendering function found — falling back to raw join");
+        finalResponse = { text: rawGems.join(' '), meta: { dna: dnaBlend } };
+      }
     } catch (e) {
       if (this.debug) console.error("[Catharsis] Generative render failed, falling back to raw join.", e);
       finalResponse = { text: rawGems.join(' '), meta: { dna: dnaBlend, error: 'Render failed, used fallback join.' } };
     }
     if (this.debug) console.log(`[Catharsis] Step 5: Initial Rendered Text: "${finalResponse.text}"`);
 
+    // If orchestrator returned meta.dna use it; otherwise include our blend
+    finalResponse.meta = finalResponse.meta || {};
+    if (!finalResponse.meta.dna) finalResponse.meta.dna = dnaBlend;
+
     const qualityScore = this._evaluateEmotionalCoherence(finalResponse.text, affectVector, responseArc);
     if (this.debug) console.log(`[Catharsis] Step 6: Emotional Quality Score: ${qualityScore}`);
 
+    // Attempt regeneration with more neutral DNA if quality low
     if (qualityScore < this.MIN_EMOTIONAL_INTEGRITY) {
       if (this.debug) console.log(`  - Quality score is low (${qualityScore}). Attempting regeneration with a more neutral DNA.`);
-      const fallbackBlend = (typeof dnaBlend === 'object' && dnaBlend.style) ? { style: 'dynamic' } : 'dynamic';
       try {
-        if (typeof this.generativeOrchestrator.generate === 'function') {
-          const regen = await this.generativeOrchestrator.generate({
-            conceptProfile: rawGems,
-            emotionalProfile: affectVector,
-            context
+        const neutralAffect = { ...affectVector };
+        // dampen extremes
+        for (const k of Object.keys(neutralAffect)) neutralAffect[k] = Math.max(0, neutralAffect[k] * 0.55);
+
+        const neutralBlend = this._blendDNA(neutralAffect) || { style: 'dynamic' };
+
+        if (this.generativeOrchestrator && typeof this.generativeOrchestrator.render === 'function') {
+          finalResponse = await this.generativeOrchestrator.render(rawGems, { dnaStyle: neutralBlend, context });
+        } else if (this.generativeOrchestrator && typeof this.generativeOrchestrator.generate === 'function') {
+          const regenOut = this.generativeOrchestrator.generate({
+            conceptProfile,
+            emotionalProfile: neutralAffect,
+            context: JSON.stringify({ ...context, regen: true })
           });
-          const regenQuality = this._evaluateEmotionalCoherence(regen.text, affectVector, responseArc);
-          if (this.debug) console.log(`  - Regeneration quality: ${regenQuality} (vs ${qualityScore})`);
-          if (regenQuality >= qualityScore) {
-            finalResponse.text = regen.text;
-            finalResponse.meta = { dna: fallbackBlend };
-            if (this.debug) console.log(`  - Regeneration successful. New text: "${regen.text}"`);
-          } else {
-            if (this.debug) console.log('  - Regeneration did not improve quality; keeping original render.');
-          }
+          finalResponse = await Promise.resolve(regenOut);
+        } else {
+          // fallback join with echo closure
+          finalResponse = { text: this._applyEchoClosure(rawGems.join(' '), neutralBlend), meta: { dna: neutralBlend, regen: 'fallback' } };
         }
-      } catch (e) { 
-        if (this.debug) console.error('[Catharsis] Regeneration attempt failed.', e);
+        finalResponse.meta = finalResponse.meta || {};
+        if (!finalResponse.meta.dna) finalResponse.meta.dna = neutralBlend;
+
+        if (this.debug) console.log(`[Catharsis] Regenerated text: "${finalResponse.text}"`);
+      } catch (e) {
+        if (this.debug) console.error("[Catharsis] Regeneration attempt failed.", e);
       }
     }
 
-    const finalTextWithEcho = this._applyEchoClosure(finalResponse.text, finalResponse.meta && (finalResponse.meta.dna || finalResponse.meta));
-    const out = {
-      responseText: finalTextWithEcho,
-      _meta: {
-        arc: responseArc,
-        matchedProtocols,
-        assembledGems,
-        dnaUsed: finalResponse.meta && finalResponse.meta.dna ? finalResponse.meta.dna : dnaBlend,
-        qualityScore: Number(qualityScore.toFixed(3))
-      }
-    };
-    
-    if (this.debug) console.log(`\n[Catharsis] Step 7: Final Response Payload Ready:`, out);
-
+    // Final echo / closure to ensure stylistic tie-off
     try {
-        if (this.memory && typeof this.memory.recordInteraction === 'function') {
-            this.memory.recordInteraction({
-                user: (insight.rawText || (insight.semanticMap && insight.semanticMap.rawText)) || '',
-                ai: finalTextWithEcho,
-                insightSummary: {
-                  primaryEmotion: insight.emotionProfile && insight.emotionProfile.primaryEmotion,
-                  primaryConcept: insight.semanticMap && insight.semanticMap.pivotalConcept,
-                  topHypothesis: (insight.synthesisProfile && insight.synthesisProfile.cognitiveHypotheses && insight.synthesisProfile.cognitiveHypotheses[0]) || null
-                },
-                timestamp: Date.now()
-            });
-            if (this.debug) console.log('[Catharsis] Interaction recorded to memory.');
-        }
-    } catch (e) { 
-        if (this.debug) console.error('[Catharsis] Memory.recordInteraction failed (non-fatal).', e);
+      const dnaMeta = finalResponse.meta && finalResponse.meta.dna ? finalResponse.meta.dna : dnaBlend;
+      finalResponse.text = this._applyEchoClosure(finalResponse.text, dnaMeta);
+    } catch (e) {
+      if (this.debug) console.warn("[Catharsis] _applyEchoClosure failed:", e);
     }
 
-    return out;
+    if (this.memory && this.memory.record) {
+      try { this.memory.record(finalResponse.text); } catch (e) { /* ignore */ }
+    }
+
+    if (this.debug) console.log(`[Catharsis] Final Response: "${finalResponse.text}"`);
+    return finalResponse;
   }
 }
 
 export default CatharsisEngine;
-
