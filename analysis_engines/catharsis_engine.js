@@ -43,21 +43,14 @@ export class CatharsisEngine {
     };
   }
 
-  /**
-   * Generate candidate keys for an intent so protocol keys with different
-   * naming conventions can be matched.
-   * Returns array of lowercase candidate strings.
-   */
   _intentCandidates(intent) {
     if (!intent) return [];
 
     const base = (typeof intent === 'string') ? intent.toLowerCase() : (intent.intent ? String(intent.intent).toLowerCase() : '');
     const candidates = new Set();
 
-    // always include raw
     if (base) candidates.add(base);
 
-    // common synonyms and protocol-specific aliases
     const synonymMap = {
       grounding: ['grounding', 'normalization', 'ground', 'ground_bank', 'grounding_bank'],
       hope_injection: ['hope_injection', 'hope', 'hope_bank', 'hope_inject', 'injection'],
@@ -76,16 +69,13 @@ export class CatharsisEngine {
       validation_short: ['validation_short']
     };
 
-    // add mapped synonyms
     for (const [k, arr] of Object.entries(synonymMap)) {
       if (k === base || arr.includes(base)) {
         arr.forEach(x => candidates.add(x));
-        // also add base name itself (k) if not present
         candidates.add(k);
       }
     }
 
-    // also add probable simple variations
     if (base.includes('action')) {
       ['action_prompt', 'action', 'action_proposal', 'action_proposal_immediate'].forEach(x => candidates.add(x));
     }
@@ -99,23 +89,14 @@ export class CatharsisEngine {
       ['normalization', 'grounding', 'ground'].forEach(x => candidates.add(x));
     }
 
-    // always include original token again, and common protocol keys
     ['empathy','normalization','action_prompt','invitation','validation','insight','encouragement','gratitude','reframe','validation','kindness','validation_short'].forEach(x => candidates.add(x));
 
-    // return array normalized
     return Array.from(candidates).filter(Boolean).map(s => String(s).toLowerCase());
   }
 
-  /**
-   * Helper: try to find a gem inside a bank by flexible candidate matching.
-   * - bank: object of arrays
-   * - candidates: array of candidate keys (lowercase)
-   * Returns found gem or null.
-   */
   _findGemInBank(bank = {}, candidates = [], roomName = '', protocolTag = '') {
     if (!bank || typeof bank !== 'object') return null;
 
-    // first try exact matches on candidate keys
     for (const cand of candidates) {
       if (Object.prototype.hasOwnProperty.call(bank, cand) && Array.isArray(bank[cand]) && bank[cand].length) {
         if (this.debug) console.log(`      [findGem] Exact match for '${cand}' in room '${roomName}' of protocol '${protocolTag}'`);
@@ -123,12 +104,10 @@ export class CatharsisEngine {
       }
     }
 
-    // next try case-insensitive property matching and substring matching
     const bankKeys = Object.keys(bank || {});
     for (const key of bankKeys) {
       const keyLower = String(key).toLowerCase();
       for (const cand of candidates) {
-        // if bank key contains candidate or vice versa
         if (keyLower === cand || keyLower.includes(cand) || cand.includes(keyLower)) {
           const arr = bank[key];
           if (Array.isArray(arr) && arr.length) {
@@ -139,13 +118,9 @@ export class CatharsisEngine {
       }
     }
 
-    // no gem found
     return null;
   }
 
-  /**
-   * Adaptive arc design - shapes arc based on emotionProfile & synthesisProfile
-   */
   _designResponseArc(insight) {
     const arc = [];
     const emotion = (insight && insight.emotionProfile && insight.emotionProfile.primaryEmotion) || { name: 'neutral', score: 0 };
@@ -194,9 +169,6 @@ export class CatharsisEngine {
     return arc;
   }
 
-  /**
-   * [FINAL FIX] Matches protocols using all available evidence.
-   */
   _matchProtocols(insight) {
     const scores = new Map();
     
@@ -211,14 +183,12 @@ export class CatharsisEngine {
         const keywords = (protocol.nlu?.keywords?.map(k => k.word) || []).map(w => String(w));
         const lowerKeywords = keywords.map(k => k.toLowerCase());
 
-        // direct intersection on normalized evidence (case-insensitive)
         const intersection = lowerKeywords.filter(kw => allEvidence.some(ev => String(ev).toLowerCase() === kw));
         
         if (intersection.length > 0) {
             score = intersection.length * 2.0;
             if (this.debug) console.log(`  - Protocol '${tag}' got +${score} score for direct match on: [${intersection.join(', ')}]`);
         } else {
-          // fuzzy match: check if any keyword is substring of any evidence or vice versa
           for (const kw of lowerKeywords) {
             for (const ev of allEvidence) {
               const evL = String(ev).toLowerCase();
@@ -244,10 +214,6 @@ export class CatharsisEngine {
     return getTopN(Object.fromEntries(scores), 2).map(it => it.key);
   }
 
-  /**
-   * [FINAL FIX] Selects a gem, ensuring it never crashes.
-   * Now tolerant to multiple naming conventions inside protocol rooms.
-   */
   _selectGem(intent, matchedProtocols) {
     const intentName = (intent && (intent.intent || intent)) || intent;
     if (this.debug) console.log(`[Catharsis] Selecting gem for intent: '${intentName}'`);
@@ -270,14 +236,12 @@ export class CatharsisEngine {
         const room = protocol.conversation_rooms[roomName];
         if (this.debug) console.log(`    > Inspecting room: '${roomName}' (purpose='${room && room.purpose ? room.purpose : 'n/a'}')`);
 
-        // gather potential banks: dynamic_gems_logic.gems_bank, gems_bank, default_gems_bank
         const banksToCheck = [];
         if (room.dynamic_gems_logic && room.dynamic_gems_logic.gems_bank) banksToCheck.push(room.dynamic_gems_logic.gems_bank);
         if (room.gems_bank) banksToCheck.push(room.gems_bank);
         if (room.dynamic_gems_logic && room.dynamic_gems_logic.default_gems_bank) banksToCheck.push(room.dynamic_gems_logic.default_gems_bank);
         if (room.default_gems_bank) banksToCheck.push(room.default_gems_bank);
 
-        // iterate banks and attempt to find a gem using flexible matching
         for (const bank of banksToCheck) {
           try {
             const found = this._findGemInBank(bank, candidates, roomName, protocolTag);
@@ -364,7 +328,7 @@ export class CatharsisEngine {
 
   async generateResponse(comprehensiveInsight = {}) {
     const insight = comprehensiveInsight || {};
-    if (this.debug) {
+if (this.debug) {
       console.log("\n--- [CatharsisEngine] Received Comprehensive Insight ---");
       console.log("Primary Emotion:", insight.emotionProfile?.primaryEmotion);
       console.log("Pivotal Concept:", insight.semanticMap?.pivotalConcept);
@@ -404,7 +368,22 @@ export class CatharsisEngine {
     let finalResponse = { text: '', meta: {} };
     try {
       if (this.debug) console.log("[Catharsis] Rendering via GenerativeOrchestrator with rawGems:", rawGems);
-      finalResponse = await this.generativeOrchestrator.render(rawGems, { dnaStyle: dnaBlend, context });
+      
+      // ======= التعديل هنا =======
+      if (typeof this.generativeOrchestrator.generate === 'function') {
+        const genOutput = await this.generativeOrchestrator.generate({
+          conceptProfile: rawGems,
+          emotionalProfile: affectVector,
+          context
+        });
+        finalResponse.text = genOutput?.text || rawGems.join(' ');
+        finalResponse.meta = { dna: dnaBlend };
+      } else {
+        finalResponse.text = rawGems.join(' ');
+        finalResponse.meta = { dna: dnaBlend, error: 'No generate() function found, fallback join used.' };
+      }
+      // ============================
+
     } catch (e) {
       if (this.debug) console.error("[Catharsis] Generative render failed, falling back to raw join.", e);
       finalResponse = { text: rawGems.join(' '), meta: { dna: dnaBlend, error: 'Render failed, used fallback join.' } };
@@ -418,14 +397,21 @@ export class CatharsisEngine {
       if (this.debug) console.log(`  - Quality score is low (${qualityScore}). Attempting regeneration with a more neutral DNA.`);
       const fallbackBlend = (typeof dnaBlend === 'object' && dnaBlend.style) ? { style: 'dynamic' } : 'dynamic';
       try {
-        const regen = await this.generativeOrchestrator.render(rawGems, { dnaStyle: fallbackBlend, context });
-        const regenQuality = this._evaluateEmotionalCoherence(regen.text, affectVector, responseArc);
-        if (this.debug) console.log(`  - Regeneration quality: ${regenQuality} (vs ${qualityScore})`);
-        if (regenQuality >= qualityScore) {
-          finalResponse = regen;
-          if (this.debug) console.log(`  - Regeneration successful. New text: "${regen.text}"`);
-        } else {
-          if (this.debug) console.log('  - Regeneration did not improve quality; keeping original render.');
+        if (typeof this.generativeOrchestrator.generate === 'function') {
+          const regen = await this.generativeOrchestrator.generate({
+            conceptProfile: rawGems,
+            emotionalProfile: affectVector,
+            context
+          });
+          const regenQuality = this._evaluateEmotionalCoherence(regen.text, affectVector, responseArc);
+          if (this.debug) console.log(`  - Regeneration quality: ${regenQuality} (vs ${qualityScore})`);
+          if (regenQuality >= qualityScore) {
+            finalResponse.text = regen.text;
+            finalResponse.meta = { dna: fallbackBlend };
+            if (this.debug) console.log(`  - Regeneration successful. New text: "${regen.text}"`);
+          } else {
+            if (this.debug) console.log('  - Regeneration did not improve quality; keeping original render.');
+          }
         }
       } catch (e) { 
         if (this.debug) console.error('[Catharsis] Regeneration attempt failed.', e);
@@ -469,3 +455,4 @@ export class CatharsisEngine {
 }
 
 export default CatharsisEngine;
+
