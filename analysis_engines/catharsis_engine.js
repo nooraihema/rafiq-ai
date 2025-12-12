@@ -1,34 +1,39 @@
 
-
 // /analysis_engines/catharsis_engine.js
-// CatharsisEngine v1.9-adapted-full - Compatible with ResponseOrchestrator v1.0+
-// - Uses generate(...) when render(...) isn't available
-// - Converts concept keys (e.g. "depression_symptom") to readable Arabic phrases
-// - Verbose logging for full traceability
+// CatharsisEngine v1.11 - Full Compatibility + Verbose Logging
+// - Compatible with ResponseOrchestrator v1.0 (generate, _mixDNA) and older render/mixDNA
+// - Returns { responseText, _meta } for API compatibility
+// - Defensive: supports sync/async generate + fallbacks
+// - Exhaustive debug logs
 
 import { sample, getTopN } from '../core/utils.js';
 
 export class CatharsisEngine {
   constructor(dictionaries = {}, protocols = {}, memorySystem = {}) {
-    if (!dictionaries.GENERATIVE_ENGINE || !dictionaries.GENERATIVE_ENGINE.ResponseOrchestrator) {
-      throw new Error("CatharsisEngine requires dictionaries.GENERATIVE_ENGINE.ResponseOrchestrator.");
+    // sanity checks
+    if (!dictionaries || !dictionaries.GENERATIVE_ENGINE || !dictionaries.GENERATIVE_ENGINE.ResponseOrchestrator) {
+      throw new Error("CatharsisEngine v1.11 requires dictionaries.GENERATIVE_ENGINE.ResponseOrchestrator.");
     }
 
-    const GenerativeOrchestratorClass = dictionaries.GENERATIVE_ENGINE.ResponseOrchestrator;
-    this.generativeOrchestrator = new GenerativeOrchestratorClass({
-      dnaLibrary: dictionaries.GENERATIVE_ENGINE.EMOTIONAL_DNA || {},
-      lexicalPools: dictionaries.GENERATIVE_ENGINE.LEXICAL_POOLS || {},
-      memory: memorySystem
-    });
+    this.debug = true;
+    if (this.debug) console.log("[CatharsisEngine] Initializing (v1.11) - debug ON");
 
-    this.lexicalPools = dictionaries.GENERATIVE_ENGINE.LEXICAL_POOLS || {};
-    this.dnaLibrary = dictionaries.GENERATIVE_ENGINE.EMOTIONAL_DNA || {};
+    const GenerativeOrchestratorClass = dictionaries.GENERATIVE_ENGINE.ResponseOrchestrator;
+    // instantiate orchestrator (it expects dnaLibrary, lexicalPools, memory)
+    try {
+      this.generativeOrchestrator = new GenerativeOrchestratorClass({
+        dnaLibrary: dictionaries.GENERATIVE_ENGINE.EMOTIONAL_DNA || {},
+        lexicalPools: dictionaries.GENERATIVE_ENGINE.LEXICAL_POOLS || {},
+        memory: memorySystem
+      });
+      if (this.debug) console.log("[CatharsisEngine] GenerativeOrchestrator instantiated.");
+    } catch (e) {
+      console.error("[CatharsisEngine] Failed to instantiate ResponseOrchestrator:", e);
+      throw e;
+    }
 
     this.protocols = protocols || {};
     this.memory = memorySystem || null;
-
-    // debug = true to enable verbose logging
-    this.debug = true;
 
     // Tunables
     this.SHORT_TEXT_TOKEN_LIMIT = 6;
@@ -47,29 +52,16 @@ export class CatharsisEngine {
       hope_injection: { hope: 0.9 }
     };
 
-    // Lightweight concept -> human phrase map (extendable)
-    this.conceptPhrases = {
-      depression_symptom: "أعراض الاكتئاب",
-      sadness: "الحزن",
-      anxiety: "القلق",
-      helplessness: "الإحساس بالعجز",
-      loneliness: "الوحدة",
-      catastrophizing: "تضخيم المخاوف",
-      stagnation: "الركود",
-      hope: "الأمل",
-      resilience: "المرونة",
-      guilt: "الذنب",
-      anger: "الغضب",
-      safety: "الشعور بالأمان"
-      // <-- أضف هنا أي مفاهيم عندك في البروتوكولات
-    };
-
-    if (this.debug) console.log("[CatharsisEngine] Initialized (compat mode) - debug ON");
+    if (this.debug) {
+      console.log("[CatharsisEngine] Configuration:");
+      console.log("  MIN_EMOTIONAL_INTEGRITY:", this.MIN_EMOTIONAL_INTEGRITY);
+      console.log("  DNA_BLEND_DEFAULT:", this.DNA_BLEND_DEFAULT);
+    }
   }
 
-  // ------------------------
-  // Intent candidate helpers
-  // ------------------------
+  // ---------------------------
+  // Intent candidate generation
+  // ---------------------------
   _intentCandidates(intent) {
     if (!intent) return [];
 
@@ -120,19 +112,21 @@ export class CatharsisEngine {
     return Array.from(candidates).filter(Boolean).map(s => String(s).toLowerCase());
   }
 
-  // ------------------------
-  // Gem lookup helpers
-  // ------------------------
+  // ---------------------------
+  // Gem selection helpers
+  // ---------------------------
   _findGemInBank(bank = {}, candidates = [], roomName = '', protocolTag = '') {
     if (!bank || typeof bank !== 'object') return null;
 
+    // exact candidate property match
     for (const cand of candidates) {
       if (Object.prototype.hasOwnProperty.call(bank, cand) && Array.isArray(bank[cand]) && bank[cand].length) {
-        if (this.debug) console.log(`      [findGem] Exact match for '${cand}' in room '${roomName}' of protocol '${protocolTag}'`);
+        if (this.debug) console.log(`      [findGem] Exact match '${cand}' in ${protocolTag}/${roomName}`);
         return sample(bank[cand]);
       }
     }
 
+    // fuzzy match: keys containing candidate or vice versa
     const bankKeys = Object.keys(bank || {});
     for (const key of bankKeys) {
       const keyLower = String(key).toLowerCase();
@@ -140,7 +134,7 @@ export class CatharsisEngine {
         if (keyLower === cand || keyLower.includes(cand) || cand.includes(keyLower)) {
           const arr = bank[key];
           if (Array.isArray(arr) && arr.length) {
-            if (this.debug) console.log(`      [findGem] Substring match: bankKey='${key}' matched candidate='${cand}' in room '${roomName}' protocol '${protocolTag}'`);
+            if (this.debug) console.log(`      [findGem] Substring match bankKey='${key}' vs candidate='${cand}' in ${protocolTag}/${roomName}`);
             return sample(arr);
           }
         }
@@ -152,25 +146,30 @@ export class CatharsisEngine {
 
   _selectGem(intent, matchedProtocols) {
     const intentName = (intent && (intent.intent || intent)) || intent;
-    if (this.debug) console.log(`[Catharsis] Selecting gem for intent: '${intentName}'`);
+    if (this.debug) console.log(`[selectGem] selecting for intent='${intentName}' across protocols:`, matchedProtocols);
 
-    const fallbackGems = ["أنا سامعك وبقلب معك.", "ده شيء صعب، وشجاعتك في قول ده واضحة.", "خليني معاك خطوة خطوة."];
+    const fallbackGems = [
+      "أنا سامعك وبقلب معك.",
+      "ده شيء صعب، وشجاعتك في قول ده واضحة.",
+      "خليني معاك خطوة خطوة."
+    ];
     let selection = { gem: sample(fallbackGems), source: 'fallback' };
 
     const candidates = this._intentCandidates(intentName);
-    if (this.debug) console.log(`  [selectGem] Intent candidates: ${JSON.stringify(candidates)}`);
+    if (this.debug) console.log("  [selectGem] intent candidates:", candidates);
 
-    for (const protocolTag of matchedProtocols) {
+    for (const protocolTag of (matchedProtocols || [])) {
       const protocol = this.protocols[protocolTag];
       if (!protocol) {
-        if (this.debug) console.log(`  [selectGem] Protocol '${protocolTag}' not found (maybe unloaded).`);
+        if (this.debug) console.log(`  [selectGem] protocol '${protocolTag}' not found.`);
         continue;
       }
-      if (this.debug) console.log(`  - Searching in protocol: '${protocolTag}'`);
+      if (this.debug) console.log(`  [selectGem] searching protocol '${protocolTag}'`);
 
-      for (const roomName in (protocol.conversation_rooms || {})) {
-        const room = protocol.conversation_rooms[roomName];
-        if (this.debug) console.log(`    > Inspecting room: '${roomName}' (purpose='${room && room.purpose ? room.purpose : 'n/a'}')`);
+      const rooms = protocol.conversation_rooms || {};
+      for (const roomName of Object.keys(rooms)) {
+        const room = rooms[roomName];
+        if (this.debug) console.log(`    [selectGem] inspecting room '${roomName}' (purpose='${(room && room.purpose) || 'n/a'}')`);
 
         const banksToCheck = [];
         if (room.dynamic_gems_logic && room.dynamic_gems_logic.gems_bank) banksToCheck.push(room.dynamic_gems_logic.gems_bank);
@@ -183,63 +182,71 @@ export class CatharsisEngine {
             const found = this._findGemInBank(bank, candidates, roomName, protocolTag);
             if (found) {
               selection = { gem: found, source: `${protocolTag}/${room.purpose || roomName}` };
-              if (this.debug) console.log(`    > Found gem in bank '${roomName}': "${found}" (source=${selection.source})`);
+              if (this.debug) console.log(`    [selectGem] found gem: "${found}" from ${selection.source}`);
               return selection;
             } else {
-              if (this.debug) console.log(`    > No match in this bank for candidates.`);
+              if (this.debug) console.log(`    [selectGem] no match in this bank.`);
             }
           } catch (e) {
-            if (this.debug) console.error(`    ! Error while searching bank in room '${roomName}' of protocol '${protocolTag}':`, e);
+            if (this.debug) console.error(`    [selectGem] error searching bank in ${protocolTag}/${roomName}:`, e);
           }
         }
       }
     }
 
-    if (this.debug) console.log(`  - No specific gem found. Using fallback: "${selection.gem}"`);
+    if (this.debug) console.log("  [selectGem] returning fallback:", selection);
     return selection;
   }
 
-  // ------------------------
-  // DNA blending
-  // ------------------------
-  _blendDNA(affectVector = {}) {
-    try {
-      if (this.generativeOrchestrator) {
+  // ---------------------------
+  // DNA blending (defensive)
+  // ---------------------------
+  _blendDNA(affectVector = {}, topIntents = []) {
+    if (this.generativeOrchestrator) {
+      try {
         if (typeof this.generativeOrchestrator.mixDNA === 'function') {
-          if (this.debug) console.log('[blendDNA] Using generativeOrchestrator.mixDNA');
+          if (this.debug) console.log("[blendDNA] Using public mixDNA()");
           return this.generativeOrchestrator.mixDNA(affectVector);
         }
         if (typeof this.generativeOrchestrator._mixDNA === 'function') {
-          if (this.debug) console.log('[blendDNA] Using generativeOrchestrator._mixDNA (internal)');
-          try { return this.generativeOrchestrator._mixDNA(affectVector, []); } catch (e) { /* ignore */ }
-          return this.generativeOrchestrator._mixDNA(affectVector);
+          if (this.debug) console.log("[blendDNA] Using internal _mixDNA()");
+          // try internal call signature defensively
+          try {
+            return this.generativeOrchestrator._mixDNA(affectVector, topIntents);
+          } catch (e) {
+            // some versions expect only affectVector
+            return this.generativeOrchestrator._mixDNA(affectVector);
+          }
         }
+      } catch (e) {
+        if (this.debug) console.warn("[blendDNA] orchestrator mix attempt threw, falling back. Error:", e);
       }
-    } catch (e) {
-      if (this.debug) console.warn('[blendDNA] orchestrator mix attempt failed, falling back.', e);
     }
 
-    // Heuristic fallback
+    // heuristic fallback
     const styles = [];
     if ((affectVector.sadness || 0) > 0.5) styles.push('poetic');
     if ((affectVector.anxiety || 0) > 0.5) styles.push('grounded');
     if ((affectVector.joy || 0) > 0.5) styles.push('tender');
     if (styles.length === 0) styles.push(this.DNA_BLEND_DEFAULT);
-    return { style: styles.join('+'), meta: { blendedFrom: styles } };
+    const fallback = { style: styles.join('+'), meta: { blendedFrom: styles } };
+    if (this.debug) console.log("[blendDNA] fallback dna:", fallback);
+    return fallback;
   }
 
-  // ------------------------
-  // Evaluate coherence (heuristic)
-  // ------------------------
+  // ---------------------------
+  // Emotional coherence evaluator
+  // ---------------------------
   _evaluateEmotionalCoherence(generatedText = '', affectVector = {}, arc = []) {
+    if (!generatedText) return 0.2;
     const aggregateIntentSignature = {};
-    for (const step of arc) {
+    for (const step of arc || []) {
       const sig = this.INTENT_EMOTION_SIGNATURES[step.intent] || {};
       for (const [k, v] of Object.entries(sig)) {
         aggregateIntentSignature[k] = (aggregateIntentSignature[k] || 0) + v;
       }
     }
-    const keys = Array.from(new Set([...Object.keys(aggregateIntentSignature), ...Object.keys(affectVector)]));
+    const keys = Array.from(new Set([...Object.keys(aggregateIntentSignature), ...Object.keys(affectVector || {})]));
     let dot = 0, magA = 0, magB = 0;
     for (const k of keys) {
       const a = aggregateIntentSignature[k] || 0;
@@ -251,180 +258,97 @@ export class CatharsisEngine {
     if (magA === 0 || magB === 0) return 0.5;
     const sim = dot / (Math.sqrt(magA) * Math.sqrt(magB));
     const score = Math.min(0.95, Math.max(0.2, sim));
+    if (this.debug) console.log("[evaluateEmotionalCoherence] score:", score);
     return Number(score.toFixed(3));
   }
 
-  // ------------------------
-  // Echo closure
-  // ------------------------
+  // ---------------------------
+  // Echo closure / final flourish
+  // ---------------------------
   _applyEchoClosure(text, dnaMeta = {}) {
     const style = (dnaMeta && (dnaMeta.style || dnaMeta)) || this.DNA_BLEND_DEFAULT;
     const echoes = {
       poetic: "\nأحيانًا يكفي أن نستمع لنبض داخلك بصمت.",
       grounded: "\nخذ نفسًا عميقًا الآن — أنت على الطريق الصحيح خطوة بخطوة.",
-      tender: "\nأنت لست وحدكِ/وحيدًا؛ هذا الشعور يُرى ويُقدّر.",
+      tender: "\nأنت لست وحدك؛ هذا الشعور مُرى ويُقدّر.",
       dynamic: "\nلو حابب، أحب أسمع منك المزيد."
     };
     for (const key of Object.keys(echoes)) {
       if (typeof style === 'string' && style.includes(key)) {
-        return text + echoes[key];
+        return (text || "") + echoes[key];
       }
     }
-    return text + "\nأنا هنا إذا أحببت أن تكمل الحديث.";
+    return (text || "") + "\nأنا هنا إذا أحببت أن تكمل الحديث.";
   }
 
-  // ------------------------
-  // Convert a concept key into readable Arabic phrase
-  // (tries multiple strategies)
-  // ------------------------
-  _conceptToReadable(concept) {
-    if (!concept) return concept;
-
-    // 1) direct map
-    if (this.conceptPhrases[concept]) return this.conceptPhrases[concept];
-
-    // 2) try lexicalPools synonyms: if lexicalPools.synonyms has a mapping for concept (unlikely),
-    //    choose a variant (we imported sample from utils)
-    try {
-      if (this.lexicalPools && this.lexicalPools.synonyms && this.lexicalPools.synonyms[concept]) {
-        const arr = this.lexicalPools.synonyms[concept];
-        if (Array.isArray(arr) && arr.length) return sample(arr);
-      }
-    } catch (e) {
-      if (this.debug) console.warn('[conceptToReadable] lexicalPools lookup failed for', concept, e);
-    }
-
-    // 3) fallback: convert snake_case / kebab-case to spaced phrase and attempt light Arabicization
-    //    e.g., "depression_symptom" -> "اكتئاب (depression symptom)"
-    const human = String(concept)
-      .replace(/[_\-]+/g, ' ')
-      .replace(/\b([a-z])/g, (m) => m.toLowerCase());
-
-    return `${human}`; // keep english token as last resort (we prefer at least replacing underscores)
-  }
-
-  // ------------------------
-  // Replace raw concept tokens inside a text with readable phrases.
-  // It looks for exact token matches or common variations (with underscores).
-  // ------------------------
-  _replaceConceptTokensInText(text = '', conceptKeys = []) {
-    if (!text || !conceptKeys || !conceptKeys.length) return text;
-    let out = text;
-    // sort by length desc to avoid partial short-key replacing first
-    const sorted = [...new Set(conceptKeys)].sort((a,b) => b.length - a.length);
-    for (const key of sorted) {
-      const phrase = this._conceptToReadable(key) || key;
-      // replace whole-word occurrences, and also occurrences with punctuation
-      const re = new RegExp(`\\b${this._escapeRegex(key)}\\b`, 'gi');
-      out = out.replace(re, phrase);
-      // also try replacing key with underscores replaced by spaces
-      const alt = key.replace(/[_\-]+/g, ' ');
-      const re2 = new RegExp(`\\b${this._escapeRegex(alt)}\\b`, 'gi');
-      out = out.replace(re2, phrase);
-    }
-    return out;
-  }
-
-  _escapeRegex(s) {
-    return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }
-
-  // ------------------------
-  // Protocol matching (as before)
-  // ------------------------
-  _matchProtocols(insight) {
-    const scores = new Map();
-
-    const concepts = Object.keys(insight?.semanticMap?.conceptInsights || {});
-    const sourceTokens = [...new Set(Object.values(insight?.semanticMap?.conceptInsights || {}).flatMap(i => i.sourceTokens || []))];
-    const allEvidence = [...new Set([...concepts.map(c => String(c)), ...sourceTokens.map(s => String(s))])];
-
-    if (this.debug) console.log(`[Catharsis] Matching with All Evidence:`, allEvidence);
-
-    for (const [tag, protocol] of Object.entries(this.protocols || {})) {
-      let score = 0;
-      const keywords = (protocol.nlu?.keywords?.map(k => k.word) || []).map(w => String(w));
-      const lowerKeywords = keywords.map(k => k.toLowerCase());
-
-      const intersection = lowerKeywords.filter(kw => allEvidence.some(ev => String(ev).toLowerCase() === kw));
-
-      if (intersection.length > 0) {
-        score = intersection.length * 2.0;
-        if (this.debug) console.log(`  - Protocol '${tag}' got +${score} score for direct match on: [${intersection.join(', ')}]`);
-      } else {
-        for (const kw of lowerKeywords) {
-          for (const ev of allEvidence) {
-            const evL = String(ev).toLowerCase();
-            if (evL.includes(kw) || kw.includes(evL)) {
-              score += 1.0;
-              if (this.debug) console.log(`  - Protocol '${tag}' fuzzy match +1 for keyword='${kw}' vs evidence='${evL}'`);
-            }
-          }
-        }
-      }
-
-      if (score > 0) scores.set(tag, score);
-    }
-
-    if (this.debug && scores.size > 0) {
-      console.log('[Catharsis] Protocol Match Scores:', Object.fromEntries(scores));
-    } else if (this.debug) {
-      console.log('[Catharsis] No protocol scored above 0 with current evidence.');
-    }
-
-    return getTopN(Object.fromEntries(scores), 2).map(it => it.key);
-  }
-
-  // ------------------------
-  // Main generation pipeline
-  // ------------------------
+  // ---------------------------
+  // Top-level generator (the core function)
+  // ---------------------------
   async generateResponse(comprehensiveInsight = {}) {
     const insight = comprehensiveInsight || {};
+
     if (this.debug) {
-      console.log("\n--- [CatharsisEngine] Received Comprehensive Insight ---");
+      console.log("\n--- [CatharsisEngine] generateResponse START ---");
+      console.log("Timestamp:", new Date().toISOString());
       console.log("Primary Emotion:", insight.emotionProfile?.primaryEmotion);
       console.log("Pivotal Concept:", insight.semanticMap?.pivotalConcept);
       console.log("All Concepts:", insight.semanticMap?.allConcepts);
       console.log("Dominant Pattern:", insight.synthesisProfile?.dominantPattern?.pattern_id);
-      console.log("Core Conflict:", insight.synthesisProfile?.coreConflict?.tension_id);
     }
 
-    // 1. design arc
-    const responseArc = this._designResponseArc(insight);
-    if (this.debug) console.log("\n[Catharsis] Step 1: Designed Response Arc:", responseArc.map(a => a.intent));
+    // 1) Build arc
+    let responseArc;
+    try {
+      responseArc = this._designResponseArc ? this._designResponseArc(insight) : [];
+    } catch (e) {
+      // fallback: minimal arc
+      console.error("[generateResponse] _designResponseArc threw:", e);
+      responseArc = [{ intent: 'validation' }];
+    }
+    if (this.debug) console.log("[Step 1] responseArc:", responseArc.map(a => a.intent));
 
-    // 2. protocol matching
-    const matchedProtocols = this._matchProtocols(insight);
-    if (this.debug) console.log("[Catharsis] Step 2: Matched Protocols:", matchedProtocols);
+    // 2) match protocols
+    let matchedProtocols = [];
+    try {
+      matchedProtocols = this._matchProtocols ? this._matchProtocols(insight) : [];
+    } catch (e) {
+      console.error("[generateResponse] _matchProtocols threw:", e);
+      matchedProtocols = [];
+    }
+    if (this.debug) console.log("[Step 2] matchedProtocols:", matchedProtocols);
 
-    // 3. assemble gems
+    // 3) assemble gems
     const assembledGems = responseArc.map(step => {
       try {
         return this._selectGem(step, matchedProtocols);
       } catch (e) {
-        if (this.debug) console.error('[Catharsis] _selectGem threw for step:', step, e);
+        if (this.debug) console.error("[Step 3] _selectGem threw for step:", step, e);
         return { gem: sample(["أنا سامعك وبقلب معك."]), source: 'fallback_error' };
       }
     });
-    if (this.debug) console.log("[Catharsis] Step 3: Assembled Raw Gems:", assembledGems.map(g => `(${g.source}) -> "${g.gem}"`));
+    if (this.debug) console.log("[Step 3] assembledGems:", assembledGems.map(g => `(${g.source}) -> "${g.gem}"`));
 
     const rawGems = assembledGems.map(g => g.gem).filter(Boolean);
-    const affectVector = insight.emotionProfile?.affectVector || {};
-    const dnaBlend = this._blendDNA(affectVector);
-    if (this.debug) console.log("[Catharsis] Step 4: Determined DNA Blend:", dnaBlend);
+    if (this.debug) console.log("[Step 3] rawGems:", rawGems);
 
-    // Build conceptProfile for orchestrator.generate if needed
+    // 4) affect vector and dnaBlend
+    const affectVector = (insight.emotionProfile && insight.emotionProfile.affectVector) || insight.emotionProfile || {};
+    const dnaBlend = this._blendDNA(affectVector, responseArc) || { style: 'dynamic', meta: {} };
+    if (this.debug) console.log("[Step 4] dnaBlend:", dnaBlend);
+
+    // 5) build conceptProfile for orchestrator.generate
     const conceptProfile = {};
     const conceptInsights = insight.semanticMap?.conceptInsights || {};
     for (const [k, v] of Object.entries(conceptInsights || {})) {
       if (v && typeof v === 'object') {
-        conceptProfile[k] = (v.score || v.weight || v.totalWeight || 0.0);
+        conceptProfile[k] = Number(v.score || v.weight || v.totalWeight || 0) || 0;
       } else if (typeof v === 'number') {
         conceptProfile[k] = v;
       } else {
-        conceptProfile[k] = 0.0;
+        conceptProfile[k] = 0;
       }
     }
+    if (this.debug) console.log("[Step 5] conceptProfile:", conceptProfile);
 
     const context = {
       username: (this.memory && this.memory.getUserProfile && this.memory.getUserProfile()?.name) || null,
@@ -433,76 +357,60 @@ export class CatharsisEngine {
       arc: responseArc,
       rawGems
     };
+    if (this.debug) console.log("[Step 5] context:", context);
 
-    if (this.debug) console.log("[Catharsis] Context & Profiles prepared:", { conceptProfile, affectVector, context });
-
-    // 4. call orchestrator (render OR generate)
+    // 6) call orchestrator - prefer render (old), else generate (new)
     let finalResponse = { text: '', meta: {} };
     try {
       if (this.generativeOrchestrator && typeof this.generativeOrchestrator.render === 'function') {
-        if (this.debug) console.log("[Catharsis] Using orchestrator.render(rawGems, opts)");
+        if (this.debug) console.log("[Step 6] using orchestrator.render(rawGems, opts)");
         finalResponse = await this.generativeOrchestrator.render(rawGems, { dnaStyle: dnaBlend, context });
       } else if (this.generativeOrchestrator && typeof this.generativeOrchestrator.generate === 'function') {
-        if (this.debug) console.log("[Catharsis] Using orchestrator.generate({ conceptProfile, emotionalProfile, context })");
-        // generate might be synchronous in orchestrator implementation; normalize:
-        const genOut = this.generativeOrchestrator.generate({
+        if (this.debug) console.log("[Step 6] using orchestrator.generate({conceptProfile, emotionalProfile, context})");
+        // generate might be sync or async; accept both
+        const out = this.generativeOrchestrator.generate({
           conceptProfile,
           emotionalProfile: affectVector,
           context
         });
-        finalResponse = await Promise.resolve(genOut);
+        finalResponse = await Promise.resolve(out);
       } else {
-        if (this.debug) console.log("[Catharsis] No orchestrator rendering function found — falling back to raw join");
+        if (this.debug) console.log("[Step 6] no rendering function on orchestrator - falling back to raw gems join");
         finalResponse = { text: rawGems.join(' '), meta: { dna: dnaBlend, fallback: true } };
       }
     } catch (e) {
-      if (this.debug) console.error("[Catharsis] Orchestrator render/generate failed, falling back to raw join.", e);
+      console.error("[Step 6] orchestrator call threw, falling back:", e);
       finalResponse = { text: rawGems.join(' '), meta: { dna: dnaBlend, error: String(e) } };
     }
+    if (this.debug) console.log("[Step 6] initial finalResponse:", finalResponse);
+
+    // ensure finalResponse has text and meta structure
+    finalResponse = finalResponse || {};
+    finalResponse.text = finalResponse.text || (Array.isArray(rawGems) ? rawGems.join(' ') : String(rawGems || ''));
     finalResponse.meta = finalResponse.meta || {};
     if (!finalResponse.meta.dna) finalResponse.meta.dna = dnaBlend;
 
-    if (this.debug) console.log(`[Catharsis] Step 5: Orchestrator output (pre-rewrite): "${finalResponse.text}"`);
-
-    // 5. Replace any raw concept keys left in the generated text with readable phrases
-    try {
-      // gather possible concept keys to replace: keys from conceptProfile + keys found in assembledGems (if gems are keys)
-      const conceptKeys = [
-        ...Object.keys(conceptProfile || {}),
-        // also from assembledGems if the gem equals a key (rare but safe)
-        ...assembledGems.map(g => (typeof g.gem === 'string' ? g.gem : '')).filter(Boolean)
-      ];
-      // remove duplicates and non-words
-      const cKeysUnique = Array.from(new Set(conceptKeys)).filter(k => typeof k === 'string' && k.length > 1);
-      if (cKeysUnique.length) {
-        if (this.debug) console.log("[Catharsis] Attempting concept token replacement for keys:", cKeysUnique);
-        finalResponse.text = this._replaceConceptTokensInText(finalResponse.text, cKeysUnique);
-        if (this.debug) console.log("[Catharsis] Post-replacement text:", finalResponse.text);
-      } else {
-        if (this.debug) console.log("[Catharsis] No concept keys found to replace.");
-      }
-    } catch (e) {
-      if (this.debug) console.warn("[Catharsis] Concept token replacement failed:", e);
-    }
-
-    // 6. Evaluate emotional coherence (on replaced text)
+    // 7) evaluate coherence
     const qualityScore = this._evaluateEmotionalCoherence(finalResponse.text, affectVector, responseArc);
-    if (this.debug) console.log(`[Catharsis] Step 6: Emotional Quality Score: ${qualityScore}`);
+    if (this.debug) console.log("[Step 7] qualityScore:", qualityScore);
 
-    // 7. if quality low, attempt regeneration with neutralized affect
+    // 8) regeneration attempt if low quality
     if (qualityScore < this.MIN_EMOTIONAL_INTEGRITY) {
-      if (this.debug) console.log(`  - Quality (${qualityScore}) < threshold (${this.MIN_EMOTIONAL_INTEGRITY}). Attempting regeneration with neutralized affect.`);
+      if (this.debug) console.log(`[Step 8] quality ${qualityScore} < MIN ${this.MIN_EMOTIONAL_INTEGRITY} -> attempting regeneration with neutralized DNA`);
       try {
-        const neutralAffect = { ...affectVector };
-        for (const k of Object.keys(neutralAffect)) neutralAffect[k] = Math.max(0, neutralAffect[k] * 0.55);
-
-        const neutralBlend = this._blendDNA(neutralAffect) || { style: 'dynamic' };
+        // neutralize affect vector
+        const neutralAffect = {};
+        for (const k of Object.keys(affectVector || {})) {
+          neutralAffect[k] = Math.max(0, (affectVector[k] || 0) * 0.55);
+        }
+        const neutralBlend = this._blendDNA(neutralAffect, responseArc) || { style: 'dynamic' };
+        if (this.debug) console.log("[Step 8] neutralBlend:", neutralBlend);
 
         if (this.generativeOrchestrator && typeof this.generativeOrchestrator.render === 'function') {
-          if (this.debug) console.log("[Catharsis] Regenerating using render with neutralBlend");
+          if (this.debug) console.log("[Step 8] regenerating via render");
           finalResponse = await this.generativeOrchestrator.render(rawGems, { dnaStyle: neutralBlend, context: { ...context, regen: true } });
         } else if (this.generativeOrchestrator && typeof this.generativeOrchestrator.generate === 'function') {
-          if (this.debug) console.log("[Catharsis] Regenerating using generate with neutralAffect");
+          if (this.debug) console.log("[Step 8] regenerating via generate");
           const regenOut = this.generativeOrchestrator.generate({
             conceptProfile,
             emotionalProfile: neutralAffect,
@@ -510,66 +418,168 @@ export class CatharsisEngine {
           });
           finalResponse = await Promise.resolve(regenOut);
         } else {
-          if (this.debug) console.log("[Catharsis] Regenerate fallback: using raw gems with echo closure");
           finalResponse = { text: this._applyEchoClosure(rawGems.join(' '), neutralBlend), meta: { dna: neutralBlend, regen: 'fallback' } };
         }
+
+        finalResponse = finalResponse || {};
+        finalResponse.text = finalResponse.text || rawGems.join(' ');
         finalResponse.meta = finalResponse.meta || {};
         if (!finalResponse.meta.dna) finalResponse.meta.dna = neutralBlend;
 
-        // replace concept tokens again after re-generation
-        finalResponse.text = this._replaceConceptTokensInText(finalResponse.text, Object.keys(conceptProfile || {}));
-
-        if (this.debug) console.log(`[Catharsis] Regenerated text: "${finalResponse.text}"`);
+        if (this.debug) console.log("[Step 8] regeneration result:", finalResponse);
       } catch (e) {
-        if (this.debug) console.error("[Catharsis] Regeneration attempt failed.", e);
+        if (this.debug) console.error("[Step 8] regeneration attempt failed:", e);
       }
     }
 
-    // 8. Apply echo closure and final polish
+    // 9) fuse gems with finalResponse carefully (avoid duplication)
+    let combinedText;
     try {
-      const dnaMeta = finalResponse.meta && finalResponse.meta.dna ? finalResponse.meta.dna : dnaBlend;
-      finalResponse.text = this._applyEchoClosure(finalResponse.text, dnaMeta);
-    } catch (e) {
-      if (this.debug) console.warn("[Catharsis] _applyEchoClosure failed:", e);
-    }
+      const genText = finalResponse.text || "";
+      // If genText already contains a lot of rawGems content, avoid prefixing to prevent duplication.
+      const joinedGems = rawGems.join(' ').trim();
+      const lowerGen = (genText || "").toLowerCase();
+      const lowerGems = (joinedGems || "").toLowerCase();
 
-    // 9. Persist to memory if available (non-fatal)
+      let shouldPrefixGems = false;
+      if (!joinedGems) {
+        shouldPrefixGems = false;
+      } else if (!lowerGen.includes(lowerGems)) {
+        // if generator didn't already include full gems string, prefix them
+        shouldPrefixGems = true;
+      } else {
+        shouldPrefixGems = false;
+      }
+
+      if (shouldPrefixGems && joinedGems.length > 0) {
+        combinedText = `${joinedGems}\n${genText}`.trim();
+      } else {
+        combinedText = genText.trim();
+      }
+    } catch (e) {
+      if (this.debug) console.error("[Step 9] gem fusion failed:", e);
+      combinedText = finalResponse.text || rawGems.join(' ');
+    }
+    if (this.debug) console.log("[Step 9] combinedText (pre-echo):", combinedText);
+
+    // 10) apply echo closure using dna meta
+    let finalTextWithEcho = combinedText;
+    try {
+      const dnaMeta = (finalResponse.meta && finalResponse.meta.dna) ? finalResponse.meta.dna : dnaBlend;
+      finalTextWithEcho = this._applyEchoClosure(combinedText, dnaMeta);
+    } catch (e) {
+      if (this.debug) console.error("[Step 10] applyEchoClosure failed:", e);
+    }
+    if (this.debug) console.log("[Step 10] finalTextWithEcho:", finalTextWithEcho);
+
+    // 11) final coherence (optional re-eval) and metadata
+    const finalCoherence = this._evaluateEmotionalCoherence(finalTextWithEcho, affectVector, responseArc);
+    if (this.debug) console.log("[Step 11] finalCoherence:", finalCoherence);
+
+    // 12) persist to memory if available
     try {
       if (this.memory && typeof this.memory.record === 'function') {
-        this.memory.record(finalResponse.text);
-        if (this.debug) console.log("[Catharsis] Recorded generated text into memory.");
+        if (this.debug) console.log("[Step 12] recording to memory (session)");
+        this.memory.record(finalTextWithEcho);
+      } else if (this.memory && typeof this.memory.recordInteraction === 'function') {
+        if (this.debug) console.log("[Step 12] recording to memory (recordInteraction)");
+        this.memory.recordInteraction({
+          user: insight.rawText || (insight.semanticMap && insight.semanticMap.rawText) || '',
+          ai: finalTextWithEcho,
+          insightSummary: {
+            primaryEmotion: insight.emotionProfile && insight.emotionProfile.primaryEmotion,
+            primaryConcept: insight.semanticMap && insight.semanticMap.pivotalConcept
+          },
+          timestamp: Date.now()
+        });
+      } else {
+        if (this.debug) console.log("[Step 12] no memory API available or unsupported, skipping persist");
       }
     } catch (e) {
-      if (this.debug) console.warn("[Catharsis] Memory.record failed:", e);
+      if (this.debug) console.error("[Step 12] memory record failed (non-fatal):", e);
     }
 
-    // 10. Final debug log and return standardized shape (responseText + meta)
-    if (this.debug) {
-      console.log("[Catharsis] Final Response (returned object):", {
-        responseText: finalResponse.text,
-        meta: finalResponse.meta,
-        arc: responseArc.map(a => a.intent),
-        matchedProtocols
-      });
-    }
-
-    // Ensure standardized return for external pipeline:
-    // { responseText: "...", meta: {...}, arc: [...], matchedProtocols: [...], rawGems: [...], emotional_coherence: n }
-    finalResponse.meta = finalResponse.meta || {};
-    finalResponse.meta.arc = responseArc;
-    finalResponse.meta.matchedProtocols = matchedProtocols;
-    finalResponse.meta.assembledGems = assembledGems;
-    finalResponse.meta.emotional_coherence = this._evaluateEmotionalCoherence(finalResponse.text, affectVector, responseArc);
-
-    return {
-      responseText: finalResponse.text,
-      meta: finalResponse.meta,
-      arc: responseArc,
-      matchedProtocols,
-      rawGems,
-      emotional_coherence: finalResponse.meta.emotional_coherence
+    // 13) Build final return object (API expects responseText)
+    const out = {
+      responseText: finalTextWithEcho,
+      _meta: {
+        arc: responseArc,
+        matchedProtocols,
+        assembledGems,
+        dnaUsed: finalResponse.meta && finalResponse.meta.dna ? finalResponse.meta.dna : dnaBlend,
+        qualityScore: Number((qualityScore || finalCoherence || 0).toFixed(3)),
+        generatorMeta: finalResponse.meta || {},
+        debug: this.debug ? {
+          protocolMatch: matchedProtocols,
+          arc: responseArc.map(a => a.intent),
+          affectVector,
+          dnaBlend,
+          rawGems,
+          finalCoherence
+        } : null
+      }
     };
+
+    if (this.debug) {
+      console.log("\n--- [CatharsisEngine] generateResponse END ---");
+      console.log("Outgoing responseText preview:", (out.responseText || "").slice(0, 200));
+      console.log("Outgoing _meta:", out._meta);
+    }
+
+    return out;
+  }
+
+  // NOTE: ensure _designResponseArc is defined on prototype below (keeps code organization)
+  _designResponseArc(insight) {
+    // (kept same logic as earlier versions)
+    const arc = [];
+    const emotion = (insight && insight.emotionProfile && insight.emotionProfile.primaryEmotion) || { name: 'neutral', score: 0 };
+    const synthesis = insight.synthesisProfile || {};
+    const pivotalConcept = (insight.semanticMap && (insight.semanticMap.pivotalConcept || null)) || null;
+
+    if (emotion && typeof emotion.score === 'number' && emotion.score >= 0.6) {
+      arc.push({ intent: 'grounding', source: 'emotion' });
+      arc.push({ intent: 'empathy', target: emotion.name, source: 'emotion' });
+    } else if (emotion && typeof emotion.score === 'number' && emotion.score >= 0.35) {
+      arc.push({ intent: 'validation', target: pivotalConcept, source: 'concept' });
+      arc.push({ intent: 'empathy', target: emotion.name, source: 'emotion' });
+    } else {
+      arc.push({ intent: 'validation', target: pivotalConcept, source: 'concept' });
+    }
+
+    const topHypothesis = (synthesis.cognitiveHypotheses && synthesis.cognitiveHypotheses[0]) || null;
+    if (topHypothesis && topHypothesis.confidence > 0.75) {
+      arc.push({ intent: 'insight_delivery', data: topHypothesis, source: 'synthesis' });
+    } else if (insight.emotionProfile && insight.emotionProfile.dissonance && insight.emotionProfile.dissonance.dissonanceScore > 0.5) {
+      arc.push({ intent: 'probe_dissonance', data: insight.emotionProfile.dissonance.flags, source: 'emotion' });
+    } else if (synthesis.coreConflict) {
+      arc.push({ intent: 'probe_conflict', data: synthesis.coreConflict, source: 'synthesis' });
+    } else {
+      arc.push({ intent: 'open_question', source: 'default' });
+    }
+
+    if (emotion && emotion.name === 'sadness' && emotion.score > 0.55) {
+      arc.push({ intent: 'hope_injection', source: 'emotion' });
+    } else if (emotion && emotion.name === 'anxiety' && emotion.score > 0.55) {
+      arc.push({ intent: 'grounding', source: 'emotion' });
+    } else if (emotion && emotion.name === 'anger' && emotion.score > 0.55) {
+      arc.unshift({ intent: 'safety_check', source: 'emotion' });
+    }
+
+    const therapeuticPlan = (synthesis && synthesis.therapeuticPlan) || null;
+    if (therapeuticPlan && Array.isArray(therapeuticPlan.immediate) && therapeuticPlan.immediate.length > 0) {
+      arc.push({ intent: 'action_proposal_immediate', data: therapeuticPlan.immediate[0], source: 'synthesis' });
+    } else if (therapeuticPlan && Array.isArray(therapeuticPlan.microInterventions) && therapeuticPlan.microInterventions.length > 0) {
+      arc.push({ intent: 'action_proposal_micro', data: therapeuticPlan.microInterventions[0], source: 'synthesis' });
+    } else {
+      arc.push({ intent: 'open_question', source: 'default' });
+    }
+
+    if (this.debug) console.log(`  [designArc] Built arc intents: ${arc.map(a => a.intent).join(' -> ')}`);
+    return arc;
   }
 }
 
 export default CatharsisEngine;
+
+
