@@ -1,4 +1,5 @@
 
+
 <!DOCTYPE html>
 <html lang="ar">
 <head>
@@ -41,6 +42,9 @@
       margin: 5px 0;
       align-self: flex-end;
       max-width: 75%;
+      display: block;
+      clear: both;
+      float: right;
     }
     .chat-box .bot {
       background: #e4e6eb;
@@ -50,6 +54,9 @@
       margin: 5px 0;
       align-self: flex-start;
       max-width: 75%;
+      display: block;
+      clear: both;
+      float: left;
     }
     .input-container {
       display: flex;
@@ -85,7 +92,7 @@
       <button id="send-btn">إرسال</button>
     </div>
   </div>
-  <script src="script.js"></script>
+  <!-- التعديل الجوهري: إضافة type="module" -->
+  <script type="module" src="script.js"></script>
 </body>
 </html>
-
