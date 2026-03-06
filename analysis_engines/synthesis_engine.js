@@ -1,166 +1,104 @@
-// /analysis_engines/synthesis_engine.js
-// SynthesisEngine v1.0 - The Weaver of Meanings
-// This hyper-intelligent engine synthesizes insights from all lower-level analyses
-// to construct a cohesive psychodynamic narrative, generate core hypotheses, and
-// formulate an actionable therapeutic plan.
 
-import { getTopN } from '../core/utils.js';
+// /analysis_engines/semantic_engine.js - Professional Semantic Processor v5.0
+// محرك تحليل دلالي احترافي يدعم الاستنتاج، الجذور، والتشابه
 
-export class SynthesisEngine {
+import { normalizeArabic, tokenize, generateNgrams } from '../core/utils.js';
+
+export class SemanticEngine {
     constructor(dictionaries) {
-        if (!dictionaries.PATTERNS || !dictionaries.BEHAVIOR_VALUES) {
-            throw new Error("SynthesisEngine v1.0 requires PATTERNS and BEHAVIOR_VALUES dictionaries.");
-        }
-        this.patternsDict = dictionaries.PATTERNS;
-        this.behaviorValuesDict = dictionaries.BEHAVIOR_VALUES;
+        this.conceptMap = dictionaries.CONCEPT_MAP; // خريطة المفاهيم الكبرى
+        this.stopWords = dictionaries.STOP_WORDS_SET;
+        this.affixes = dictionaries.AFFIX_DICTIONARY; // القواعد الصرفية
+        this._isReady = true;
     }
 
     /**
-     * [CORE v1.0] Finds patterns and tensions based on a concept profile.
-     * This is an enhanced version that prioritizes more impactful patterns.
-     * @private
+     * حساب "مسافة التشابه" بين كلمتين (خوارزمية ليفنشتاين مبسطة)
+     * تجعل النظام يفهم الكلمة حتى لو فيها خطأ إملائي أو زيادة حرف
      */
-    _findPatternsAndTensions(conceptProfile = {}) {
-        const presentConcepts = Object.keys(conceptProfile);
-        const detectedPatterns = this.patternsDict.findPatternsByConcepts(presentConcepts, this.patternsDict.CAUSAL_PATTERNS_V6);
-        
-        const detectedTensions = [];
-        for (const tension of this.patternsDict.NARRATIVE_TENSIONS_V6) {
-            const poleA_present = tension.pole_a.concepts.some(c => presentConcepts.includes(c));
-            const poleB_present = tension.pole_b.concepts.some(c => presentConcepts.includes(c));
-            if (poleA_present && poleB_present) {
-                // Calculate the "strength" of the tension based on the concepts' weights
-                const poleA_strength = tension.pole_a.concepts.reduce((sum, c) => sum + (conceptProfile[c] || 0), 0);
-                const poleB_strength = tension.pole_b.concepts.reduce((sum, c) => sum + (conceptProfile[c] || 0), 0);
-                detectedTensions.push({ ...tension, strength: poleA_strength + poleB_strength });
+    _calculateSimilarity(str1, str2) {
+        const track = Array(str2.length + 1).fill(null).map(() => Array(str1.length + 1).fill(null));
+        for (let i = 0; i <= str1.length; i++) track[0][i] = i;
+        for (let j = 0; j <= str2.length; j++) track[j][0] = j;
+        for (let j = 1; j <= str2.length; j++) {
+            for (let i = 1; i <= str1.length; i++) {
+                const indicator = str1[i - 1] === str2[j - 1] ? 0 : 1;
+                track[j][i] = Math.min(track[j][i - 1] + 1, track[j - 1][i] + 1, track[j - 1][i - 1] + indicator);
             }
         }
+        const distance = track[str2.length][str1.length];
+        return 1 - (distance / Math.max(str1.length, str2.length));
+    }
+
+    /**
+     * استخراج "الجذر الدلالي" للكلمة (Stemming)
+     * هذا ما يجعله يفهم (شك، شكوك، يشك) كأنهم شيء واحد
+     */
+    _getStem(word) {
+        let stem = word;
+        // حذف الزوائد الشائعة في العربية (ال، و، ب، ي، ت، س، مست..)
+        const prefixes = ["ال", "وال", "بال", "فال", "لل", "و", "ب", "ف"];
+        const suffixes = ["ون", "ين", "ات", "كم", "هم", "نا", "ه", "ي"];
         
-        detectedTensions.sort((a, b) => b.strength - a.strength);
+        for (let p of prefixes) if (stem.startsWith(p) && stem.length > 3) stem = stem.slice(p.length);
+        for (let s of suffixes) if (stem.endsWith(s) && stem.length > 3) stem = stem.slice(0, -s.length);
+        
+        return stem;
+    }
+
+    analyze(rawText) {
+        const tokens = tokenize(rawText, this.stopWords);
+        const ngrams = generateNgrams(tokens, [1, 2, 3]);
+        const conceptInsights = {};
+        let pivotalConcept = null;
+        let maxWeight = 0;
+
+        // الدوران على كل العبارات والكلمات المستخرجة من النص
+        for (const term of ngrams) {
+            const stem = this._getStem(term);
+            
+            // البحث في خريطة المفاهيم
+            for (const [conceptKey, conceptData] of Object.entries(this.conceptMap)) {
+                let matchScore = 0;
+
+                // 1. تطابق حرفي
+                if (conceptData.keywords.includes(term)) matchScore = 1.0;
+                
+                // 2. تطابق بالجذر (Stem Match)
+                else if (conceptData.keywords.some(k => this._getStem(k) === stem)) matchScore = 0.85;
+
+                // 3. تطابق بالتشابه (Fuzzy Match) - للمحترفين
+                else {
+                    for (let kw of conceptData.keywords) {
+                        const sim = this._calculateSimilarity(term, kw);
+                        if (sim > 0.8) { // إذا كان التشابه أكثر من 80%
+                            matchScore = sim * 0.7; 
+                            break;
+                        }
+                    }
+                }
+
+                if (matchScore > 0) {
+                    const weight = matchScore * (conceptData.baseWeight || 1);
+                    conceptInsights[conceptKey] = {
+                        concept: conceptKey,
+                        totalWeight: (conceptInsights[conceptKey]?.totalWeight || 0) + weight,
+                        matches: [...(conceptInsights[conceptKey]?.matches || []), term]
+                    };
+
+                    if (conceptInsights[conceptKey].totalWeight > maxWeight) {
+                        maxWeight = conceptInsights[conceptKey].totalWeight;
+                        pivotalConcept = conceptKey;
+                    }
+                }
+            }
+        }
 
         return {
-            topPattern: detectedPatterns[0] || null,
-            topTension: detectedTensions[0] || null,
-            allPatterns: detectedPatterns,
-            allTensions: detectedTensions
-        };
-    }
-
-    /**
-     * [CORE v1.0] Generates deep hypotheses connecting patterns to underlying values and defenses.
-     * @private
-     */
-    _generateCoreHypotheses(topPattern, topTension, conceptProfile) {
-        if (!topPattern && !topTension) return [];
-        
-        const hypotheses = [];
-
-        // Hypothesis 1: Connect the primary pattern to a potential underlying value conflict.
-        if (topPattern) {
-            const analysis = this.behaviorValuesDict.analyzeUserProfile(topPattern.trigger_concepts.concat(topPattern.resulting_concepts));
-            const topValue = analysis.topValues[0];
-            if (topValue) {
-                const valueData = this.behaviorValuesDict.VALUE_SYSTEMS[topValue.key];
-                hypotheses.push({
-                    id: 'pattern_driven_by_value',
-                    type: 'causal_hypothesis',
-                    statement: `النمط السائد لـ '${topPattern.description.split(':')[0]}' قد يكون مدفوعًا بقيمة أساسية لديك وهي '${valueData.value}'. هل تجد أن هذا صحيح؟`,
-                    confidence: 0.7,
-                    related: { pattern: topPattern.pattern_id, value: topValue.key }
-                });
-            }
-        }
-        
-        // Hypothesis 2: Frame the core tension as a choice between two fundamental needs.
-        if (topTension) {
-            hypotheses.push({
-                id: 'tension_as_choice',
-                type: 'framing_hypothesis',
-                statement: `الصراع الذي تشعر به يبدو وكأنه اختيار صعب بين '${topTension.pole_a.name}' و '${topTension.pole_b.name}'. فهم هذا الصراع هو الخطوة الأولى نحو إيجاد التوازن.`,
-                confidence: 0.8,
-                related: { tension: topTension.tension_id }
-            });
-        }
-        
-        // Hypothesis 3 (Meta-Hypothesis): Connect the pattern and tension if possible.
-        if (topPattern && topTension) {
-            const patternConcepts = new Set([...topPattern.trigger_concepts, ...topPattern.resulting_concepts]);
-            const tensionConcepts = new Set([...topTension.pole_a.concepts, ...topTension.pole_b.concepts]);
-            const intersection = [...patternConcepts].filter(c => tensionConcepts.has(c));
-
-            if (intersection.length > 0) {
-                hypotheses.push({
-                    id: 'meta_synthesis',
-                    type: 'synthesis_hypothesis',
-                    statement: `يبدو أن الحلقة المفرغة لـ '${topPattern.description.split(':')[0]}' هي في الواقع تعبير عن الصراع الأعمق الذي تعيشه بين '${topTension.pole_a.name}' و '${topTension.pole_b.name}'.`,
-                    confidence: 0.9,
-                    related: { pattern: topPattern.pattern_id, tension: topTension.tension_id }
-                });
-            }
-        }
-
-        return hypotheses;
-    }
-
-    /**
-     * The main supernatural analysis function.
-     * @param {Object} semanticMap - The output from SemanticEngine.
-     * @param {Object} emotionProfile - The output from EmotionEngine.
-     * @returns {Object} A synthesized cognitive profile.
-     */
-    analyze({ semanticMap, emotionProfile }) {
-        if (!semanticMap || !semanticMap.conceptInsights) {
-            return { error: "Invalid input: SemanticMap is required." };
-        }
-
-        // Use the weighted concepts for more accurate pattern detection
-        const conceptProfile = {};
-        for (const [concept, insight] of Object.entries(semanticMap.conceptInsights)) {
-            conceptProfile[concept] = insight.totalWeight;
-        }
-
-        // Layer 1: Find dominant patterns and tensions
-        const { topPattern, topTension, allPatterns, allTensions } = this._findPatternsAndTensions(conceptProfile);
-
-        // Layer 2: Generate core psychodynamic hypotheses
-        const hypotheses = this._generateCoreHypotheses(topPattern, topTension, conceptProfile);
-        
-        // Layer 3: Formulate an actionable therapeutic plan
-        let therapeuticPlan = null;
-        if (topPattern) {
-            therapeuticPlan = this.patternsDict.recommendAntidotesAndPlan([topPattern.pattern_id]);
-        }
-        
-        // Layer 4: Identify the "Shadow" and the "Light"
-        const shadow = topPattern ? {
-            name: topPattern.description.split(':')[0],
-            insight: topPattern.therapeutic_insight
-        } : (topTension ? {
-            name: `صراع بين ${topTension.pole_a.name} و ${topTension.pole_b.name}`,
-            insight: topTension.therapeutic_insight
-        } : null);
-
-        const light = topPattern ? {
-            name: `المهارات المضادة: ${topPattern.antidote_concepts.join(', ')}`,
-            insight: `التركيز على هذه المهارات هو طريقك للخروج من هذه الحلقة.`
-        } : (topTension ? {
-            name: `إيجاد التوازن`,
-            insight: `المفتاح ليس في انتصار طرف على آخر، بل في إيجاد منطقة وسطى ترضي الحاجتين.`
-        } : null);
-        
-        return {
-            dominantPattern: topPattern,
-            coreConflict: topTension,
-            cognitiveHypotheses: hypotheses,
-            therapeuticPlan: therapeuticPlan,
-            narrative: {
-                shadow: shadow, // The core problem to be addressed
-                light: light    // The path to growth and healing
-            },
-            _meta: {
-                allDetectedPatterns: allPatterns,
-                allDetectedTensions: allTensions
-            }
+            tokens,
+            conceptInsights,
+            pivotalConcept,
+            _meta: { engineVersion: "5.0-Professional" }
         };
     }
 }
