@@ -146,7 +146,7 @@ export class EmotionEngineV3 {
   constructor(dictionaries = {}) {
     if (!dictionaries.EMOTIONAL_ANCHORS || !dictionaries.INTENSITY_ANALYZER) {
       throw new Error(
-        "EmotionEngineV3 requires EMOTIONAL_ANCHORS and INTENSITY_ANALYZER dictionaries."
+        "EmotionEngine requires EMOTIONAL_ANCHORS and INTENSITY_ANALYZER dictionaries."
       );
     }
 
@@ -177,7 +177,7 @@ export class EmotionEngineV3 {
     this.emotionalFingerprint = {};
     this.inflectionPoints = [];
     
-    console.log("[EmotionEngineV3] ✅ Initialization complete - Advanced Multi-Dimensional Analysis");
+    console.log("[EmotionEngine] ✅ Initialization complete - Advanced Multi-Dimensional Analysis");
   }
 
   // ================================================================================
@@ -918,4 +918,4 @@ export class EmotionEngineV3 {
   }
 }
 
-export default EmotionEngineV3;
+export default EmotionEngine;
