@@ -143,7 +143,7 @@ const INTENSITY_MULTIPLIERS = {
 // ================================================================================
 // فئة EmotionEngine المحسّنة (Enhanced EmotionEngine Class)
 // ================================================================================
-export class EmotionEngine {
+class EmotionEngine { // تم حذف كلمة export من هنا لمنع التكرار
   constructor(dictionaries = {}) {
     if (!dictionaries.EMOTIONAL_ANCHORS || !dictionaries.INTENSITY_ANALYZER) {
       throw new Error(
@@ -919,6 +919,6 @@ export class EmotionEngine {
   }
 }
 
-// التصدير المزدوج لضمان عمل الاستيراد بكل الطرق
-export { EmotionEngine }; 
+// التصدير في نهاية الملف لحل مشكلة التكرار
+export { EmotionEngine };
 export default EmotionEngine;
