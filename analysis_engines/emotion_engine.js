@@ -1,4 +1,5 @@
-// /analysis_engines/emotion_engine_v3.js
+
+// /analysis_engines/emotion_engine.js
 // EmotionEngine v3.7 - Advanced Multi-Dimensional Emotional Analysis
 // ================================================================================
 // ميزات جديدة ثورية:
@@ -140,9 +141,9 @@ const INTENSITY_MULTIPLIERS = {
 };
 
 // ================================================================================
-// فئة EmotionEngineV3 المحسّنة (Enhanced EmotionEngineV3 Class)
+// فئة EmotionEngine المحسّنة (Enhanced EmotionEngine Class)
 // ================================================================================
-export class EmotionEngineV3 {
+export class EmotionEngine {
   constructor(dictionaries = {}) {
     if (!dictionaries.EMOTIONAL_ANCHORS || !dictionaries.INTENSITY_ANALYZER) {
       throw new Error(
@@ -188,7 +189,7 @@ export class EmotionEngineV3 {
     const tokens = tokenize(normalizedText);
 
     if (this.debug) {
-      console.log('\n[EmotionEngineV3] Starting advanced analysis...');
+      console.log('\n[EmotionEngine] Starting advanced analysis...');
       console.log(`[Text]: "${rawText}"`);
     }
 
@@ -255,7 +256,7 @@ export class EmotionEngineV3 {
     };
 
     if (this.debug) {
-      console.log('[EmotionEngineV3] Analysis complete:', {
+      console.log('[EmotionEngine] Analysis complete:', {
         primary: result.primaryEmotion?.name,
         intensity: result.intensity.overall,
         stability: result.stability.score
@@ -918,5 +919,6 @@ export class EmotionEngineV3 {
   }
 }
 
+// التصدير المزدوج لضمان عمل الاستيراد بكل الطرق
 export { EmotionEngine }; 
 export default EmotionEngine;
