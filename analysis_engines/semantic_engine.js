@@ -1,4 +1,5 @@
-// /analysis_engines/semantic_engine_v4.js
+
+// /analysis_engines/semantic_engine.js
 // SemanticEngine v4.2 - Advanced Arabic Semantic Analysis with Deep Context Understanding
 // ================================================================================
 // ميزات ثورية جديدة:
@@ -176,13 +177,13 @@ const PSYCHOLOGICAL_CONCEPTS = {
 };
 
 // ================================================================================
-// فئة SemanticEngineV4 المحسّنة (Enhanced SemanticEngineV4 Class)
+// فئة SemanticEngine المحسّنة (Enhanced SemanticEngine Class)
 // ================================================================================
-export class SemanticEngineV4 {
+class SemanticEngine {
   constructor(dictionaries = {}) {
     if (!dictionaries.CONCEPT_MAP || !dictionaries.AFFIX_DICTIONARY || 
         !dictionaries.STOP_WORDS_SET || !dictionaries.CONCEPT_DEFINITIONS) {
-      throw new Error("SemanticEngineV4 requires comprehensive dictionaries.");
+      throw new Error("SemanticEngine requires comprehensive dictionaries.");
     }
 
     this.conceptMap = dictionaries.CONCEPT_MAP;
@@ -201,7 +202,7 @@ export class SemanticEngineV4 {
     this.prefixes = (this.affixes.prefixes || []).map(p => p.value).sort((a, b) => b.length - a.length);
     this.suffixes = (this.affixes.suffixes || []).map(s => s.value).sort((a, b) => b.length - a.length);
 
-    console.log("[SemanticEngineV4] ✅ Initialization complete - Advanced Semantic Analysis");
+    console.log("[SemanticEngine] ✅ Initialization complete - Advanced Semantic Analysis");
   }
 
   // ================================================================================
@@ -212,7 +213,7 @@ export class SemanticEngineV4 {
     const tokens = tokenize(normalizedText);
 
     if (this.debug) {
-      console.log('\n[SemanticEngineV4] Starting deep semantic analysis...');
+      console.log('\n[SemanticEngine] Starting deep semantic analysis...');
       console.log(`[Text]: "${rawText}"`);
     }
 
@@ -268,7 +269,7 @@ export class SemanticEngineV4 {
     };
 
     if (this.debug) {
-      console.log('[SemanticEngineV4] Analysis complete:', {
+      console.log('[SemanticEngine] Analysis complete:', {
         dominantTheme: result.dominantTheme,
         patternsDetected: result._meta.patternsDetected,
         coherence: result.coherence
@@ -827,4 +828,6 @@ export class SemanticEngineV4 {
   }
 }
 
-export default SemanticEngineV4;
+// التصدير المزدوج لضمان عمل الاستيراد بكل الطرق الممكنة
+export { SemanticEngine };
+export default SemanticEngine;
