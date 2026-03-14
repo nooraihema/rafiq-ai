@@ -1,4 +1,4 @@
-// /analysis_engines/catharsis_engine_v2.js
+// /analysis_engines/catharsis_engine.js
 // CatharsisEngine v2.5 - Advanced Crisis Detection + Context Awareness + Emotional DNA Blending
 // ================================================================================
 // ميزات رئيسية جديدة:
@@ -212,7 +212,7 @@ const RESPONSE_TEMPLATES = {
 // ================================================================================
 // فئة CatharsisEngine محسّنة (Enhanced CatharsisEngine Class)
 // ================================================================================
-export class CatharsisEngineV2 {
+export class CatharsisEngine {
   constructor(dictionaries = {}, protocols = {}, memorySystem = {}) {
     // التحقق من المتطلبات
     if (!dictionaries || !dictionaries.GENERATIVE_ENGINE || !dictionaries.GENERATIVE_ENGINE.ResponseOrchestrator) {
@@ -890,7 +890,7 @@ export class CatharsisEngineV2 {
     try {
       return this.generateAdvancedResponse(comprehensiveInsight);
     } catch (e) {
-      console.error("[CatharsisEngineV2] Error in response generation:", e);
+      console.error("[CatharsisEngine] Error in response generation:", e);
       return {
         responseText: 'أنا هنا معك - كيف يمكنني مساعدتك؟',
         _meta: {
@@ -902,4 +902,4 @@ export class CatharsisEngineV2 {
   }
 }
 
-export default CatharsisEngineV2;
+export default CatharsisEngine;
