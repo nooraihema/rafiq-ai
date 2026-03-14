@@ -918,4 +918,5 @@ export class EmotionEngineV3 {
   }
 }
 
+export { EmotionEngine }; 
 export default EmotionEngine;
