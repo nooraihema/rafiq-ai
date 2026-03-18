@@ -1,14 +1,12 @@
-// /analysis_engines/synthesis_engine.js - The Weaver of Meanings v1.1
-// محرك التركيب الدلالي - تم تصحيح التصدير ليعمل في المتصفح بنسبة 100%
+// /analysis_engines/synthesis_engine.js
+// SynthesisEngine v2.0 - High Intelligence Layer (Upgraded)
 
 import { getTopN } from '../core/utils.js';
 
-// أضفنا export هنا لتعريف الكلاس كجزء من نظام الـ Modules
 export class SynthesisEngine {
     constructor(dictionaries) {
-        // التأكد من تحميل القواميس الضرورية للعمل
         if (!dictionaries || !dictionaries.PATTERNS || !dictionaries.BEHAVIOR_VALUES) {
-            console.error("❌ SynthesisEngine: Missing required dictionaries (PATTERNS or BEHAVIOR_VALUES).");
+            console.error("❌ SynthesisEngine: Missing required dictionaries.");
             this.patternsDict = { findPatternsByConcepts: () => [], NARRATIVE_TENSIONS_V6: [] };
             this.behaviorValuesDict = { analyzeUserProfile: () => ({ topValues: [] }), VALUE_SYSTEMS: {} };
         } else {
@@ -17,33 +15,106 @@ export class SynthesisEngine {
         }
     }
 
-    /**
-     * البحث عن الأنماط والتوترات النفسية بناءً على المفاهيم المكتشفة
-     * @private
-     */
+    // =============================================================================
+    // 🧠 NEW: Enrich Concepts from SemanticEngine
+    // =============================================================================
+    _enrichConcepts(semanticMap) {
+        const enriched = {};
+
+        if (semanticMap.concepts) {
+            for (const [key, val] of Object.entries(semanticMap.concepts)) {
+                enriched[key] = val.importance || 0.5;
+            }
+        }
+
+        if (semanticMap.psychologicalPatterns) {
+            const p = semanticMap.psychologicalPatterns;
+
+            p.distortions?.forEach(d => {
+                enriched[`distortion:${d.type}`] = 0.9;
+            });
+
+            p.defenses?.forEach(d => {
+                enriched[`defense:${d.type}`] = 0.8;
+            });
+        }
+
+        return enriched;
+    }
+
+    // =============================================================================
+    // 🧠 NEW: Meta Meaning Detection (HIGH INTELLIGENCE)
+    // =============================================================================
+    _detectMetaMeaning(concepts) {
+        const insights = [];
+
+        const keys = Object.keys(concepts);
+
+        const hasDoubt = keys.some(c => c.includes('شك'));
+        const hasGeneralization = keys.some(c => c.includes('all_or_nothing'));
+
+        if (hasDoubt && hasGeneralization) {
+            insights.push({
+                type: 'paranoia_signal',
+                description: 'فقدان ثقة عام في الآخرين',
+                confidence: 0.9
+            });
+        }
+
+        const hasFear = keys.some(c => c.includes('fear'));
+        if (hasFear && hasDoubt) {
+            insights.push({
+                type: 'insecurity_pattern',
+                description: 'الشعور بعدم الأمان يؤدي إلى الشك',
+                confidence: 0.8
+            });
+        }
+
+        return insights;
+    }
+
+    // =============================================================================
+    // 🧠 NEW: Emotion Bias Injection
+    // =============================================================================
+    _injectEmotionBias(concepts, emotionProfile) {
+        if (!emotionProfile) return concepts;
+
+        const boosted = { ...concepts };
+
+        if (emotionProfile.primary === 'fear') {
+            Object.keys(boosted).forEach(k => boosted[k] *= 1.2);
+        }
+
+        if (emotionProfile.primary === 'anger') {
+            Object.keys(boosted).forEach(k => boosted[k] *= 1.1);
+        }
+
+        return boosted;
+    }
+
+    // =============================================================================
+    // 🔍 EXISTING: Pattern Detection (unchanged)
+    // =============================================================================
     _findPatternsAndTensions(conceptProfile = {}) {
         const presentConcepts = Object.keys(conceptProfile);
-        
-        // البحث عن الأنماط السببية
-        const detectedPatterns = this.patternsDict.findPatternsByConcepts ? 
-                                 this.patternsDict.findPatternsByConcepts(presentConcepts, this.patternsDict.CAUSAL_PATTERNS_V6) : [];
-        
+
+        const detectedPatterns = this.patternsDict.findPatternsByConcepts ?
+            this.patternsDict.findPatternsByConcepts(presentConcepts, this.patternsDict.CAUSAL_PATTERNS_V6) : [];
+
         const detectedTensions = [];
         const tensionsList = this.patternsDict.NARRATIVE_TENSIONS_V6 || [];
 
         for (const tension of tensionsList) {
             const poleA_present = tension.pole_a.concepts.some(c => presentConcepts.includes(c));
             const poleB_present = tension.pole_b.concepts.some(c => presentConcepts.includes(c));
-            
+
             if (poleA_present && poleB_present) {
-                // حساب قوة الصراع بناءً على أوزان المفاهيم
                 const poleA_strength = tension.pole_a.concepts.reduce((sum, c) => sum + (conceptProfile[c] || 0), 0);
                 const poleB_strength = tension.pole_b.concepts.reduce((sum, c) => sum + (conceptProfile[c] || 0), 0);
                 detectedTensions.push({ ...tension, strength: poleA_strength + poleB_strength });
             }
         }
-        
-        // ترتيب التوترات حسب القوة
+
         detectedTensions.sort((a, b) => b.strength - a.strength);
 
         return {
@@ -54,80 +125,107 @@ export class SynthesisEngine {
         };
     }
 
-    /**
-     * توليد فرضيات نفسية عميقة تربط الأنماط بالقيم الدفاعية
-     * @private
-     */
-    _generateCoreHypotheses(topPattern, topTension, conceptProfile) {
+    // =============================================================================
+    // 🧠 EXISTING: Hypotheses (Enhanced)
+    // =============================================================================
+    _generateCoreHypotheses(topPattern, topTension, conceptProfile, metaInsights) {
         const hypotheses = [];
 
-        // فرضية 1: ربط النمط بالقيم الأساسية
         if (topPattern) {
             const analysis = this.behaviorValuesDict.analyzeUserProfile(
                 topPattern.trigger_concepts.concat(topPattern.resulting_concepts)
             );
-            const topValue = analysis.topValues && analysis.topValues.length > 0 ? analysis.topValues[0] : null;
-            
+
+            const topValue = analysis.topValues?.[0];
+
             if (topValue) {
                 const valueData = this.behaviorValuesDict.VALUE_SYSTEMS[topValue.key];
+
                 hypotheses.push({
                     id: 'pattern_driven_by_value',
                     type: 'causal_hypothesis',
-                    statement: `النمط السائد لـ '${topPattern.description.split(':')[0]}' قد يكون مدفوعاً بقيمة أساسية لديك وهي '${valueData ? valueData.value : topValue.key}'.`,
-                    confidence: 0.7
+                    statement: `النمط '${topPattern.description}' قد يكون مرتبط بقيمة '${valueData?.value || topValue.key}'.`,
+                    confidence: 0.75
                 });
             }
         }
-        
-        // فرضية 2: تأطير الصراع كاختيار بين حاجتين
+
         if (topTension) {
             hypotheses.push({
                 id: 'tension_as_choice',
                 type: 'framing_hypothesis',
-                statement: `الصراع الذي تشعر به يبدو وكأنه اختيار صعب بين '${topTension.pole_a.name}' و '${topTension.pole_b.name}'.`,
-                confidence: 0.8
+                statement: `يبدو أنك بين '${topTension.pole_a.name}' و '${topTension.pole_b.name}'.`,
+                confidence: 0.85
             });
         }
-        
+
+        // 🔥 NEW: Meta Insights → Hypotheses
+        metaInsights.forEach(insight => {
+            hypotheses.push({
+                id: insight.type,
+                type: 'meta_insight',
+                statement: insight.description,
+                confidence: insight.confidence
+            });
+        });
+
         return hypotheses;
     }
 
-    /**
-     * الوظيفة الأساسية للتحليل والتركيب
-     */
+    // =============================================================================
+    // 🚀 MAIN ANALYSIS (UPGRADED)
+    // =============================================================================
     analyze({ semanticMap, emotionProfile }) {
-        if (!semanticMap || !semanticMap.conceptInsights) {
+
+        if (!semanticMap) {
             return { error: "Invalid input: SemanticMap is required." };
         }
 
-        // استخراج أوزان المفاهيم
-        const conceptProfile = {};
-        for (const [concept, insight] of Object.entries(semanticMap.conceptInsights)) {
-            conceptProfile[concept] = insight.totalWeight;
-        }
+        // 🧠 Step 1: Enrich Concepts
+        const enrichedConcepts = this._enrichConcepts(semanticMap);
 
-        // الطبقة 1: إيجاد الأنماط والتوترات
-        const { topPattern, topTension, allPatterns, allTensions } = this._findPatternsAndTensions(conceptProfile);
+        // 🧠 Step 2: Inject Emotion
+        const conceptProfile = this._injectEmotionBias(enrichedConcepts, emotionProfile);
 
-        // الطبقة 2: توليد الفرضيات النفسية
-        const hypotheses = this._generateCoreHypotheses(topPattern, topTension, conceptProfile);
-        
+        // 🧠 Step 3: Meta Understanding
+        const metaInsights = this._detectMetaMeaning(conceptProfile);
+
+        // 🔍 Step 4: Patterns
+        const { topPattern, topTension, allPatterns, allTensions } =
+            this._findPatternsAndTensions(conceptProfile);
+
+        // 🧠 Step 5: Hypotheses
+        const hypotheses = this._generateCoreHypotheses(
+            topPattern,
+            topTension,
+            conceptProfile,
+            metaInsights
+        );
+
         return {
             dominantPattern: topPattern,
             coreConflict: topTension,
             cognitiveHypotheses: hypotheses,
+            metaInsights, // 🔥 NEW
+
             narrative: {
-                shadow: topPattern ? topPattern.description : null,
-                light: topTension ? topTension.description : null
+                shadow: topPattern?.description || null,
+                light: topTension?.description || null
             },
+
+            intelligence: {
+                depthLevel: 'HIGH',
+                detectedSignals: metaInsights.length,
+                emotionalBias: emotionProfile?.primary || 'neutral'
+            },
+
             _meta: {
                 allDetectedPatterns: allPatterns,
                 allDetectedTensions: allTensions,
-                engineVersion: "1.1-Browser-Optimized"
+                engineVersion: "2.0-High-Intelligence"
             }
         };
     }
 }
 
-// السطر الذهبي: التصدير الافتراضي الذي يحل مشكلة الـ SyntaxError في المتصفح
 export default SynthesisEngine;
