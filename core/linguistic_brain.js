@@ -1,7 +1,7 @@
 
-// /core/linguistic_brain.js
-// LinguisticBrain v3.3 - The "Vision Fix" Edition
-// تم إصلاح ربط القواميس وإضافة Logs تفصيلية لكل مرحلة
+// /core/linguistic_brain_v4.js
+// LinguisticBrain v4.0 - Full Joy Edition
+// تم إضافة دعم تحميل البروتوكولات يدوياً وحفظ كل Logs
 
 import { normalizeArabic, tokenize } from './utils.js';
 import { SemanticEngine } from '../analysis_engines/semantic_engine.js';
@@ -9,6 +9,7 @@ import { EmotionEngine } from '../analysis_engines/emotion_engine.js';
 import SynthesisEngine from '../analysis_engines/synthesis_engine.js'; 
 import { CatharsisEngine } from '../analysis_engines/catharsis_engine.js';
 
+// --- النسخة المحسنة: Default Options ---
 const DEFAULT_OPTIONS = {
   debug: true,
   dictionaryFileNames: {
@@ -21,7 +22,8 @@ const DEFAULT_OPTIONS = {
     generative_responses_engine: 'generative_responses_engine.js',
     stop_words: 'stop_words.js',
     emotional_dynamics_engine: 'emotional_dynamics_engine.js'
-  }
+  },
+  manualProtocols: null  // ← هنا يمكن تمرير البروتوكولات يدوياً
 };
 
 export class LinguisticBrain {
@@ -51,7 +53,7 @@ async init(manualProtocols = null) {
     console.log("🧠 Brain Initialization Started");
     console.log("=======================================");
 
-    // --- الخطوة 1: تحميل الملفات ---
+    // --- الخطوة 1: تحميل القواميس ---
     console.log("[Step 1] Loading dictionaries from files...");
     const dictFileNames = this.options.dictionaryFileNames;
     const promises = Object.entries(dictFileNames).map(async ([key, fileName]) => {
@@ -65,11 +67,13 @@ async init(manualProtocols = null) {
     });
     await Promise.all(promises);
 
-    // --- الخطوة 2: تحميل البروتوكولات ---
+    // --- الخطوة 2: تحميل البروتوكولات (مع fallback يدوية) ---
     console.log("=======================================");
     console.log("[Step 2] Loading Psychological Protocols...");
-    if (manualProtocols) {
-        this.protocols = manualProtocols;
+
+    const protocolsToUse = manualProtocols || this.options.manualProtocols;
+    if (protocolsToUse) {
+        this.protocols = protocolsToUse;
         console.log("  ✅ Protocols loaded manually.");
     } else {
         try {
@@ -80,23 +84,22 @@ async init(manualProtocols = null) {
                 console.log(`  ✅ Protocol Active: ${protocol.tag}`);
             }
         } catch (e) {
-            console.warn("  ⚠️ Protocols directory not accessible.");
+            console.warn("  ⚠️ Protocols directory not accessible, fallback to empty protocols.");
+            this.protocols = {}; // ← حفاظ على عدم توقف المحركات
         }
     }
 
-    // --- الخطوة 3: تجهيز القواميس (الإصلاح الجوهري هنا) ---
+    // --- الخطوة 3: تجهيز القواميس ---
     console.log("=======================================");
     console.log("[Step 3] Mapping Dictionary Keys to Engines...");
     
-    // نحن هنا نسحب "الجداول" المحددة من داخل الملفات التي تم تحميلها
     const semanticConfig = {
-        CONCEPT_MAP: this.dictionaries.psychological_concepts_engine.CONCEPT_MAP,
-        CONCEPT_DEFINITIONS: this.dictionaries.psychological_concepts_engine.CONCEPT_DEFINITIONS,
-        AFFIX_DICTIONARY: this.dictionaries.affixes.AFFIX_DICTIONARY || this.dictionaries.affixes,
-        STOP_WORDS_SET: this.dictionaries.stop_words.STOP_WORDS_SET || this.dictionaries.stop_words
+        CONCEPT_MAP: this.dictionaries.psychological_concepts_engine?.CONCEPT_MAP || {},
+        CONCEPT_DEFINITIONS: this.dictionaries.psychological_concepts_engine?.CONCEPT_DEFINITIONS || {},
+        AFFIX_DICTIONARY: this.dictionaries.affixes?.AFFIX_DICTIONARY || this.dictionaries.affixes || {},
+        STOP_WORDS_SET: this.dictionaries.stop_words?.STOP_WORDS_SET || this.dictionaries.stop_words || new Set()
     };
-
-    console.log("  🔎 Semantic Maps Prepared. Items in Map:", Object.keys(semanticConfig.CONCEPT_MAP || {}).length);
+    console.log("  🔎 Semantic Maps Prepared. Items in Map:", Object.keys(semanticConfig.CONCEPT_MAP).length);
 
     // --- الخطوة 4: إنشاء المحركات ---
     console.log("=======================================");
@@ -108,21 +111,21 @@ async init(manualProtocols = null) {
 
         console.log("  💓 EmotionEngine...");
         this.engines.emotion = new EmotionEngine({
-            EMOTIONAL_ANCHORS: this.dictionaries.emotional_anchors, // يحتاج الكائن كاملاً للـ Interpreter
-            INTENSITY_ANALYZER: this.dictionaries.intensity_analyzer
+            EMOTIONAL_ANCHORS: this.dictionaries.emotional_anchors || {},
+            INTENSITY_ANALYZER: this.dictionaries.intensity_analyzer || {}
         });
 
         console.log("  🧬 SynthesisEngine...");
         this.engines.synthesis = new SynthesisEngine({
-            PATTERNS: this.dictionaries.psychological_patterns_hyperreal,
-            BEHAVIOR_VALUES: this.dictionaries.behavior_values_defenses
+            PATTERNS: this.dictionaries.psychological_patterns_hyperreal || {},
+            BEHAVIOR_VALUES: this.dictionaries.behavior_values_defenses || {}
         });
 
         console.log("  💬 CatharsisEngine...");
         this.engines.catharsis = new CatharsisEngine(
             { 
-                GENERATIVE_ENGINE: this.dictionaries.generative_responses_engine,
-                EMOTIONAL_DYNAMICS: this.dictionaries.emotional_dynamics_engine 
+                GENERATIVE_ENGINE: this.dictionaries.generative_responses_engine || {},
+                EMOTIONAL_DYNAMICS: this.dictionaries.emotional_dynamics_engine || {} 
             },
             this.protocols,
             this.memory
@@ -165,9 +168,9 @@ async analyze(rawText, context = {}) {
         const emotionProfile = await this.engines.emotion.analyze(rawText, {
             previousEmotion: context.previousEmotion || null
         });
-        console.log(`  💓 Primary Emotion: ${emotionProfile.primaryEmotion?.name} (${emotionProfile.intensity?.overall})`);
+        console.log(`  💓 Primary Emotion: ${emotionProfile.primaryEmotion?.name || 'neutral'} (${emotionProfile.intensity?.overall || 0})`);
 
-        // 3. التركيب (السينثسيز)
+        // 3. التركيب (Synthesis)
         console.log("[Pipeline 3] Running Synthesis (Connecting the dots)...");
         const synthesisProfile = await this.engines.synthesis.analyze({
             semanticMap,
@@ -201,7 +204,7 @@ async generateResponse(comprehensiveInsight) {
         const response = await this.engines.catharsis.generateResponse(comprehensiveInsight);
         
         console.log("💬 Reply Logic Complete.");
-        console.log(`🎯 Intent: ${response.intent} | DNA: ${response.emotionalDNA?.join(', ')}`);
+        console.log(`🎯 Intent: ${response.intent || 'unknown'} | DNA: ${response.emotionalDNA?.join(', ') || 'neutral'}`);
         
         return response;
     } catch (error) {
