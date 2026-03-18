@@ -279,54 +279,100 @@ class SemanticEngine {
     return result;
   }
 
-  // ================================================================================
-  // استخراج المفاهيم (Concept Extraction)
-  // ================================================================================
   _extractConcepts(normalizedText, tokens) {
+
+    console.log("🔍 [_extractConcepts] START");
+
     const concepts = {};
-    const usedIndices = new Set();
-    const ngrams = [
-      ...generateNgrams(tokens, 3),
-      ...generateNgrams(tokens, 2),
-      ...tokens.map(t => [t])
-    ];
 
-    for (const ngram of ngrams) {
-      const ngramText = ngram.join(' ');
-      const ngramNormalized = normalizeArabic(ngramText);
-
-      // البحث في خريطة المفاهيم
-      if (this.conceptMap && this.conceptMap[ngramNormalized]) {
-        concepts[ngramText] = {
-          name: ngramText,
-          type: 'semantic_concept',
-          definition: this.conceptDefs?.[ngramNormalized],
-          frequency: (concepts[ngramText]?.frequency || 0) + 1,
-          importance: this._calculateConceptImportance(ngramText, tokens.length)
-        };
-      }
-
-      // البحث في الأنماط النفسية
-      for (const [patternType, patterns] of Object.entries(PSYCHOLOGICAL_PATTERNS)) {
-        for (const [patternName, patternData] of Object.entries(patterns)) {
-          if (patternData.keywords?.some(kw => 
-            normalizedText.includes(normalizeArabic(kw))
-          )) {
-            const conceptKey = `${patternType}:${patternName}`;
-            concepts[conceptKey] = {
-              name: patternName,
-              type: patternType,
-              pattern: patternData,
-              frequency: (concepts[conceptKey]?.frequency || 0) + 1,
-              importance: 0.8
-            };
-          }
-        }
-      }
+    // 🛡️ حماية tokens
+    if (!Array.isArray(tokens)) {
+        console.warn("⚠️ tokens is not array, fixing...");
+        tokens = [];
     }
 
+    console.log("Tokens:", tokens);
+
+    // 🛡️ حماية generateNgrams
+    let grams3 = [];
+    let grams2 = [];
+
+    try {
+        grams3 = generateNgrams(tokens, 3) || [];
+    } catch (e) {
+        console.error("❌ Error in generateNgrams(3):", e);
+        grams3 = [];
+    }
+
+    try {
+        grams2 = generateNgrams(tokens, 2) || [];
+    } catch (e) {
+        console.error("❌ Error in generateNgrams(2):", e);
+        grams2 = [];
+    }
+
+    console.log("3-grams:", grams3);
+    console.log("2-grams:", grams2);
+
+    const ngrams = [
+        ...grams3,
+        ...grams2,
+        ...tokens.map(t => [t])
+    ];
+
+    console.log("All ngrams:", ngrams);
+
+    for (const ngram of ngrams) {
+
+        if (!Array.isArray(ngram)) continue;
+
+        const ngramText = ngram.join(' ');
+        const ngramNormalized = normalizeArabic(ngramText);
+
+        // 🧠 Concept Map check
+        if (this.conceptMap && this.conceptMap[ngramNormalized]) {
+
+            console.log("✅ Concept matched:", ngramText);
+
+            concepts[ngramText] = {
+                name: ngramText,
+                type: 'semantic_concept',
+                definition: this.conceptDefs?.[ngramNormalized],
+                frequency: (concepts[ngramText]?.frequency || 0) + 1,
+                importance: this._calculateConceptImportance(ngramText, tokens.length)
+            };
+        }
+
+        // 🧠 Psychological Patterns
+        for (const [patternType, patterns] of Object.entries(PSYCHOLOGICAL_PATTERNS)) {
+            for (const [patternName, patternData] of Object.entries(patterns)) {
+
+                try {
+                    if (patternData.keywords?.some(kw =>
+                        normalizedText.includes(normalizeArabic(kw))
+                    )) {
+
+                        const conceptKey = `${patternType}:${patternName}`;
+
+                        concepts[conceptKey] = {
+                            name: patternName,
+                            type: patternType,
+                            pattern: patternData,
+                            frequency: (concepts[conceptKey]?.frequency || 0) + 1,
+                            importance: 0.8
+                        };
+                    }
+                } catch (e) {
+                    console.error("❌ Pattern error:", patternName, e);
+                }
+            }
+        }
+    }
+
+    console.log("📊 Extracted Concepts:", concepts);
+
     return concepts;
-  }
+}
 
   // ================================================================================
   // بناء الشبكة الدلالية (Semantic Network Construction)
