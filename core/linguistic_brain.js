@@ -1,6 +1,6 @@
 
 // /core/linguistic_brain_v4.js
-// LinguisticBrain v4.1 - Final Stability Edition
+// LinguisticBrain v5.0 - Attention-Aware Intelligence
 // ============================================================
 
 import { normalizeArabic, tokenize } from './utils.js';
@@ -8,6 +8,7 @@ import { SemanticEngine } from '../analysis_engines/semantic_engine.js';
 import { EmotionEngine } from '../analysis_engines/emotion_engine.js';
 import SynthesisEngine from '../analysis_engines/synthesis_engine.js'; 
 import { CatharsisEngine } from '../analysis_engines/catharsis_engine.js';
+import { AttentionLayer } from './attention_layer.js'; // استيراد طبقة الانتباه
 
 const DEFAULT_OPTIONS = {
   debug: true,
@@ -21,72 +22,39 @@ const DEFAULT_OPTIONS = {
     generative_responses_engine: 'generative_responses_engine.js',
     stop_words: 'stop_words.js',
     emotional_dynamics_engine: 'emotional_dynamics_engine.js'
-  },
-  manualProtocols: null 
+  }
 };
 
 export class LinguisticBrain {
 
 constructor(memorySystem, opts = {}) {
-    console.log("%c🧠 [Constructor] Creating LinguisticBrain instance...", "color: #2196F3; font-weight: bold;");
+    console.log("%c🧠 [Constructor] Creating LinguisticBrain v5.0 (Attention Ready)...", "color: #2196F3; font-weight: bold;");
     this.options = Object.assign({}, DEFAULT_OPTIONS, opts);
     this.memory = memorySystem;
     this.dictionaries = {};
-    this.protocols = {};
-    this.engines = {
-        semantic: null,
-        emotion: null,
-        synthesis: null,
-        catharsis: null
-    };
+    this.engines = {};
     this._isInitialized = false;
 }
 
 async init(manualProtocols = null) {
-    if (this._isInitialized) {
-        console.log("⚠️ [Init] Brain already initialized.");
-        return this;
-    }
+    if (this._isInitialized) return this;
 
     console.log("%c=======================================", "color: #4CAF50");
-    console.log("%c🧠 Brain Initialization Started", "color: #4CAF50; font-weight: bold; font-size: 1.2em;");
+    console.log("%c🧠 Brain Initialization Started", "color: #4CAF50; font-weight: bold;");
     console.log("%c=======================================", "color: #4CAF50");
 
     // --- الخطوة 1: تحميل القواميس ---
-    console.log("%c[Step 1] 📥 Loading Dictionaries...", "color: #FF9800; font-weight: bold;");
     const dictFileNames = this.options.dictionaryFileNames;
     const promises = Object.entries(dictFileNames).map(async ([key, fileName]) => {
         try {
             const mod = await import(`../dictionaries/${fileName}`);
             this.dictionaries[key] = mod.default || mod;
-            console.log(`   ✅ Loaded: %c${key}`, "color: #8BC34A; font-weight: bold;");
-        } catch (e) {
-            console.error(`   ❌ Failed: ${key}`, e);
-        }
+            console.log(`   ✅ Loaded: ${key}`);
+        } catch (e) { console.error(`   ❌ Failed: ${key}`, e); }
     });
     await Promise.all(promises);
 
-    // --- الخطوة 2: تحميل البروتوكولات ---
-    console.log("%c[Step 2] 🛡️ Loading Protocols...", "color: #FF9800; font-weight: bold;");
-    const protocolsToUse = manualProtocols || this.options.manualProtocols;
-    if (protocolsToUse) {
-        this.protocols = protocolsToUse;
-        console.log("   ✅ Protocols assigned manually.");
-    } else {
-        try {
-            const protoMod = await import(`../protocols/depression_gateway_ultra_rich.js`);
-            const protocol = protoMod.default || protoMod;
-            if (protocol && protocol.tag) {
-                this.protocols[protocol.tag] = protocol;
-                console.log(`   ✅ Protocol Active: %c${protocol.tag}`, "color: #E91E63; font-weight: bold;");
-            }
-        } catch (e) {
-            console.warn("   ⚠️ Protocols fallback to empty.");
-            this.protocols = {}; 
-        }
-    }
-
-    // --- الخطوة 3: تجهيز الإعدادات ---
+    // --- الخطوة 2: تجهيز إعدادات المحركات ---
     const semanticConfig = {
         CONCEPT_MAP: this.dictionaries.psychological_concepts_engine?.CONCEPT_MAP || {},
         CONCEPT_DEFINITIONS: this.dictionaries.psychological_concepts_engine?.CONCEPT_DEFINITIONS || {},
@@ -94,8 +62,16 @@ async init(manualProtocols = null) {
         STOP_WORDS_SET: this.dictionaries.stop_words?.STOP_WORDS_SET || this.dictionaries.stop_words || new Set()
     };
 
-    // --- الخطوة 4: بناء المحركات ---
+    // --- الخطوة 3: بناء المحركات مع دمج طبقة الانتباه ---
     try {
+        // 1. تهيئة طبقة الانتباه النفسي
+        this.engines.attention = new AttentionLayer({
+            anchors: this.dictionaries.emotional_anchors?.EMOTIONAL_DICTIONARY || this.dictionaries.emotional_anchors,
+            concepts: semanticConfig.CONCEPT_MAP,
+            stopWords: semanticConfig.STOP_WORDS_SET
+        });
+
+        // 2. تهيئة المحركات الأساسية
         this.engines.semantic = new SemanticEngine(semanticConfig);
         this.engines.emotion = new EmotionEngine({
             EMOTIONAL_ANCHORS: this.dictionaries.emotional_anchors || {},
@@ -111,10 +87,11 @@ async init(manualProtocols = null) {
                 GENERATIVE_ENGINE: this.dictionaries.generative_responses_engine || {},
                 EMOTIONAL_DYNAMICS: this.dictionaries.emotional_dynamics_engine || {} 
             },
-            this.protocols,
+            {},
             this.memory
         );
-        console.log("%c   🎉 ALL ENGINES READY", "color: #4CAF50; font-weight: bold;");
+
+        console.log("%c   🎉 BRAIN & ATTENTION LAYER ONLINE", "color: #4CAF50; font-weight: bold;");
     } catch (e) {
         console.error("❌ Initialization Failed:", e);
         throw e;
@@ -124,20 +101,43 @@ async init(manualProtocols = null) {
     return this;
 }
 
+/**
+ * دالة التحليل العميق: تمر الجملة عبر "بوابة الانتباه" أولاً
+ */
 async analyze(rawText, context = {}) {
     if (!this._isInitialized) return null;
     
-    console.log("\n" + "%c🚀 Pipeline Start".repeat(1), "color: #fff; background: #2196F3; padding: 3px;");
+    console.log("\n" + "%c🚀 Starting Analysis Pipeline (v5.0)".repeat(1), "color: #fff; background: #2196F3; padding: 3px;");
     const start = Date.now();
 
     try {
-        const semanticMap = await this.engines.semantic.analyze(rawText, context);
-        const emotionProfile = await this.engines.emotion.analyze(rawText, context);
+        const normalized = normalizeArabic(rawText.toLowerCase());
+        const tokens = tokenize(normalized);
+
+        // [Phase 0]: تشغيل طبقة الانتباه لتحديد بؤرة التركيز
+        // نمرر التوكنز لطبقة الانتباه لتعطينا "خريطة الأهمية" (Salience Map)
+        const attentionResult = await this.engines.attention.process(tokens);
+        const attentionMap = attentionResult.salienceMap;
+
+        // [Phase 1]: التحليل الدلالي (نمرر خريطة الانتباه)
+        const semanticMap = await this.engines.semantic.analyze(rawText, { ...context, attentionMap });
+
+        // [Phase 2]: التحليل العاطفي (نمرر خريطة الانتباه)
+        const emotionProfile = await this.engines.emotion.analyze(rawText, { ...context, attentionMap });
+
+        // [Phase 3]: التركيب والاستنتاج
         const synthesisProfile = await this.engines.synthesis.analyze({ semanticMap, emotionProfile });
 
-        return { rawText, semanticMap, emotionProfile, synthesisProfile, _meta: { duration: Date.now() - start } };
+        return { 
+            rawText, 
+            semanticMap, 
+            emotionProfile, 
+            synthesisProfile, 
+            attentionMap, // تصدير الخريطة للمعاينة
+            _meta: { duration: Date.now() - start, focus: attentionResult.focusToken } 
+        };
     } catch (error) {
-        console.error("❌ Analysis Pipeline Error:", error);
+        console.error("❌ Critical Analysis Error:", error);
         return null;
     }
 }
@@ -149,16 +149,12 @@ async generateResponse(insight) {
         console.log("%c[Pipeline 4] Generating Soulful Response...", "color: #9C27B0; font-weight: bold;");
         const response = await this.engines.catharsis.generateResponse(insight);
         
-        console.log("%c💬 Reply Logic Finalized.", "color: #4CAF50; font-weight: bold;");
-        
-        // --- حماية الـ DNA (Fixing TypeError) ---
+        // منطق عرض الـ DNA (Robust)
         let dnaDisplayName = "standard";
         if (response.emotionalDNA) {
-            if (Array.isArray(response.emotionalDNA)) {
-                dnaDisplayName = response.emotionalDNA.join(', ');
-            } else if (typeof response.emotionalDNA === 'object') {
-                dnaDisplayName = response.emotionalDNA.name || "dynamic_model";
-            }
+            dnaDisplayName = Array.isArray(response.emotionalDNA) 
+                ? response.emotionalDNA.join(', ') 
+                : (response.emotionalDNA.name || "dynamic_model");
         }
 
         console.log(`🎯 Intent: %c${response.intent || 'insight_delivery'}`, "color: #FF5722; font-weight: bold;");
@@ -166,8 +162,8 @@ async generateResponse(insight) {
         
         return response;
     } catch (error) {
-        console.error("❌ Brain Response Generation Error:", error);
-        return { responseText: "أنا سامعك وحاسس بيك.. كمل كلامك أنا هنا." };
+        console.error("❌ Response Generation Error:", error);
+        return { responseText: "أنا هنا معاك، حاسس بيك.. كمل كلامك." };
     }
 }
 
