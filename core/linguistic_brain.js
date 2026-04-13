@@ -1,7 +1,7 @@
 
 // /core/linguistic_brain_v4.js
-// LinguisticBrain v4.0 - Full Joy Edition
-// تم إضافة دعم تحميل البروتوكولات يدوياً وحفظ كل Logs
+// LinguisticBrain v4.0 - Full Joy & Hyper-Logging Edition
+// ============================================================
 
 import { normalizeArabic, tokenize } from './utils.js';
 import { SemanticEngine } from '../analysis_engines/semantic_engine.js';
@@ -23,13 +23,13 @@ const DEFAULT_OPTIONS = {
     stop_words: 'stop_words.js',
     emotional_dynamics_engine: 'emotional_dynamics_engine.js'
   },
-  manualProtocols: null  // ← هنا يمكن تمرير البروتوكولات يدوياً
+  manualProtocols: null 
 };
 
 export class LinguisticBrain {
 
 constructor(memorySystem, opts = {}) {
-    console.log("🧠 [Constructor] Creating LinguisticBrain instance...");
+    console.log("%c🧠 [Constructor] Creating LinguisticBrain instance...", "color: #2196F3; font-weight: bold;");
     this.options = Object.assign({}, DEFAULT_OPTIONS, opts);
     this.memory = memorySystem;
     this.dictionaries = {};
@@ -49,49 +49,46 @@ async init(manualProtocols = null) {
         return this;
     }
 
-    console.log("=======================================");
-    console.log("🧠 Brain Initialization Started");
-    console.log("=======================================");
+    console.log("%c=======================================", "color: #4CAF50");
+    console.log("%c🧠 Brain Initialization Started", "color: #4CAF50; font-weight: bold; font-size: 1.2em;");
+    console.log("%c=======================================", "color: #4CAF50");
 
     // --- الخطوة 1: تحميل القواميس ---
-    console.log("[Step 1] Loading dictionaries from files...");
+    console.log("%c[Step 1] 📥 Loading Dictionaries...", "color: #FF9800; font-weight: bold;");
     const dictFileNames = this.options.dictionaryFileNames;
     const promises = Object.entries(dictFileNames).map(async ([key, fileName]) => {
         try {
             const mod = await import(`../dictionaries/${fileName}`);
             this.dictionaries[key] = mod.default || mod;
-            console.log(`  📥 ${key} loaded.`);
+            console.log(`   ✅ Loaded: %c${key}`, "color: #8BC34A; font-weight: bold;");
         } catch (e) {
-            console.error(`  ❌ Failed loading: ${key}`, e);
+            console.error(`   ❌ CRITICAL: Failed to load dictionary [${key}]`, e);
         }
     });
     await Promise.all(promises);
 
-    // --- الخطوة 2: تحميل البروتوكولات (مع fallback يدوية) ---
-    console.log("=======================================");
-    console.log("[Step 2] Loading Psychological Protocols...");
-
+    // --- الخطوة 2: تحميل البروتوكولات ---
+    console.log("%c[Step 2] 🛡️ Loading Protocols...", "color: #FF9800; font-weight: bold;");
     const protocolsToUse = manualProtocols || this.options.manualProtocols;
     if (protocolsToUse) {
         this.protocols = protocolsToUse;
-        console.log("  ✅ Protocols loaded manually.");
+        console.log("   ✅ Protocols assigned manually.");
     } else {
         try {
             const protoMod = await import(`../protocols/depression_gateway_ultra_rich.js`);
             const protocol = protoMod.default || protoMod;
             if (protocol && protocol.tag) {
                 this.protocols[protocol.tag] = protocol;
-                console.log(`  ✅ Protocol Active: ${protocol.tag}`);
+                console.log(`   ✅ Protocol Active: %c${protocol.tag}`, "color: #E91E63; font-weight: bold;");
             }
         } catch (e) {
-            console.warn("  ⚠️ Protocols directory not accessible, fallback to empty protocols.");
-            this.protocols = {}; // ← حفاظ على عدم توقف المحركات
+            console.warn("   ⚠️ Protocols directory not accessible, starting with empty protocols.");
+            this.protocols = {}; 
         }
     }
 
-    // --- الخطوة 3: تجهيز القواميس ---
-    console.log("=======================================");
-    console.log("[Step 3] Mapping Dictionary Keys to Engines...");
+    // --- الخطوة 3: تجهيز إعدادات المحركات ---
+    console.log("%c[Step 3] 🏗️ Mapping Config to Engines...", "color: #FF9800; font-weight: bold;");
     
     const semanticConfig = {
         CONCEPT_MAP: this.dictionaries.psychological_concepts_engine?.CONCEPT_MAP || {},
@@ -99,29 +96,29 @@ async init(manualProtocols = null) {
         AFFIX_DICTIONARY: this.dictionaries.affixes?.AFFIX_DICTIONARY || this.dictionaries.affixes || {},
         STOP_WORDS_SET: this.dictionaries.stop_words?.STOP_WORDS_SET || this.dictionaries.stop_words || new Set()
     };
-    console.log("  🔎 Semantic Maps Prepared. Items in Map:", Object.keys(semanticConfig.CONCEPT_MAP).length);
+    console.log(`   - Semantic Config: %c${Object.keys(semanticConfig.CONCEPT_MAP).length} concepts mapped.`, "color: #00BCD4;");
 
     // --- الخطوة 4: إنشاء المحركات ---
-    console.log("=======================================");
-    console.log("[Step 4] Instantiating Engines...");
+    console.log("%c[Step 4] ⚙️ Instantiating Engines...", "color: #FF9800; font-weight: bold;");
 
     try {
-        console.log("  🧠 SemanticEngine...");
+        console.log("   🧠 Initializing: SemanticEngine...");
         this.engines.semantic = new SemanticEngine(semanticConfig);
 
-        console.log("  💓 EmotionEngine...");
+        console.log("   💓 Initializing: EmotionEngine...");
         this.engines.emotion = new EmotionEngine({
             EMOTIONAL_ANCHORS: this.dictionaries.emotional_anchors || {},
-            INTENSITY_ANALYZER: this.dictionaries.intensity_analyzer || {}
+            INTENSITY_ANALYZER: this.dictionaries.intensity_analyzer || {},
+            AFFIX_DICTIONARY: semanticConfig.AFFIX_DICTIONARY // ربط الزوائد بمحرك المشاعر أيضاً
         });
 
-        console.log("  🧬 SynthesisEngine...");
+        console.log("   🧬 Initializing: SynthesisEngine...");
         this.engines.synthesis = new SynthesisEngine({
             PATTERNS: this.dictionaries.psychological_patterns_hyperreal || {},
             BEHAVIOR_VALUES: this.dictionaries.behavior_values_defenses || {}
         });
 
-        console.log("  💬 CatharsisEngine...");
+        console.log("   💬 Initializing: CatharsisEngine...");
         this.engines.catharsis = new CatharsisEngine(
             { 
                 GENERATIVE_ENGINE: this.dictionaries.generative_responses_engine || {},
@@ -131,15 +128,11 @@ async init(manualProtocols = null) {
             this.memory
         );
 
-        console.log("  ✅ ALL ENGINES READY.");
+        console.log("%c   🎉 ALL ENGINES ARE ONLINE & READY", "color: #4CAF50; font-weight: bold;");
     } catch (e) {
-        console.error("  ❌ Engine Initialization Failed:", e);
+        console.error("   ❌ Engine Initialization Failed:", e);
         throw e;
     }
-
-    console.log("=======================================");
-    console.log("🎉 Brain Initialization Completed Successfully");
-    console.log("=======================================");
 
     this._isInitialized = true;
     return this;
@@ -147,39 +140,42 @@ async init(manualProtocols = null) {
 
 async analyze(rawText, context = {}) {
     if (!this._isInitialized) {
-        console.warn("⚠️ Brain not initialized. Call init() first.");
+        console.error("❌ Brain not initialized! Call init() first.");
         return null;
     }
 
-    console.log("\n\n" + "=".repeat(40));
-    console.log(`🧠 ANALYSIS START: "${rawText}"`);
-    console.log("=".repeat(40));
+    console.log("\n" + "%c🚀 Starting Analysis Pipeline".repeat(1), "color: #ffffff; background: #2196F3; padding: 5px; font-weight: bold;");
+    console.log(`%c[Input]: "${rawText}"`, "color: #FFEB3B; font-weight: bold;");
 
     const start = Date.now();
 
     try {
         // 1. تحليل المفاهيم
-        console.log("[Pipeline 1] Running Semantic Analysis...");
+        console.log("%c[Pipeline 1] Running Semantic Analysis...", "color: #9C27B0; font-weight: bold;");
         const semanticMap = await this.engines.semantic.analyze(rawText, context);
-        console.log(`  📊 Concepts Found: ${Object.keys(semanticMap.concepts || {}).length}`);
+        console.log(`   📊 Concepts Found: %c${Object.keys(semanticMap.concepts || {}).length}`, "color: #00BCD4; font-weight: bold;");
 
         // 2. تحليل المشاعر
-        console.log("[Pipeline 2] Running Emotion Analysis...");
-        const emotionProfile = await this.engines.emotion.analyze(rawText, {
-            previousEmotion: context.previousEmotion || null
-        });
-        console.log(`  💓 Primary Emotion: ${emotionProfile.primaryEmotion?.name || 'neutral'} (${emotionProfile.intensity?.overall || 0})`);
+        console.log("%c[Pipeline 2] Running Emotion Analysis...", "color: #9C27B0; font-weight: bold;");
+        const emotionProfile = await this.engines.emotion.analyze(rawText, context);
+        console.log(`   💓 Primary Emotion: %c${emotionProfile.primaryEmotion?.name || 'neutral'}`, "color: #E91E63; font-weight: bold;");
+        console.log(`   📈 Intensity Score: %c${emotionProfile.intensity?.overall || 0}`, "color: #E91E63; font-weight: bold;");
 
         // 3. التركيب (Synthesis)
-        console.log("[Pipeline 3] Running Synthesis (Connecting the dots)...");
+        console.log("%c[Pipeline 3] Running Synthesis (Connecting the dots)...", "color: #9C27B0; font-weight: bold;");
         const synthesisProfile = await this.engines.synthesis.analyze({
             semanticMap,
             emotionProfile
         });
-        console.log(`  🧬 Pattern Detected: ${synthesisProfile.dominantPattern?.pattern_id || "None"}`);
+        
+        if (synthesisProfile.dominantPattern) {
+            console.log(`   🧬 Pattern Detected: %c${synthesisProfile.dominantPattern.pattern_id}`, "color: #FFC107; font-weight: bold;");
+        } else {
+            console.log("   🧬 No specific psychological pattern detected.");
+        }
 
         const duration = Date.now() - start;
-        console.log(`⏱ Total Analysis Time: ${duration}ms`);
+        console.log(`%c⏱ Analysis Time: ${duration}ms`, "color: #757575; font-style: italic;");
 
         return {
             rawText,
@@ -191,20 +187,21 @@ async analyze(rawText, context = {}) {
         };
 
     } catch (error) {
-        console.error("❌ Critical Error in Pipeline:", error);
+        console.error("❌ CRITICAL ERROR in analyze():", error);
         return null;
     }
 }
 
-async generateResponse(comprehensiveInsight) {
-    if (!this._isInitialized || !comprehensiveInsight) return null;
+async generateResponse(insight) {
+    if (!this._isInitialized || !insight) return null;
 
     try {
-        console.log("[Pipeline 4] Generating Soulful Response...");
-        const response = await this.engines.catharsis.generateResponse(comprehensiveInsight);
+        console.log("%c[Pipeline 4] Generating Soulful Response...", "color: #9C27B0; font-weight: bold;");
+        const response = await this.engines.catharsis.generateResponse(insight);
         
-        console.log("💬 Reply Logic Complete.");
-        console.log(`🎯 Intent: ${response.intent || 'unknown'} | DNA: ${response.emotionalDNA?.join(', ') || 'neutral'}`);
+        console.log("%c💬 Reply Logic Finalized.", "color: #4CAF50; font-weight: bold;");
+        console.log(`🎯 Intent: %c${response.intent || 'insight_delivery'}`, "color: #FF5722; font-weight: bold;");
+        console.log(`🧬 DNA Mix: %c${response.emotionalDNA?.join(', ') || 'standard'}`, "color: #FF5722; font-weight: bold;");
         
         return response;
     } catch (error) {
@@ -214,13 +211,18 @@ async generateResponse(comprehensiveInsight) {
 }
 
 async process(rawText, context = {}) {
-    console.log("🚀 STARTING FULL COGNITIVE PROCESS");
+    console.log("%c--- ⚙️ FULL COGNITIVE PROCESS INITIATED ---", "color: #607D8B; font-weight: bold;");
+    
+    // تنفيذ التحليل
     const insight = await this.analyze(rawText, context);
-    if (!insight) return { insight: null, response: { responseText: "عذراً، حدث خطأ." } };
+    if (!insight) return { insight: null, response: { responseText: "عذراً، حدث خطأ تقني في المعالجة." } };
 
+    // تنفيذ التوليد
     const response = await this.generateResponse(insight);
     
-    console.log("✅ PROCESS FINISHED");
+    console.log("%c✅ PROCESS FINISHED SUCCESSFULLY", "color: #4CAF50; font-weight: bold;");
+    console.log("=".repeat(40));
+    
     return { insight, response };
 }
 
