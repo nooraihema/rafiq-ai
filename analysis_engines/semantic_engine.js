@@ -206,6 +206,36 @@ class SemanticEngine {
   }
 
   // ================================================================================
+  // وظيفة تجريد الكلمة من الزوائد (Stemming Logic) - [تعديل جديد]
+  // ================================================================================
+  _stemToken(token) {
+    let stemmed = token;
+    
+    // 1. محاولة إزالة السوابق (Prefixes) من القاموس
+    for (const prefix of this.prefixes) {
+      if (stemmed.startsWith(prefix) && stemmed.length > prefix.length + 2) {
+        let tempStem = stemmed.substring(prefix.length);
+        // إذا كان الأصل الناتج موجود في خريطة المفاهيم، نعتده
+        if (this.conceptMap[tempStem] || this.conceptMap[normalizeArabic(tempStem)]) {
+          return tempStem;
+        }
+      }
+    }
+
+    // 2. محاولة إزالة اللواحق (Suffixes) من القاموس
+    for (const suffix of this.suffixes) {
+      if (stemmed.endsWith(suffix) && stemmed.length > suffix.length + 2) {
+        let tempStem = stemmed.substring(0, stemmed.length - suffix.length);
+        if (this.conceptMap[tempStem] || this.conceptMap[normalizeArabic(tempStem)]) {
+          return tempStem;
+        }
+      }
+    }
+
+    return stemmed;
+  }
+
+  // ================================================================================
   // التحليل الرئيسي (Main Analysis)
   // ================================================================================
   analyze(rawText, context = {}) {
@@ -329,19 +359,35 @@ class SemanticEngine {
         const ngramText = ngram.join(' ');
         const ngramNormalized = normalizeArabic(ngramText);
 
-        // 🧠 Concept Map check
+        // --- [بداية التعديل لدعم الزوائد والمطابقة المرنة] ---
+        let finalMatchedKey = null;
+
+        // 1. محاولة المطابقة المباشرة
         if (this.conceptMap && this.conceptMap[ngramNormalized]) {
+            finalMatchedKey = ngramNormalized;
+        } 
+        // 2. إذا لم يجد مطابقة وكانت الكلمة مفردة، يحاول تجريدها من الزوائد (بالاكتئاب -> اكتئاب)
+        else if (ngram.length === 1) {
+            const stemmed = this._stemToken(ngramNormalized);
+            if (this.conceptMap && this.conceptMap[stemmed]) {
+                finalMatchedKey = stemmed;
+                console.log(`✨ Stemmed Match: "${ngramNormalized}" -> "${stemmed}"`);
+            }
+        }
 
-            console.log("✅ Concept matched:", ngramText);
+        if (finalMatchedKey) {
+            console.log("✅ Concept matched:", finalMatchedKey);
 
-            concepts[ngramText] = {
-                name: ngramText,
+            concepts[finalMatchedKey] = {
+                name: finalMatchedKey,
+                originalText: ngramText, // حفظ النص الأصلي الذي كتبه المستخدم
                 type: 'semantic_concept',
-                definition: this.conceptDefs?.[ngramNormalized],
-                frequency: (concepts[ngramText]?.frequency || 0) + 1,
-                importance: this._calculateConceptImportance(ngramText, tokens.length)
+                definition: this.conceptDefs?.[finalMatchedKey],
+                frequency: (concepts[finalMatchedKey]?.frequency || 0) + 1,
+                importance: this._calculateConceptImportance(finalMatchedKey, tokens.length)
             };
         }
+        // --- [نهاية التعديل] ---
 
         // 🧠 Psychological Patterns
         for (const [patternType, patterns] of Object.entries(PSYCHOLOGICAL_PATTERNS)) {
