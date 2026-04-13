@@ -1,8 +1,7 @@
 
 /**
  * /analysis_engines/semantic_engine.js
- * SemanticEngine v4.5 - Smart Lexical & Psychological Analyzer
- * المحرك الدلالي: مسؤول عن استخراج المفاهيم، الأهداف المستترة، والشبكة الدلالية.
+ * SemanticEngine v4.6 - Robust Lexical Analyzer
  */
 
 import { normalizeArabic, tokenize, generateNgrams } from '../core/utils.js';
@@ -11,121 +10,123 @@ export class SemanticEngine {
     constructor(dictionaries = {}) {
         console.log("%c🧠 [SemanticEngine] جاري تشغيل المحرك الدلالي الذكي...", "color: #673AB7; font-weight: bold;");
 
-        // ربط القواميس الممررة من LinguisticBrain
+        // ربط القواميس الممررة
         this.conceptMap = dictionaries.CONCEPT_MAP || {};
         this.conceptDefs = dictionaries.CONCEPT_DEFINITIONS || {};
         this.affixes = dictionaries.AFFIX_DICTIONARY || {};
         this.stopWords = dictionaries.STOP_WORDS_SET || new Set();
         
-        // تجهيز أدوات التجذير (Stemming)
-        this.prefixes = (this.affixes.prefixes || []).map(p => p.value).sort((a,b) => b.length - a.length);
-        this.suffixes = (this.affixes.suffixes || []).map(s => s.value).sort((a,b) => b.length - a.length);
+        // تأمين وتجهيز أدوات التجذير (Stemming)
+        const rawPrefixes = this.affixes.prefixes || [];
+        const rawSuffixes = this.affixes.suffixes || [];
 
-        console.log(`✅ [SemanticEngine] تم تجهيز ${Object.keys(this.conceptMap).length} نقطة دلالية.`);
+        this.prefixes = Array.isArray(rawPrefixes) 
+            ? rawPrefixes.map(p => p.value).sort((a,b) => b.length - a.length)
+            : [];
+        this.suffixes = Array.isArray(rawSuffixes)
+            ? rawSuffixes.map(s => s.value).sort((a,b) => b.length - a.length)
+            : [];
+
+        console.log(`✅ [SemanticEngine] تم تجهيز المحرك. القواميس محملة: ${Object.keys(this.conceptMap).length > 0}`);
     }
 
-    /**
-     * الوظيفة الرئيسية: تحليل النص لغوياً ونفسياً
-     */
     async analyze(rawText, context = {}) {
         console.log("\n" + "%c[Semantic Analysis] START".repeat(1), "background: #673AB7; color: #fff; padding: 2px 5px;");
         
-        // 1. التنظيف والتقطيع
-        const normalized = normalizeArabic(rawText.toLowerCase());
-        const tokens = tokenize(normalized);
-        console.log(`   🔸 [Step 1: Tokens] تم تقطيع النص إلى ${tokens.length} كلمات.`);
+        try {
+            const normalized = normalizeArabic(rawText.toLowerCase());
+            const tokens = tokenize(normalized);
+            console.log(`   🔸 [Step 1: Tokens] الكلمات المستخرجة: [${tokens.join(', ')}]`);
 
-        // 2. استخراج المفاهيم (مع التجذير والبحث في الـ N-grams)
-        const concepts = this._extractConcepts(tokens);
-        
-        // 3. بناء الشبكة الدلالية (الروابط بين المفاهيم)
-        const network = this._buildNetwork(concepts);
+            const concepts = this._extractConcepts(tokens, normalized);
+            const network = this._buildNetwork(concepts);
+            const hiddenGoals = this._inferHiddenGoals(concepts);
 
-        // 4. استنتاج الأهداف المستترة (Hidden Goals)
-        const hiddenGoals = this._inferHiddenGoals(concepts);
-
-        // 5. تقييم السياق العميق
-        const deepContext = this._evaluateDeepContext(concepts, context);
-
-        console.log(`   ✅ [Analysis Complete] تم العثور على ${Object.keys(concepts).length} مفاهيم نفسية.`);
-        
-        return {
-            concepts,
-            network,
-            hiddenGoals,
-            deepContext,
-            dominantTheme: this._identifyDominantTheme(concepts),
-            _meta: {
-                engineVersion: "4.5-Smart",
-                timestamp: new Date().toISOString()
-            }
-        };
+            console.log(`   ✅ [Analysis Complete] تم اكتشاف ${Object.keys(concepts).length} مفاهيم.`);
+            
+            return {
+                concepts,
+                network,
+                hiddenGoals,
+                dominantTheme: this._identifyDominantTheme(concepts),
+                _meta: { engineVersion: "4.6-Robust" }
+            };
+        } catch (err) {
+            console.error("❌ [SemanticEngine] Critical error during analysis:", err);
+            return { concepts: {}, network: [], error: err.message };
+        }
     }
 
-    /**
-     * استخراج المفاهيم باستخدام البحث المتعدد (Direct, Stemmed, N-grams)
-     */
-    _extractConcepts(tokens) {
-        console.log("   🔸 [Step 2: Extraction] جاري البحث في القواميس الدلالية...");
+    _extractConcepts(tokens, normalizedFullText) {
+        console.log("   🔸 [Step 2: Extraction] جاري فحص الكلمات والـ N-grams...");
         const found = {};
 
-        // إنشاء N-grams (كلمات ثنائية وثلاثية) للبحث عن مثل "اكتئاب شديد"
-        const grams3 = generateNgrams(tokens, 3) || [];
-        const grams2 = generateNgrams(tokens, 2) || [];
-        const ngrams = [...grams3, ...grams2, ...tokens.map(t => [t])];
+        // 1. توليد الـ N-grams وتأمينها
+        let ngrams = [];
+        try {
+            const grams3 = generateNgrams(tokens, 3) || [];
+            const grams2 = generateNgrams(tokens, 2) || [];
+            const grams1 = tokens.map(t => [t]);
+            ngrams = [...grams3, ...grams2, ...grams1];
+        } catch (e) {
+            console.warn("⚠️ [SemanticEngine] فشل توليد N-grams، سيتم الاعتماد على الكلمات المفردة فقط.");
+            ngrams = tokens.map(t => [t]);
+        }
 
+        // 2. البحث في القاموس
         ngrams.forEach(ngram => {
-            const text = ngram.join(' ');
-            const norm = normalizeArabic(text);
+            try {
+                // التأكد من أن ngram مصفوفة قبل عمل join
+                const text = Array.isArray(ngram) ? ngram.join(' ') : ngram;
+                const norm = normalizeArabic(text);
 
-            // 1. محاولة المطابقة المباشرة
-            let match = this.conceptMap[norm];
-            let matchedKey = norm;
+                // أ. محاولة المطابقة المباشرة
+                let matches = this.conceptMap[norm];
 
-            // 2. إذا فشل، محاولة التجذير ( Stemming) للكلمات المفردة فقط
-            if (!match && ngram.length === 1) {
-                const stemmed = this._stemWord(norm);
-                if (this.conceptMap[stemmed]) {
-                    match = this.conceptMap[stemmed];
-                    matchedKey = stemmed;
-                    console.log(`      ✨ [Stem Match]: "${norm}" -> "${stemmed}"`);
-                }
-            }
-
-            if (match) {
-                match.forEach(mapping => {
-                    const conceptId = mapping.concept;
-                    if (!found[conceptId]) {
-                        console.log(`      🎯 [Found]: اكتشاف مفهوم [${conceptId}] عبر النص "${text}"`);
-                        found[conceptId] = {
-                            id: conceptId,
-                            weight: mapping.weight,
-                            definition: this.conceptDefs[conceptId] || {},
-                            occurrenceCount: 1
-                        };
-                    } else {
-                        found[conceptId].occurrenceCount++;
+                // ب. إذا لم يجد مطابقة وكانت كلمة واحدة، نحاول التجذير
+                if (!matches && (!ngram[1])) {
+                    const stemmed = this._stemWord(norm);
+                    if (this.conceptMap[stemmed]) {
+                        matches = this.conceptMap[stemmed];
+                        console.log(`      ✨ [Stem Match]: "${norm}" -> "${stemmed}"`);
                     }
-                });
+                }
+
+                // ج. إضافة النتائج المكتشفة
+                if (matches && Array.isArray(matches)) {
+                    matches.forEach(m => {
+                        const id = m.concept;
+                        if (!found[id]) {
+                            console.log(`      🎯 [Match Found]: [${id}] (وزن: ${m.weight})`);
+                            found[id] = {
+                                id,
+                                weight: m.weight,
+                                definition: this.conceptDefs[id] || {},
+                                count: 1
+                            };
+                        } else {
+                            found[id].count++;
+                        }
+                    });
+                }
+            } catch (wordError) {
+                // استمرار العملية حتى لو فشلت كلمة واحدة
             }
         });
 
         return found;
     }
 
-    /**
-     * وظيفة التجذير الذكي: تقص الزوائد فقط إذا كان الناتج موجوداً في القاموس
-     */
     _stemWord(word) {
         let result = word;
-        // قص السوابق (Prefixes)
+        // تجربة قص السوابق
         for (const p of this.prefixes) {
             if (result.startsWith(p) && result.length > p.length + 2) {
                 let temp = result.substring(p.length);
                 if (this.conceptMap[temp]) return temp;
             }
         }
-        // قص اللواحق (Suffixes)
+        // تجربة قص اللواحق
         for (const s of this.suffixes) {
             if (result.endsWith(s) && result.length > s.length + 2) {
                 let temp = result.substring(0, result.length - s.length);
@@ -135,20 +136,14 @@ export class SemanticEngine {
         return result;
     }
 
-    /**
-     * بناء الشبكة الدلالية (كيف ترتبط المفاهيم المكتشفة ببعضها)
-     */
     _buildNetwork(foundConcepts) {
-        console.log("   🔸 [Step 3: Networking] جاري بناء شبكة العلاقات بين المفاهيم...");
         const connections = [];
-        const keys = Object.keys(foundConcepts);
-
-        keys.forEach((id, index) => {
+        const ids = Object.keys(foundConcepts);
+        ids.forEach(id => {
             const def = foundConcepts[id].definition;
-            if (def.links) {
+            if (def && def.links) {
                 def.links.forEach(link => {
-                    if (keys.includes(link.concept)) {
-                        console.log(`      🔗 [Link]: ربط المفهوم [${id}] بـ [${link.concept}] (علاقة: ${link.type})`);
+                    if (ids.includes(link.concept)) {
                         connections.push({ from: id, to: link.concept, type: link.type });
                     }
                 });
@@ -157,31 +152,11 @@ export class SemanticEngine {
         return connections;
     }
 
-    /**
-     * استنتاج الأهداف المستترة (Hidden Goals) بناءً على المفاهيم المكتشفة
-     */
     _inferHiddenGoals(concepts) {
-        console.log("   🔸 [Step 4: Inference] جاري استنتاج الأهداف النفسية المستترة...");
         const goals = [];
-        if (concepts['helplessness']) {
-            goals.push({ goal: "البحث عن السيطرة (Control)", rationale: "ناتج عن شعور بالعجز" });
-        }
-        if (concepts['self_blame']) {
-            goals.push({ goal: "طلب الغفران/التثبيت", rationale: "ناتج عن لوم الذات" });
-        }
+        if (concepts['helplessness']) goals.push({ goal: "الرغبة في السيطرة", reason: "شعور بالعجز" });
+        if (concepts['depression_symptom']) goals.push({ goal: "طلب المساندة", reason: "مزاج منخفض" });
         return goals;
-    }
-
-    /**
-     * تقييم السياق العميق (Deep Context)
-     */
-    _evaluateDeepContext(concepts, context) {
-        const keys = Object.keys(concepts);
-        return {
-            isCrisisPotential: keys.some(k => (concepts[k].definition.risk_level || 0) > 0),
-            primaryFocus: keys[0] || "general",
-            recurrentThemes: context.history?.themes || []
-        };
     }
 
     _identifyDominantTheme(concepts) {
