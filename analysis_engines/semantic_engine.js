@@ -1,139 +1,144 @@
 
 /**
  * /analysis_engines/semantic_engine.js
- * SemanticEngine v4.6 - Robust Lexical Analyzer
+ * SemanticEngine v5.5 - Attention-Driven Clinical Intelligence
+ * التغيير الجوهري: دمج أوزان الانتباه (Salience) مع الأهمية السريرية (Clinical Weights).
  */
 
 import { normalizeArabic, tokenize, generateNgrams } from '../core/utils.js';
 
 export class SemanticEngine {
     constructor(dictionaries = {}) {
-        console.log("%c🧠 [SemanticEngine] جاري تشغيل المحرك الدلالي الذكي...", "color: #673AB7; font-weight: bold;");
+        console.log("%c🧠 [SemanticEngine v5.5] تهيئة المحرك الدلالي الموجه بالانتباه...", "color: #673AB7; font-weight: bold;");
 
-        // ربط القواميس الممررة
+        // 1. ربط القواميس
         this.conceptMap = dictionaries.CONCEPT_MAP || {};
         this.conceptDefs = dictionaries.CONCEPT_DEFINITIONS || {};
         this.affixes = dictionaries.AFFIX_DICTIONARY || {};
-        this.stopWords = dictionaries.STOP_WORDS_SET || new Set();
         
-        // تأمين وتجهيز أدوات التجذير (Stemming)
+        // 2. أوزان الأهمية السريرية (Clinical Significance Weights)
+        // تعطي ثقلاً أكبر للمصطلحات التي تشير لحالات حرجة
+        this.CLINICAL_WEIGHTS = {
+            "depression_symptom": 2.2,
+            "helplessness": 2.0,
+            "self_blame": 1.8,
+            "anxiety": 1.6,
+            "sadness": 1.2,
+            "general_distress": 0.8,
+            "neutral": 0.5
+        };
+
+        // 3. تجهيز أدوات التجذير
         const rawPrefixes = this.affixes.prefixes || [];
-        const rawSuffixes = this.affixes.suffixes || [];
+        this.prefixes = Array.isArray(rawPrefixes) ? rawPrefixes.map(p => p.value).sort((a,b) => b.length - a.length) : [];
 
-        this.prefixes = Array.isArray(rawPrefixes) 
-            ? rawPrefixes.map(p => p.value).sort((a,b) => b.length - a.length)
-            : [];
-        this.suffixes = Array.isArray(rawSuffixes)
-            ? rawSuffixes.map(s => s.value).sort((a,b) => b.length - a.length)
-            : [];
-
-        console.log(`✅ [SemanticEngine] تم تجهيز المحرك. القواميس محملة: ${Object.keys(this.conceptMap).length > 0}`);
+        console.log("✅ [SemanticEngine] المحرك جاهز لاستقبال بيانات طبقة الانتباه.");
     }
 
+    /**
+     * الوظيفة الرئيسية: تحليل النص دلالياً مع حقن أوزان الانتباه
+     */
     async analyze(rawText, context = {}) {
-        console.log("\n" + "%c[Semantic Analysis] START".repeat(1), "background: #673AB7; color: #fff; padding: 2px 5px;");
+        console.log("\n" + "%c[Semantic Reasoning] STARTING...".repeat(1), "background: #673AB7; color: #fff; padding: 2px 5px;");
         
         try {
             const normalized = normalizeArabic(rawText.toLowerCase());
             const tokens = tokenize(normalized);
-            console.log(`   🔸 [Step 1: Tokens] الكلمات المستخرجة: [${tokens.join(', ')}]`);
-
-            const concepts = this._extractConcepts(tokens, normalized);
-            const network = this._buildNetwork(concepts);
-            const hiddenGoals = this._inferHiddenGoals(concepts);
-
-            console.log(`   ✅ [Analysis Complete] تم اكتشاف ${Object.keys(concepts).length} مفاهيم.`);
             
+            // استرجاع خريطة الانتباه من السياق (Context) المرسل من LinguisticBrain
+            const attentionMap = context.attentionMap || {};
+            console.log(`   🔸 [Context Injected]: تم استقبال خريطة انتباه لـ ${Object.keys(attentionMap).length} كلمات.`);
+
+            // 1. استخراج المفاهيم الموزونة (القاموس + الأهمية السريرية + الانتباه)
+            const weightedConcepts = this._extractHyperWeightedConcepts(tokens, attentionMap);
+
+            // 2. بناء شبكة العلاقات (Semantic Network)
+            const network = this._buildNetwork(weightedConcepts);
+
+            // 3. تحديد بؤرة التركيز السريري (Clinical Dominance)
+            const dominant = this._identifyDominantWeightedTheme(weightedConcepts);
+
+            console.log(`   ✅ [Semantic Complete] Focus: ${dominant.id} | Total Impact: ${dominant.totalWeight.toFixed(2)}`);
+
             return {
-                concepts,
+                concepts: weightedConcepts,
                 network,
-                hiddenGoals,
-                dominantTheme: this._identifyDominantTheme(concepts),
-                _meta: { engineVersion: "4.6-Robust" }
+                dominantTheme: dominant.id,
+                clinicalFocus: dominant,
+                attentionDistribution: attentionMap,
+                _meta: { version: "5.5-Attention-Driven", timestamp: new Date().toISOString() }
             };
+
         } catch (err) {
-            console.error("❌ [SemanticEngine] Critical error during analysis:", err);
-            return { concepts: {}, network: [], error: err.message };
+            console.error("❌ [SemanticEngine Error]:", err);
+            return { concepts: {}, dominantTheme: "general" };
         }
     }
 
-    _extractConcepts(tokens, normalizedFullText) {
-        console.log("   🔸 [Step 2: Extraction] جاري فحص الكلمات والـ N-grams...");
+    /**
+     * المعادلة السحرية: الوزن النهائي = (وزن القاموس) * (الثقل السريري) * (معامل الانتباه)
+     */
+    _extractHyperWeightedConcepts(tokens, attentionMap) {
+        console.log("   🔍 [Step 2: Hyper-Weighting] جاري حساب الوزن الثلاثي لكل مفهوم...");
         const found = {};
 
-        // 1. توليد الـ N-grams وتأمينها
-        let ngrams = [];
-        try {
-            const grams3 = generateNgrams(tokens, 3) || [];
-            const grams2 = generateNgrams(tokens, 2) || [];
-            const grams1 = tokens.map(t => [t]);
-            ngrams = [...grams3, ...grams2, ...grams1];
-        } catch (e) {
-            console.warn("⚠️ [SemanticEngine] فشل توليد N-grams، سيتم الاعتماد على الكلمات المفردة فقط.");
-            ngrams = tokens.map(t => [t]);
-        }
+        // فحص الكلمات الفردية والثنائية (N-grams)
+        const ngrams = [];
+        tokens.forEach(t => ngrams.push([t]));
+        for (let i = 0; i < tokens.length - 1; i++) ngrams.push([tokens[i], tokens[i+1]]);
 
-        // 2. البحث في القاموس
         ngrams.forEach(ngram => {
-            try {
-                // التأكد من أن ngram مصفوفة قبل عمل join
-                const text = Array.isArray(ngram) ? ngram.join(' ') : ngram;
-                const norm = normalizeArabic(text);
+            const phrase = ngram.join(' ');
+            const stem = this._stemWord(phrase);
+            const matches = this.conceptMap[phrase] || this.conceptMap[stem];
 
-                // أ. محاولة المطابقة المباشرة
-                let matches = this.conceptMap[norm];
+            if (matches && Array.isArray(matches)) {
+                // حساب متوسط معامل الانتباه لكلمات الـ N-gram
+                let attentionFactor = ngram.reduce((sum, word) => sum + (attentionMap[word] || 0.5), 0) / ngram.length;
+                
+                // تضخيم معامل الانتباه لجعل الفرق واضحاً (من 0.5-1.5 إلى تأثير حقيقي)
+                const attentionBoost = 1 + (attentionFactor * 2);
 
-                // ب. إذا لم يجد مطابقة وكانت كلمة واحدة، نحاول التجذير
-                if (!matches && (!ngram[1])) {
-                    const stemmed = this._stemWord(norm);
-                    if (this.conceptMap[stemmed]) {
-                        matches = this.conceptMap[stemmed];
-                        console.log(`      ✨ [Stem Match]: "${norm}" -> "${stemmed}"`);
+                matches.forEach(m => {
+                    const id = m.concept;
+                    const clinicalBase = this.CLINICAL_WEIGHTS[id] || this.CLINICAL_WEIGHTS.neutral;
+                    
+                    // تطبيق المعادلة الثلاثية
+                    const finalImpact = m.weight * clinicalBase * attentionBoost;
+
+                    if (!found[id]) {
+                        console.log(`      🎯 [Match]: [${id}] -> Base: ${m.weight}, Clinical: ${clinicalBase}, AttentionBoost: ${attentionBoost.toFixed(2)}`);
+                        found[id] = {
+                            id,
+                            impact: finalImpact,
+                            baseWeight: m.weight,
+                            attentionScore: attentionFactor,
+                            definition: this.conceptDefs[id] || {},
+                            occurrenceCount: 1
+                        };
+                    } else {
+                        found[id].impact += finalImpact;
+                        found[id].occurrenceCount++;
                     }
-                }
-
-                // ج. إضافة النتائج المكتشفة
-                if (matches && Array.isArray(matches)) {
-                    matches.forEach(m => {
-                        const id = m.concept;
-                        if (!found[id]) {
-                            console.log(`      🎯 [Match Found]: [${id}] (وزن: ${m.weight})`);
-                            found[id] = {
-                                id,
-                                weight: m.weight,
-                                definition: this.conceptDefs[id] || {},
-                                count: 1
-                            };
-                        } else {
-                            found[id].count++;
-                        }
-                    });
-                }
-            } catch (wordError) {
-                // استمرار العملية حتى لو فشلت كلمة واحدة
+                });
             }
         });
 
         return found;
     }
 
-    _stemWord(word) {
-        let result = word;
-        // تجربة قص السوابق
-        for (const p of this.prefixes) {
-            if (result.startsWith(p) && result.length > p.length + 2) {
-                let temp = result.substring(p.length);
-                if (this.conceptMap[temp]) return temp;
-            }
-        }
-        // تجربة قص اللواحق
-        for (const s of this.suffixes) {
-            if (result.endsWith(s) && result.length > s.length + 2) {
-                let temp = result.substring(0, result.length - s.length);
-                if (this.conceptMap[temp]) return temp;
-            }
-        }
-        return result;
+    /**
+     * اختيار المفهوم المسيطر بناءً على "الأثر الإجمالي" (Impact)
+     */
+    _identifyDominantWeightedTheme(concepts) {
+        const sorted = Object.entries(concepts).sort((a,b) => b[1].impact - a[1].impact);
+        if (sorted.length === 0) return { id: "neutral", totalWeight: 0 };
+
+        return {
+            id: sorted[0][0],
+            totalWeight: sorted[0][1].impact,
+            confidence: Math.min(1, sorted[0][1].impact / 5) // مقياس ثقة مبسط
+        };
     }
 
     _buildNetwork(foundConcepts) {
@@ -152,16 +157,15 @@ export class SemanticEngine {
         return connections;
     }
 
-    _inferHiddenGoals(concepts) {
-        const goals = [];
-        if (concepts['helplessness']) goals.push({ goal: "الرغبة في السيطرة", reason: "شعور بالعجز" });
-        if (concepts['depression_symptom']) goals.push({ goal: "طلب المساندة", reason: "مزاج منخفض" });
-        return goals;
-    }
-
-    _identifyDominantTheme(concepts) {
-        const sorted = Object.entries(concepts).sort((a,b) => b[1].weight - a[1].weight);
-        return sorted[0]?.[0] || "general";
+    _stemWord(word) {
+        let result = word;
+        for (const p of this.prefixes) {
+            if (result.startsWith(p) && result.length > p.length + 2) {
+                let temp = result.substring(p.length);
+                if (this.conceptMap[temp]) return temp;
+            }
+        }
+        return result;
     }
 }
 
