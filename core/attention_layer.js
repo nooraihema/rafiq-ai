@@ -1,25 +1,21 @@
-// /core/attention_layer.js
-// Attention Layer v1.0 - Self-Attention & Multi-Head Implementation
-// This layer bridges the semantic analysis and advanced response generation
-// ============================================================================
+
+/**
+ * /core/attention_layer.js
+ * Attention Layer v2.0 - Contextual Psychological Attention (CPA)
+ * وظيفته: تحديد بؤرة التركيز في الجملة بناءً على القواميس والرياضيات معاً.
+ */
 
 import { normalizeArabic } from './utils.js';
 
-// ============================================================================
-// قيم مساعدة (Tuning Parameters)
-// ============================================================================
 const ATTENTION_CONFIG = {
   NUM_HEADS: 4,
   HIDDEN_DIM: 128,
-  SEQUENCE_LENGTH: 50,
-  DROPOUT: 0.1,
-  ATTENTION_DROPOUT: 0.15,
-  SCALE_FACTOR: Math.sqrt(32) // sqrt(HIDDEN_DIM / NUM_HEADS)
+  SCALE_FACTOR: Math.sqrt(32),
+  PSYCH_BOOST_FACTOR: 2.5, // مدى قوة جذب الكلمات النفسية للانتباه
+  STOP_WORD_PENALTY: 0.2    // مدى إضعاف الكلمات الحشوية
 };
 
-// ============================================================================
-// Utility Functions
-// ============================================================================
+// --- وظائف رياضية مساعدة ---
 function softmax(arr) {
   const max = Math.max(...arr);
   const exp = arr.map(x => Math.exp(x - max));
@@ -28,15 +24,12 @@ function softmax(arr) {
 }
 
 function matmul(a, b) {
-  // Matrix multiplication: (n, m) × (m, k) → (n, k)
   const result = [];
   for (let i = 0; i < a.length; i++) {
     result[i] = [];
     for (let j = 0; j < b[0].length; j++) {
       let sum = 0;
-      for (let k = 0; k < b.length; k++) {
-        sum += a[i][k] * b[k][j];
-      }
+      for (let k = 0; k < b.length; k++) sum += a[i][k] * b[k][j];
       result[i][j] = sum;
     }
   }
@@ -44,336 +37,147 @@ function matmul(a, b) {
 }
 
 function initializeWeights(rows, cols) {
-  // Xavier initialization
   const limit = Math.sqrt(6 / (rows + cols));
-  const matrix = [];
-  for (let i = 0; i < rows; i++) {
-    matrix[i] = [];
-    for (let j = 0; j < cols; j++) {
-      matrix[i][j] = (Math.random() * 2 - 1) * limit;
-    }
-  }
-  return matrix;
+  return Array.from({ length: rows }, () => 
+    Array.from({ length: cols }, () => (Math.random() * 2 - 1) * limit)
+  );
 }
 
 // ============================================================================
-// Token Embedding Layer
+// Token Embedding Layer (المطورة سيكولوجياً)
 // ============================================================================
 export class TokenEmbedding {
-  constructor(vocabSize = 5000, embeddingDim = ATTENTION_CONFIG.HIDDEN_DIM) {
-    this.vocabSize = vocabSize;
-    this.embeddingDim = embeddingDim;
-    
-    // Initialize embedding matrix (يتم تحميله من القاموس)
+  constructor(dictionaries) {
+    this.embeddingDim = ATTENTION_CONFIG.HIDDEN_DIM;
     this.embeddings = new Map();
-    this._initializeRandomEmbeddings(500); // تهيئة 500 تضمين عشوائي
-  }
-
-  _initializeRandomEmbeddings(count) {
-    for (let i = 0; i < count; i++) {
-      const emb = [];
-      for (let j = 0; j < this.embeddingDim; j++) {
-        emb.push((Math.random() - 0.5) * 0.1);
-      }
-      this.embeddings.set(`token_${i}`, emb);
-    }
-  }
-
-  /**
-   * تحويل كلمة أو رمز إلى تمثيل متجه
-   */
-  embed(token) {
-    // التحقق من وجود التضمين المسبق
-    let cached = this.embeddings.get(token);
-    if (cached) return cached;
-
-    // إنشاء تضمين جديد بناءً على خصائص الرمز
-    const embedding = [];
-    const hash = this._tokenHash(token);
     
-    for (let i = 0; i < this.embeddingDim; i++) {
-      // استخدام دالة حتمية لإنشاء تضمين متسق
-      const seeded = Math.sin(hash + i * 12.9898) * 43758.5453;
-      embedding[i] = seeded - Math.floor(seeded);
-    }
-
-    this.embeddings.set(token, embedding);
-    return embedding;
+    // ربط القواميس لتوجيه الانتباه
+    this.anchors = dictionaries.anchors || {};
+    this.concepts = dictionaries.concepts || {};
+    this.stopWords = dictionaries.stopWords || new Set();
   }
 
-  _tokenHash(token) {
+  /**
+   * تحويل الكلمة لمتجه مع "حقن" الثقل النفسي
+   */
+  embed(token, stemmed) {
+    const norm = normalizeArabic(token);
+    const normStem = normalizeArabic(stemmed);
+
+    // 1. إنشاء المتجه الأساسي (حتمي بناءً على الحروف)
+    let embedding = this._generateBaseVector(norm);
+
+    // 2. حساب "الثقل النفسي" من القواميس
+    let psychWeight = 1.0;
+    
+    if (this.stopWords.has(norm)) {
+      psychWeight = ATTENTION_CONFIG.STOP_WORD_PENALTY;
+    } else if (this.anchors[norm] || this.anchors[normStem]) {
+      psychWeight = ATTENTION_CONFIG.PSYCH_BOOST_FACTOR; // كلمات المشاعر تجذب انتباهاً أعلى
+    } else if (this.concepts[norm] || this.concepts[normStem]) {
+      psychWeight = ATTENTION_CONFIG.PSYCH_BOOST_FACTOR * 0.8;
+    }
+
+    // 3. تطبيق الثقل على المتجه
+    return embedding.map(v => v * psychWeight);
+  }
+
+  _generateBaseVector(token) {
     let hash = 0;
-    for (let i = 0; i < token.length; i++) {
-      const char = token.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash;
-    }
-    return Math.abs(hash) / 2147483647;
-  }
-
-  /**
-   * تضمين متسلسلة من الرموز
-   */
-  embedSequence(tokens) {
-    return tokens.map(t => this.embed(t));
+    for (let i = 0; i < token.length; i++) hash = ((hash << 5) - hash) + token.charCodeAt(i);
+    const seed = Math.abs(hash) / 2147483647;
+    return Array.from({ length: this.embeddingDim }, (_, i) => {
+      const val = Math.sin(seed + i) * 10000;
+      return val - Math.floor(val) - 0.5;
+    });
   }
 }
 
 // ============================================================================
-// Self-Attention Head
-// ============================================================================
-export class AttentionHead {
-  constructor(inputDim, headDim) {
-    this.inputDim = inputDim;
-    this.headDim = headDim;
-
-    // مصفوفات الأوزان (Q, K, V)
-    this.WQ = initializeWeights(inputDim, headDim);
-    this.WK = initializeWeights(inputDim, headDim);
-    this.WV = initializeWeights(inputDim, headDim);
-
-    this.debug = false;
-  }
-
-  /**
-   * حساب الاهتمام (Attention Scores)
-   */
-  forward(query, key, value, mask = null) {
-    // تحويل الاستعلام والمفتاح والقيمة
-    const Q = matmul(query, this.WQ);      // (seq_len, headDim)
-    const K = matmul(key, this.WK);        // (seq_len, headDim)
-    const V = matmul(value, this.WV);      // (seq_len, headDim)
-
-    // حساب درجات الاهتمام: (Q · K^T) / sqrt(d_k)
-    const scores = this._computeAttentionScores(Q, K);
-
-    // تطبيق القناع (mask) إن وجد
-    if (mask) {
-      for (let i = 0; i < scores.length; i++) {
-        for (let j = 0; j < scores[i].length; j++) {
-          if (!mask[i][j]) scores[i][j] = -1e10;
-        }
-      }
-    }
-
-    // تطبيق softmax
-    const weights = scores.map(row => softmax(row));
-
-    // تطبيق الأوزان على القيم
-    const output = matmul(weights, V);
-
-    return { output, weights };
-  }
-
-  _computeAttentionScores(Q, K) {
-    const scores = [];
-    for (let i = 0; i < Q.length; i++) {
-      scores[i] = [];
-      for (let j = 0; j < K.length; j++) {
-        let score = 0;
-        for (let k = 0; k < Q[i].length; k++) {
-          score += Q[i][k] * K[j][k];
-        }
-        scores[i][j] = score / ATTENTION_CONFIG.SCALE_FACTOR;
-      }
-    }
-    return scores;
-  }
-}
-
-// ============================================================================
-// Multi-Head Attention
-// ============================================================================
-export class MultiHeadAttention {
-  constructor(inputDim = ATTENTION_CONFIG.HIDDEN_DIM, numHeads = ATTENTION_CONFIG.NUM_HEADS) {
-    this.inputDim = inputDim;
-    this.numHeads = numHeads;
-    this.headDim = Math.floor(inputDim / numHeads);
-
-    // إنشاء رؤوس متعددة
-    this.heads = [];
-    for (let i = 0; i < numHeads; i++) {
-      this.heads.push(new AttentionHead(inputDim, this.headDim));
-    }
-
-    // مصفوفة الإسقاط النهائي
-    this.WO = initializeWeights(inputDim, inputDim);
-  }
-
-  /**
-   * المعالجة الأمامية (Forward Pass)
-   */
-  forward(query, key, value, mask = null) {
-    const headOutputs = [];
-    const headWeights = [];
-
-    // تشغيل كل رأس
-    for (let i = 0; i < this.heads.length; i++) {
-      const { output, weights } = this.heads[i].forward(query, key, value, mask);
-      headOutputs.push(output);
-      headWeights.push(weights);
-    }
-
-    // دمج نواتج الرؤوس (Concatenation)
-    const concatenated = this._concatenateHeads(headOutputs);
-
-    // إسقاط نهائي
-    const finalOutput = matmul(concatenated, this.WO);
-
-    return {
-      output: finalOutput,
-      headWeights,
-      concatenated
-    };
-  }
-
-  _concatenateHeads(heads) {
-    const concatenated = [];
-    for (let i = 0; i < heads[0].length; i++) {
-      concatenated[i] = [];
-      for (let h = 0; h < heads.length; h++) {
-        concatenated[i].push(...heads[h][i]);
-      }
-    }
-    return concatenated;
-  }
-}
-
-// ============================================================================
-// Full Attention Layer (يجمع كل شيء معاً)
+// Full Attention Layer (الأوركسترا)
 // ============================================================================
 export class AttentionLayer {
-  constructor(vocabSize = 5000, hiddenDim = ATTENTION_CONFIG.HIDDEN_DIM, numHeads = ATTENTION_CONFIG.NUM_HEADS) {
-    this.vocabSize = vocabSize;
-    this.hiddenDim = hiddenDim;
-    this.numHeads = numHeads;
-
-    // الطبقات الأساسية
-    this.tokenEmbedding = new TokenEmbedding(vocabSize, hiddenDim);
-    this.multiHeadAttention = new MultiHeadAttention(hiddenDim, numHeads);
-
-    // Feed-Forward Network
-    this.ffnDim = hiddenDim * 4;
-    this.W1 = initializeWeights(hiddenDim, this.ffnDim);
-    this.W2 = initializeWeights(this.ffnDim, hiddenDim);
-
-    // Layer Normalization (بسيط)
-    this.epsilon = 1e-6;
-
+  constructor(dictionaries) {
+    console.log("%c🎯 [AttentionLayer] جاري تهيئة طبقة الانتباه النفسي...", "color: #FF9800; font-weight: bold;");
+    
+    this.embeddingLayer = new TokenEmbedding(dictionaries);
+    
+    // مصفوفات الأوزان لرؤوس الانتباه
+    this.WQ = initializeWeights(ATTENTION_CONFIG.HIDDEN_DIM, 32);
+    this.WK = initializeWeights(ATTENTION_CONFIG.HIDDEN_DIM, 32);
+    this.WV = initializeWeights(ATTENTION_CONFIG.HIDDEN_DIM, 32);
+    
     this.debug = true;
   }
 
   /**
-   * معالجة النص بالكامل
+   * العملية الكبرى: تحليل النص وتوزيع الأوزان
    */
-  processText(tokens) {
-    if (this.debug) {
-      console.log("[AttentionLayer] Processing text:", tokens.slice(0, 5));
-    }
-
-    // 1. تضمين الرموز (Token Embedding)
-    const embeddings = this.tokenEmbedding.embedSequence(tokens);
-
-    // 2. تطبيق Multi-Head Attention
-    const attentionOutput = this.multiHeadAttention.forward(embeddings, embeddings, embeddings);
-
-    // 3. تطبيق Layer Normalization + Residual
-    const normalized = this._layerNorm(attentionOutput.output);
-
-    // 4. تطبيق Feed-Forward Network
-    const ffnOutput = this._feedForward(normalized);
-
-    // 5. Layer Normalization + Residual
-    const finalOutput = this._layerNorm(ffnOutput);
-
-    if (this.debug) {
-      console.log("[AttentionLayer] Output shape:", finalOutput.length, "×", finalOutput[0]?.length);
-    }
-
-    return {
-      embeddings,
-      attentionOutput: attentionOutput.output,
-      finalOutput,
-      weights: attentionOutput.headWeights
-    };
-  }
-
-  /**
-   * تطبيق ReLU + تحويل خطي
-   */
-  _feedForward(input) {
-    // تطبيق ReLU(x @ W1)
-    const hidden = matmul(input, this.W1);
-    const activated = hidden.map(row => 
-      row.map(x => Math.max(0, x)) // ReLU
-    );
-
-    // تطبيق تحويل خطي ثاني
-    const output = matmul(activated, this.W2);
-    return output;
-  }
-
-  /**
-   * Layer Normalization + Residual Connection
-   */
-  _layerNorm(x) {
-    const normalized = [];
+  async process(tokens, stems = []) {
+    console.log("\n" + "%c[Attention Processing] START".repeat(1), "background: #FF9800; color: #fff; padding: 2px 5px;");
     
-    for (let i = 0; i < x.length; i++) {
-      const row = x[i];
-      const mean = row.reduce((a, b) => a + b, 0) / row.length;
-      const variance = row.reduce((a, b) => a + (b - mean) ** 2, 0) / row.length;
-      const std = Math.sqrt(variance + this.epsilon);
+    try {
+      // 1. التضمين (Embedding) مع مراعاة القواميس
+      console.log("   🔸 [Step 1] جاري تحويل الكلمات لمتجهات مشحونة نفسياً...");
+      const embeddings = tokens.map((t, i) => this.embeddingLayer.embed(t, stems[i] || t));
 
-      normalized[i] = row.map(val => (val - mean) / std);
+      // 2. حساب Query, Key, Value (مبسط لرأس واحد للتوضيح الرياضي)
+      const Q = matmul(embeddings, this.WQ);
+      const K = matmul(embeddings, this.WK);
+      const V = matmul(embeddings, this.WV);
+
+      // 3. حساب درجات الانتباه (Attention Scores)
+      console.log("   🔸 [Step 2] جاري حساب مصفوفة العلاقات (Attention Scores)...");
+      const rawScores = this._computeScores(Q, K);
+      
+      // 4. تطبيق Softmax للحصول على الأوزان النهائية
+      const attentionWeights = rawScores.map(row => softmax(row));
+
+      // 5. استخراج "خريطة الأهمية" (Salience Map)
+      const salienceMap = this._generateSalienceMap(tokens, attentionWeights);
+
+      if (this.debug) {
+        const top = Object.entries(salienceMap).sort((a,b) => b[1]-a[1])[0];
+        console.log(`   ✅ [Attention Focus]: الكلمة الأكثر تأثيراً هي "${top[0]}" بوزن ${top[1].toFixed(2)}`);
+      }
+
+      return {
+        salienceMap,
+        attentionWeights,
+        focusToken: this._getTopToken(salienceMap)
+      };
+
+    } catch (err) {
+      console.error("❌ [AttentionLayer Error]:", err);
+      return { salienceMap: {}, focusToken: tokens[0] };
     }
-
-    return normalized;
   }
 
-  /**
-   * استخراج السياق من توزيع الاهتمام
-   */
-  extractContextWeights(tokens) {
-    const output = this.processText(tokens);
-    
-    // حساب متوسط أوزان الاهتمام عبر جميع الرؤوس
-    const avgWeights = this._averageWeights(output.weights);
-
-    // استخراج العلاقات المهمة
-    const contextMap = {};
-    for (let i = 0; i < Math.min(tokens.length, 10); i++) {
-      contextMap[tokens[i]] = avgWeights[i];
-    }
-
-    return {
-      tokenWeights: contextMap,
-      focusTokens: this._getTopTokens(contextMap, 5)
-    };
-  }
-
-  _averageWeights(headWeights) {
-    const avgWeight = new Array(headWeights[0].length).fill(0);
-    
-    for (let h = 0; h < headWeights.length; h++) {
-      for (let i = 0; i < headWeights[h].length; i++) {
-        const sum = headWeights[h][i].reduce((a, b) => a + b, 0);
-        avgWeight[i] += sum / headWeights[h][i].length;
+  _computeScores(Q, K) {
+    const scores = [];
+    for (let i = 0; i < Q.length; i++) {
+      scores[i] = [];
+      for (let j = 0; j < K.length; j++) {
+        let dot = 0;
+        for (let k = 0; k < Q[i].length; k++) dot += Q[i][k] * K[j][k];
+        scores[i][j] = dot / ATTENTION_CONFIG.SCALE_FACTOR;
       }
     }
-
-    return avgWeight.map(w => w / headWeights.length);
+    return scores;
   }
 
-  _getTopTokens(contextMap, n) {
-    return Object.entries(contextMap)
-      .sort((a, b) => {
-        const avgB = b[1].reduce((a, c) => a + c, 0) / b[1].length;
-        const avgA = a[1].reduce((a, c) => a + c, 0) / a[1].length;
-        return avgB - avgA;
-      })
-      .slice(0, n)
-      .map(([token]) => token);
+  _generateSalienceMap(tokens, weights) {
+    const map = {};
+    tokens.forEach((token, i) => {
+      // متوسط انتباه الجملة لهذه الكلمة
+      const avgWeight = weights.reduce((sum, row) => sum + row[i], 0) / tokens.length;
+      map[token] = avgWeight;
+    });
+    return map;
+  }
+
+  _getTopToken(map) {
+    return Object.entries(map).sort((a,b) => b[1]-a[1])[0]?.[0];
   }
 }
 
