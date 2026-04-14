@@ -1,14 +1,13 @@
 
 /**
  * /core/state_synthesizer.js
- * StateSynthesizer v2.0 - "The Soulful Weaver"
- * وظيفته: تحويل شبكة الكلمات إلى "مسار نفسي" متكامل.
- * الميزات الجديدة: (Smarter Pivots, Conflict Detection, Intent Analysis, Trajectory)
+ * StateSynthesizer v2.1 - Robust & Crash-Proof Edition
+ * وظيفته: تحويل شبكة الكلمات إلى "مسار نفسي" متكامل وتأمين البيانات ضد الانهيار.
  */
 
 export class StateSynthesizer {
     constructor() {
-        console.log("%c🎭 [StateSynthesizer v2.0] تفعيل محرك إدراك الحالة النفسية...", "color: #FF5722; font-weight: bold;");
+        console.log("%c🎭 [StateSynthesizer v2.1] تفعيل محرك إدراك الحالة المستقر...", "color: #FF5722; font-weight: bold;");
         
         // أنواع المفاصل وقوتها
         this.PIVOT_RULES = {
@@ -29,115 +28,124 @@ export class StateSynthesizer {
     }
 
     /**
-     * المهمة الكبرى: تركيب الوعي الموقفي
+     * المهمة الكبرى: تركيب الوعي الموقفي وتأمين المسار
      */
     synthesize(readerResult, history = []) {
-        const { sequence } = readerResult;
         console.log("\n" + "%c[Deep Synthesis] STARTING...".repeat(1), "background: #FF5722; color: #fff; padding: 2px 5px;");
 
-        // 1. تحديد النقطة المفصلية (The Smart Pivot)
-        const pivotData = this._findSmartPivot(sequence);
+        try {
+            const { sequence } = readerResult;
+            if (!sequence || !Array.isArray(sequence)) throw new Error("بيانات التسلسل غير صالحة");
 
-        // 2. تحليل الصراع الداخلي (Conflict Detection)
-        const segments = this._splitByPivot(sequence, pivotData);
-        const conflict = this._detectInternalConflict(segments);
+            // 1. تحديد النقطة المفصلية
+            const pivotData = this._findSmartPivot(sequence);
 
-        // 3. استنتاج النية (Intent Detection)
-        const intent = this._detectIntent(sequence);
+            // 2. تحليل الصراع الداخلي
+            const segments = this._splitByPivot(sequence, pivotData);
+            const conflict = this._detectInternalConflict(segments);
 
-        // 4. حساب المسار (Trajectory) - الربط بالماضي
-        const currentMood = this._calculateIntegratedMood(sequence, pivotData);
-        const trajectory = this._calculateTrajectory(currentMood, history);
+            // 3. استنتاج النية
+            const intent = this._detectIntent(sequence);
 
-        const globalState = {
-            core: {
-                intent: intent,
-                conflictScore: conflict.score,
-                logicType: pivotData ? pivotData.type : "LINEAR"
-            },
-            atmosphere: {
-                mood: currentMood,
-                trajectory: trajectory, // (DETERIORATING, IMPROVING, STABLE)
-                tension: conflict.score > 0.5 ? "HIGH" : "NORMAL"
-            },
-            focus: {
-                selfCentric: readerResult.sequence.filter(t => t.role === "IDENTITY_MARKER").length > 1,
-                hasExternalActor: readerResult.sequence.some(t => t.relations.next && t.relations.next.includes("الناس"))
-            },
-            signals: conflict.signals
-        };
+            // 4. حساب المود والمسار الزمني (Trajectory) مع تأمين الذاكرة
+            const currentMood = this._calculateIntegratedMood(sequence, pivotData);
+            const trajectory = this._calculateTrajectory(currentMood, history);
 
-        console.log(`   ✅ [Synthesis Result]: النية (${intent.primary}) | الصراع (${conflict.score.toFixed(2)}) | المسار (${trajectory}).`);
-        return globalState;
+            const globalState = {
+                core: {
+                    intent: intent,
+                    conflictScore: conflict.score,
+                    logicType: pivotData ? pivotData.type : "LINEAR"
+                },
+                atmosphere: {
+                    mood: currentMood,
+                    trajectory: trajectory,
+                    tension: conflict.score > 0.5 ? "HIGH" : "NORMAL"
+                },
+                focus: {
+                    selfCentric: sequence.filter(t => t.role === "IDENTITY_MARKER").length > 1,
+                    hasExternalActor: sequence.some(t => t.relations && t.relations.next && t.relations.next.includes("الناس"))
+                },
+                signals: conflict.signals
+            };
+
+            console.log(`   ✅ [Synthesis Result]: النية (${intent.primary}) | الصراع (${conflict.score.toFixed(2)}) | المسار (${trajectory}).`);
+            return globalState;
+
+        } catch (err) {
+            console.error("❌ [StateSynthesizer Error]:", err);
+            // الرد الدفاعي في حالة حدوث خطأ
+            return {
+                core: { intent: { primary: "general" }, conflictScore: 0 },
+                atmosphere: { mood: 0, trajectory: "STABLE" },
+                focus: {},
+                signals: []
+            };
+        }
     }
 
-    /**
-     * يبحث عن المفصل ويحدد قوته ونوعه
-     */
     _findSmartPivot(sequence) {
         for (let i = sequence.length - 1; i >= 0; i--) {
             const token = sequence[i];
-            if (this.PIVOT_RULES[token.core]) {
+            if (token && this.PIVOT_RULES[token.core]) {
                 return { ...this.PIVOT_RULES[token.core], index: i, word: token.original };
             }
         }
         return null;
     }
 
-    /**
-     * كشف التناقض: هل الجزء الأول عكس الجزء الثاني؟
-     */
     _detectInternalConflict(segments) {
-        if (!segments.after) return { score: 0, signals: [] };
+        if (!segments || !segments.after) return { score: 0, signals: [] };
 
-        // هنا بنقيس "المسافة العاطفية" بين اللي قبل "بس" واللي بعدها
-        // (ملاحظة: بنعتمد على الـ tags المبدئية للـ Tokens)
         const beforeScore = this._getSegmentPolarity(segments.before);
         const afterScore = this._getSegmentPolarity(segments.after);
 
         const diff = Math.abs(beforeScore - afterScore);
         const signals = [];
-        if (diff > 0.6) signals.push("EMOTIONAL_DISSONANCE"); // تناقض حاد
-        if (beforeScore > 0.5 && afterScore < 0) signals.push("MASKING_BREACH"); // سقوط القناع الإيجابي
+        if (diff > 0.6) signals.push("EMOTIONAL_DISSONANCE");
+        if (beforeScore > 0.3 && afterScore < -0.3) signals.push("MASKING_BREACH");
 
         return { score: diff, signals };
     }
 
-    /**
-     * تحديد نية المستخدم: هو بيكلمنا ليه؟
-     */
     _detectIntent(sequence) {
-        const scores = { venting: 0, seeking_help: 0, testing: 0 };
+        const scores = { venting: 0, seeking_help: 0, testing: 0, confirmation: 0 };
         const text = sequence.map(t => t.core).join(' ');
 
         for (const [intent, keywords] of Object.entries(this.INTENT_MARKERS)) {
             keywords.forEach(kw => {
-                if (text.includes(kw)) scores[intent] += 1;
+                if (text.includes(kw)) scores[intent]++;
             });
         }
 
-        const primary = Object.entries(scores).sort((a,b) => b[1] - a[1])[0];
+        const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+        const primary = sorted[0];
+
         return {
-            primary: primary[1] > 0 ? primary[0] : "general_sharing",
-            confidence: primary[1] > 0 ? 0.8 : 0.4
+            primary: (primary && primary[1] > 0) ? primary[0] : "general_sharing",
+            confidence: (primary && primary[1] > 0) ? 0.8 : 0.4
         };
     }
 
     /**
-     * تحليل المسار الزمني: هل الحالة بتتحسن ولا بتسوء؟
+     * تأمين حساب المسار التاريخي (حل مشكلة الـ Initial State)
      */
     _calculateTrajectory(currentMood, history) {
-        if (!history || history.length === 0) return "NEW_IDENTITY";
+        // إذا لم تكن هناك ذاكرة سابقة، فهذه بداية الهوية الرقمية للمستخدم
+        if (!history || !Array.isArray(history) || history.length === 0) {
+            return "INITIAL_STATE";
+        }
         
-        const lastMood = history[history.length - 1].mood;
-        const diff = currentMood - lastMood;
+        // محاولة جلب آخر مود مسجل (V من مكعب VAD)
+        const lastEntry = history[history.length - 1];
+        const lastMood = lastEntry?.emotionProfile?.stateModel?.v || lastEntry?.mood || 0;
 
+        const diff = currentMood - lastMood;
         if (diff < -0.3) return "DETERIORATING"; // تدهور
         if (diff > 0.3) return "IMPROVING";    // تحسن
         return "STABLE";                       // استقرار
     }
 
-    // وظائف مساعدة مبسطة
     _splitByPivot(sequence, pivot) {
         if (!pivot) return { before: sequence, after: null };
         return {
@@ -147,17 +155,16 @@ export class StateSynthesizer {
     }
 
     _getSegmentPolarity(tokens) {
-        // حساب مبدئي للقطبية (إيجابي/سلبي) بناءً على الـ Role
+        if (!tokens || !Array.isArray(tokens)) return 0;
         let score = 0;
         tokens.forEach(t => {
-            if (t.classification.isClin || t.classification.isEmo) score -= 0.5;
-            if (t.role === "INTENSIFIER") score *= 1.5;
+            if (t.classification && (t.classification.isClin || t.classification.isEmo)) score -= 0.5;
+            if (t.role === "INTENSIFIER") score *= 1.2;
         });
         return score;
     }
 
     _calculateIntegratedMood(sequence, pivot) {
-        // حساب المود العام مع إعطاء وزن 70% لما بعد الـ Pivot
         const segments = this._splitByPivot(sequence, pivot);
         const b = this._getSegmentPolarity(segments.before);
         if (!segments.after) return b;
