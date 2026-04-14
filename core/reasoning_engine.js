@@ -1,23 +1,33 @@
 
 /**
  * /core/reasoning_engine.js
- * ReasoningEngine v2.0 - The Strategic Intelligence Hub
- * وظيفته: الربط المنطقي بين الانتباه، إحداثيات VAD، والمفاهيم السريرية لاتخاذ قرار استراتيجي.
+ * ReasoningEngine v3.0 - Unified Strategic Intelligence
+ * وظيفته: الربط المنطقي النهائي بين كافة محركات الفضاء الموحد لاتخاذ قرار استراتيجي شامل.
  */
 
 export class ReasoningEngine {
     constructor(memorySystem) {
         this.memory = memorySystem;
         this.STRICTNESS_THRESHOLD = 0.75; // عتبة اليقين لاتخاذ قرارات حازمة
+        console.log("%c🧠 [ReasoningEngine v3.0] تم تشغيل العقل الاستراتيجي الموحد...", "color: #607D8B; font-weight: bold;");
     }
 
     /**
-     * المهمة الكبرى: صياغة الخلاصة الاستراتيجية (The Strategic Insight)
+     * المهمة الكبرى: صياغة الخلاصة الاستراتيجية (The Strategic Insight) داخل الـ Workspace
      */
-    async computeStrategicInsight(analysis) {
-        console.log("\n" + "%c🧠 [Reasoning Engine] بدأت عملية الاستدلال الاستراتيجي...".repeat(1), "background: #607D8B; color: #fff; padding: 2px 5px;");
+    async computeStrategicInsight(workspace) {
+        console.log("\n" + "%c[Strategic Reasoning] FINALIZING COGNITIVE STATE...".repeat(1), "background: #607D8B; color: #fff; padding: 2px 5px;");
 
-        const { emotionProfile, semanticMap, attentionMap, synthesisProfile } = analysis;
+        if (!workspace || !workspace.semantic || !workspace.emotion || !workspace.synthesis) {
+            console.error("❌ [ReasoningEngine]: نقص في بيانات الفضاء الموحد. لا يمكن اتخاذ قرار.");
+            return null;
+        }
+
+        // استخراج البيانات من الفضاء الموحد (Workspace)
+        const emotionProfile = workspace.emotion;
+        const semanticMap = workspace.semantic;
+        const attentionMap = workspace.attentionMap || {};
+        const synthesisProfile = workspace.synthesis;
 
         // 1. حساب معامل اليقين (Diagnostic Certainty)
         // نقوم بمطابقة بؤرة الانتباه مع بؤرة المفهوم الدلالي
@@ -45,6 +55,16 @@ export class ReasoningEngine {
             internalRationale: this._generateRationale(coherence, masterIntent, trajectory)
         };
 
+        // =========================================================
+        // 🚀 حقن القرار النهائي في الـ Workspace
+        // =========================================================
+        workspace.reasoning = strategicInsight;
+
+        // تحديث الحالة العالمية النهائية للفضاء
+        workspace.state.finalIntent = masterIntent.type;
+        workspace.state.certainty = diagnosticCertainty;
+        workspace.state.trajectory = trajectory;
+
         console.log(`   ✅ [Reasoning Complete]`);
         console.log(`      🎯 Intent: ${masterIntent.type} | Certainty: ${diagnosticCertainty.toFixed(2)}`);
         console.log(`      💡 Rationale: ${strategicInsight.internalRationale}`);
@@ -56,7 +76,7 @@ export class ReasoningEngine {
      * يقيس مدى تطابق الانتباه اللحظي مع التشخيص الدلالي
      */
     _evaluateCertainty(attentionMap, semanticMap) {
-        console.log("   🔸 [Step 1] تقييم درجة اليقين التشخيصي...");
+        console.log("   🔸 [Step 1] تقييم درجة اليقين التشخيصي من الانتباه...");
         const topAttentionToken = Object.entries(attentionMap).sort((a,b) => b[1] - a[1])[0]?.[0];
         const topClinicalConcept = semanticMap.clinicalFocus?.id;
 
@@ -74,7 +94,7 @@ export class ReasoningEngine {
      * فحص التوافق بين "الأبعاد العاطفية" و "المصطلحات المستخدمة"
      */
     _checkCoherence(vad, clinicalFocus) {
-        console.log("   🔸 [Step 2] فحص التوافق بين الأبعاد العاطفية واللغة...");
+        console.log("   🔸 [Step 2] فحص التوافق الفراغي بين الـ VAD واللغة...");
         
         const isNegativeV = vad.v < -0.4;
         const isClinicalNegative = ["depression_symptom", "sadness", "helplessness"].includes(clinicalFocus?.id);
@@ -88,6 +108,7 @@ export class ReasoningEngine {
      * تحليل المسار من الذاكرة (هل المستخدم يتحسن أم يتدهور؟)
      */
     _analyzeUserTrajectory() {
+        console.log("   🔸 [Step 3] تحليل مسار الحالة عبر الزمن...");
         const history = this.memory?.workingMemory || [];
         if (history.length < 2) return "STABLE_NEW";
 
@@ -103,6 +124,7 @@ export class ReasoningEngine {
      * اتخاذ القرار: ما هي "وضعية الرد" المثالية؟
      */
     _decideMasterIntent(emotion, semantic, synthesis, trajectory) {
+        console.log("   🔸 [Step 4] اتخاذ القرار الاستراتيجي للرد...");
         const vad = emotion.stateModel;
         
         // 1. وضعية التدخل (Crisis/Critical)
@@ -127,6 +149,7 @@ export class ReasoningEngine {
      * اختيار "الأداة" المناسبة من الأنماط المكتشفة
      */
     _forgeRecommendation(intent, synthesis) {
+        console.log("   🔸 [Step 5] صياغة التوصية السلوكية...");
         if (intent.type === "STRATEGIC_REFRANE" && synthesis.dominantPattern) {
             return {
                 action: "EXPOSE_PATTERN",
@@ -146,7 +169,7 @@ export class ReasoningEngine {
 
     _generateRationale(coherence, intent, trajectory) {
         let text = `بناءً على التوافق الـ ${coherence}، تم اختيار وضعية ${intent.type}. `;
-        if (trajectory === "DETERIORATING") text += "ملاحظة: هناك تدهور في الحالة المزاجية يتطلب حذراً أكبر.";
+        if (trajectory === "DETERIORATING") text += "ملاحظة: هناك تدهور ملحوظ في المسار الزمني.";
         return text;
     }
 }
