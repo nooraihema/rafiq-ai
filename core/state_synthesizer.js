@@ -1,15 +1,15 @@
 
 /**
  * /core/state_synthesizer.js
- * StateSynthesizer v2.1 - Robust & Crash-Proof Edition
- * وظيفته: تحويل شبكة الكلمات إلى "مسار نفسي" متكامل وتأمين البيانات ضد الانهيار.
+ * StateSynthesizer v3.0 - Unified Context Architect
+ * وظيفته: استنتاج "الحالة الموقفية" وربط الماضي بالحاضر داخل الفضاء الموحد.
  */
 
 export class StateSynthesizer {
     constructor() {
-        console.log("%c🎭 [StateSynthesizer v2.1] تفعيل محرك إدراك الحالة المستقر...", "color: #FF5722; font-weight: bold;");
+        console.log("%c🎭 [StateSynthesizer v3.0] تهيئة مهندس الحالات الموقفية...", "color: #FF5722; font-weight: bold;");
         
-        // أنواع المفاصل وقوتها
+        // قواعد المفاصل المنطقية (نفس منطقك الأصلي)
         this.PIVOT_RULES = {
             'بس': { strength: 1.0, type: 'CONTRAST' },
             'لكن': { strength: 0.9, type: 'CONTRAST' },
@@ -18,7 +18,7 @@ export class StateSynthesizer {
             'حتى لو': { strength: 0.6, type: 'RESILIENCE' }
         };
 
-        // محددات النية (Intent Markers)
+        // علامات النية (نفس منطقك الأصلي)
         this.INTENT_MARKERS = {
             venting: ['مخنوق', 'تعبان', 'زهقت', 'خلاص'],
             seeking_help: ['اعمل ايه', 'ازاي', 'ساعدني', 'حل'],
@@ -28,89 +28,98 @@ export class StateSynthesizer {
     }
 
     /**
-     * المهمة الكبرى: تركيب الوعي الموقفي وتأمين المسار
+     * المهمة: قراءة نسيج العقد في الـ Workspace واستنتاج الموقف الكلي
      */
-    synthesize(readerResult, history = []) {
-        console.log("\n" + "%c[Deep Synthesis] STARTING...".repeat(1), "background: #FF5722; color: #fff; padding: 2px 5px;");
+    async synthesize(workspace, history = []) {
+        console.log("\n" + "%c[Situational Synthesis] STARTING...".repeat(1), "background: #FF5722; color: #fff; padding: 2px 5px;");
+
+        if (!workspace || !workspace.nodes) {
+            console.error("❌ [StateSynthesizer]: نسيج العقد مفقود.");
+            return;
+        }
 
         try {
-            const { sequence } = readerResult;
-            if (!sequence || !Array.isArray(sequence)) throw new Error("بيانات التسلسل غير صالحة");
+            const nodes = workspace.nodes;
 
-            // 1. تحديد النقطة المفصلية
-            const pivotData = this._findSmartPivot(sequence);
+            // 1. تحديد النقطة المفصلية في النسيج (Smart Pivot)
+            const pivotData = this._findSmartPivot(nodes);
 
-            // 2. تحليل الصراع الداخلي
-            const segments = this._splitByPivot(sequence, pivotData);
+            // 2. تحليل الصراع والتناقض بين الكتل اللغوية
+            const segments = this._splitByPivot(nodes, pivotData);
             const conflict = this._detectInternalConflict(segments);
 
-            // 3. استنتاج النية
-            const intent = this._detectIntent(sequence);
+            // 3. استنتاج النية العليا للمستخدم (Intent)
+            const intent = this._detectIntent(nodes);
 
-            // 4. حساب المود والمسار الزمني (Trajectory) مع تأمين الذاكرة
-            const currentMood = this._calculateIntegratedMood(sequence, pivotData);
+            // 4. حساب المود المدمج والمسار الزمني من الذاكرة
+            const currentMood = this._calculateIntegratedMood(nodes, pivotData);
             const trajectory = this._calculateTrajectory(currentMood, history);
 
-            const globalState = {
-                core: {
-                    intent: intent,
-                    conflictScore: conflict.score,
-                    logicType: pivotData ? pivotData.type : "LINEAR"
-                },
-                atmosphere: {
-                    mood: currentMood,
-                    trajectory: trajectory,
-                    tension: conflict.score > 0.5 ? "HIGH" : "NORMAL"
-                },
-                focus: {
-                    selfCentric: sequence.filter(t => t.role === "IDENTITY_MARKER").length > 1,
-                    hasExternalActor: sequence.some(t => t.relations && t.relations.next && t.relations.next.includes("الناس"))
-                },
-                signals: conflict.signals
+            // =========================================================
+            // 🚀 حقن "تقرير الموقف" في الـ Workspace
+            // =========================================================
+            workspace.situational = {
+                intent: intent,
+                conflict: conflict,
+                pivot: pivotData,
+                integratedMood: currentMood,
+                _meta: { version: "3.0-Workspace-Ready" }
             };
 
-            console.log(`   ✅ [Synthesis Result]: النية (${intent.primary}) | الصراع (${conflict.score.toFixed(2)}) | المسار (${trajectory}).`);
-            return globalState;
+            // تحديث الحالة العالمية (Global State) لتوجيه المحركات القادمة
+            workspace.state.trajectory = trajectory;
+            workspace.state.intent = intent.primary;
+            workspace.state.tensionLevel = conflict.score > 0.5 ? "HIGH" : "NORMAL";
+            workspace.state.isContrastive = !!pivotData;
+
+            console.log(`   ✅ [Synthesis Complete]: النية [${intent.primary}] | المسار [${trajectory}] | التناقض [${conflict.score.toFixed(2)}]`);
 
         } catch (err) {
             console.error("❌ [StateSynthesizer Error]:", err);
-            // الرد الدفاعي في حالة حدوث خطأ
-            return {
-                core: { intent: { primary: "general" }, conflictScore: 0 },
-                atmosphere: { mood: 0, trajectory: "STABLE" },
-                focus: {},
-                signals: []
-            };
         }
     }
 
-    _findSmartPivot(sequence) {
-        for (let i = sequence.length - 1; i >= 0; i--) {
-            const token = sequence[i];
-            if (token && this.PIVOT_RULES[token.core]) {
-                return { ...this.PIVOT_RULES[token.core], index: i, word: token.original };
+    /**
+     * يبحث عن المفصل في مصفوفة العقد
+     */
+    _findSmartPivot(nodes) {
+        for (let i = nodes.length - 1; i >= 0; i--) {
+            const node = nodes[i];
+            if (this.PIVOT_RULES[node.core]) {
+                console.log(`      ⚖️ [Pivot Found]: "${node.original}" صُنفت كنقطة تحول (${this.PIVOT_RULES[node.core].type})`);
+                return { ...this.PIVOT_RULES[node.core], index: i, word: node.original };
             }
         }
         return null;
     }
 
+    /**
+     * كشف التناقض العاطفي بين ما قبل وما بعد المفصل
+     */
     _detectInternalConflict(segments) {
-        if (!segments || !segments.after) return { score: 0, signals: [] };
+        if (!segments.after) return { score: 0, signals: [] };
 
         const beforeScore = this._getSegmentPolarity(segments.before);
         const afterScore = this._getSegmentPolarity(segments.after);
 
         const diff = Math.abs(beforeScore - afterScore);
         const signals = [];
+        
         if (diff > 0.6) signals.push("EMOTIONAL_DISSONANCE");
-        if (beforeScore > 0.3 && afterScore < -0.3) signals.push("MASKING_BREACH");
+        if (beforeScore > 0.3 && afterScore < -0.3) {
+            signals.push("MASKING_BREACH");
+            console.log("      🎭 [Signal]: تم اكتشاف سقوط القناع الإيجابي (Masking Breach).");
+        }
 
         return { score: diff, signals };
     }
 
-    _detectIntent(sequence) {
+    /**
+     * تحديد نية المستخدم من خلال نسيج الكلمات
+     */
+    _detectIntent(nodes) {
         const scores = { venting: 0, seeking_help: 0, testing: 0, confirmation: 0 };
-        const text = sequence.map(t => t.core).join(' ');
+        const text = nodes.map(n => n.core).join(' ');
 
         for (const [intent, keywords] of Object.entries(this.INTENT_MARKERS)) {
             keywords.forEach(kw => {
@@ -128,44 +137,47 @@ export class StateSynthesizer {
     }
 
     /**
-     * تأمين حساب المسار التاريخي (حل مشكلة الـ Initial State)
+     * تحليل المسار الزمني (أهم ميزة للذكاء الاستراتيجي)
      */
     _calculateTrajectory(currentMood, history) {
-        // إذا لم تكن هناك ذاكرة سابقة، فهذه بداية الهوية الرقمية للمستخدم
-        if (!history || !Array.isArray(history) || history.length === 0) {
-            return "INITIAL_STATE";
-        }
+        if (!history || history.length === 0) return "INITIAL_STATE";
         
-        // محاولة جلب آخر مود مسجل (V من مكعب VAD)
+        // جلب آخر حالة مزاجية مسجلة من الذاكرة
         const lastEntry = history[history.length - 1];
-        const lastMood = lastEntry?.emotionProfile?.stateModel?.v || lastEntry?.mood || 0;
+        const lastMood = lastEntry?.insight?.emotionProfile?.stateModel?.v || lastEntry?.mood || 0;
 
         const diff = currentMood - lastMood;
-        if (diff < -0.3) return "DETERIORATING"; // تدهور
-        if (diff > 0.3) return "IMPROVING";    // تحسن
-        return "STABLE";                       // استقرار
+        if (diff < -0.3) return "DETERIORATING";
+        if (diff > 0.3) return "IMPROVING";
+        return "STABLE";
     }
 
-    _splitByPivot(sequence, pivot) {
-        if (!pivot) return { before: sequence, after: null };
+    _splitByPivot(nodes, pivot) {
+        if (!pivot) return { before: nodes, after: null };
         return {
-            before: sequence.slice(0, pivot.index),
-            after: sequence.slice(pivot.index + 1)
+            before: nodes.slice(0, pivot.index),
+            after: nodes.slice(pivot.index + 1)
         };
     }
 
-    _getSegmentPolarity(tokens) {
-        if (!tokens || !Array.isArray(tokens)) return 0;
+    /**
+     * قياس قطبية الكتلة اللغوية بناءً على تصنيف العقد
+     */
+    _getSegmentPolarity(nodes) {
+        if (!nodes || nodes.length === 0) return 0;
         let score = 0;
-        tokens.forEach(t => {
-            if (t.classification && (t.classification.isClin || t.classification.isEmo)) score -= 0.5;
-            if (t.role === "INTENSIFIER") score *= 1.2;
+        nodes.forEach(n => {
+            if (n.classification.isClin || n.classification.isEmo) score -= 0.5;
+            if (n.role === "INTENSIFIER") score *= 1.2;
         });
         return score;
     }
 
-    _calculateIntegratedMood(sequence, pivot) {
-        const segments = this._splitByPivot(sequence, pivot);
+    /**
+     * دمج المود العام مع ترجيح ما بعد المفصل بنسبة 70%
+     */
+    _calculateIntegratedMood(nodes, pivot) {
+        const segments = this._splitByPivot(nodes, pivot);
         const b = this._getSegmentPolarity(segments.before);
         if (!segments.after) return b;
         const a = this._getSegmentPolarity(segments.after);
