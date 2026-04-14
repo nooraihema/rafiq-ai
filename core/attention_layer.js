@@ -1,8 +1,8 @@
 
 /**
  * /core/attention_layer.js
- * Attention Layer v2.0 - Contextual Psychological Attention (CPA)
- * وظيفته: تحديد بؤرة التركيز في الجملة بناءً على القواميس والرياضيات معاً.
+ * AttentionLayer v3.0 - Unified Field Energy Edition
+ * وظيفته: توزيع "طاقة التركيز" على عقد الفضاء الموحد (Workspace Nodes) باستخدام القواميس والرياضيات.
  */
 
 import { normalizeArabic } from './utils.js';
@@ -11,11 +11,13 @@ const ATTENTION_CONFIG = {
   NUM_HEADS: 4,
   HIDDEN_DIM: 128,
   SCALE_FACTOR: Math.sqrt(32),
-  PSYCH_BOOST_FACTOR: 2.5, // مدى قوة جذب الكلمات النفسية للانتباه
-  STOP_WORD_PENALTY: 0.2    // مدى إضعاف الكلمات الحشوية
+  PSYCH_BOOST_MAX: 3.5,    // أقصى قوة جذب للكلمات السريرية
+  EMOTIONAL_BOOST: 2.8,   // قوة جذب الكلمات العاطفية
+  STOP_WORD_PENALTY: 0.1, // إضعاف شديد لكلمات الحشو
+  CONTEXT_SPREAD: 0.4      // مدى انتقال الانتباه للكلمات المجاورة
 };
 
-// --- وظائف رياضية مساعدة ---
+// --- المساعدات الرياضية (كما هي بدون تغيير) ---
 function softmax(arr) {
   const max = Math.max(...arr);
   const exp = arr.map(x => Math.exp(x - max));
@@ -44,42 +46,44 @@ function initializeWeights(rows, cols) {
 }
 
 // ============================================================================
-// Token Embedding Layer (المطورة سيكولوجياً)
+// Token Embedding Layer (المطورة للعمل مع القواميس كـ Gravity)
 // ============================================================================
 export class TokenEmbedding {
   constructor(dictionaries) {
     this.embeddingDim = ATTENTION_CONFIG.HIDDEN_DIM;
-    this.embeddings = new Map();
-    
-    // ربط القواميس لتوجيه الانتباه
     this.anchors = dictionaries.anchors || {};
     this.concepts = dictionaries.concepts || {};
     this.stopWords = dictionaries.stopWords || new Set();
   }
 
   /**
-   * تحويل الكلمة لمتجه مع "حقن" الثقل النفسي
+   * تحويل الكلمة لمتجه مع حقن "الجاذبية النفسية" المستمدة من القواميس
    */
-  embed(token, stemmed) {
+  embed(token, stem) {
     const norm = normalizeArabic(token);
-    const normStem = normalizeArabic(stemmed);
+    const normStem = normalizeArabic(stem);
 
-    // 1. إنشاء المتجه الأساسي (حتمي بناءً على الحروف)
+    // 1. توليد المتجه الأساسي
     let embedding = this._generateBaseVector(norm);
 
-    // 2. حساب "الثقل النفسي" من القواميس
-    let psychWeight = 1.0;
-    
+    // 2. حساب "معامل الجاذبية" (Gravity Factor) من القواميس
+    let gravity = 1.0;
+
     if (this.stopWords.has(norm)) {
-      psychWeight = ATTENTION_CONFIG.STOP_WORD_PENALTY;
-    } else if (this.anchors[norm] || this.anchors[normStem]) {
-      psychWeight = ATTENTION_CONFIG.PSYCH_BOOST_FACTOR; // كلمات المشاعر تجذب انتباهاً أعلى
-    } else if (this.concepts[norm] || this.concepts[normStem]) {
-      psychWeight = ATTENTION_CONFIG.PSYCH_BOOST_FACTOR * 0.8;
+      gravity = ATTENTION_CONFIG.STOP_WORD_PENALTY;
+    } else {
+      // إذا كانت الكلمة في قاموس المفاهيم (مثل اكتئاب) تأخذ أعلى جاذبية
+      if (this.concepts[norm] || this.concepts[normStem]) {
+        gravity = ATTENTION_CONFIG.PSYCH_BOOST_MAX;
+      } 
+      // إذا كانت في قاموس المراسي (مثل حزين) تأخذ جاذبية عالية
+      else if (this.anchors[norm] || this.anchors[normStem]) {
+        gravity = ATTENTION_CONFIG.EMOTIONAL_BOOST;
+      }
     }
 
-    // 3. تطبيق الثقل على المتجه
-    return embedding.map(v => v * psychWeight);
+    // 3. حقن الجاذبية في المتجه (شحن الكلمة طاقياً)
+    return embedding.map(v => v * gravity);
   }
 
   _generateBaseVector(token) {
@@ -94,62 +98,71 @@ export class TokenEmbedding {
 }
 
 // ============================================================================
-// Full Attention Layer (الأوركسترا)
+// Full Attention Layer (محرك طاقة الفضاء)
 // ============================================================================
 export class AttentionLayer {
   constructor(dictionaries) {
-    console.log("%c🎯 [AttentionLayer] جاري تهيئة طبقة الانتباه النفسي...", "color: #FF9800; font-weight: bold;");
+    console.log("%c🎯 [AttentionLayer v3.0] تهيئة محرك جاذبية الفضاء الموحد...", "color: #FF9800; font-weight: bold;");
     
     this.embeddingLayer = new TokenEmbedding(dictionaries);
     
-    // مصفوفات الأوزان لرؤوس الانتباه
+    // مصفوفات الأوزان للرؤوس (تحافظ على التعلم الرياضي)
     this.WQ = initializeWeights(ATTENTION_CONFIG.HIDDEN_DIM, 32);
     this.WK = initializeWeights(ATTENTION_CONFIG.HIDDEN_DIM, 32);
     this.WV = initializeWeights(ATTENTION_CONFIG.HIDDEN_DIM, 32);
-    
-    this.debug = true;
   }
 
   /**
-   * العملية الكبرى: تحليل النص وتوزيع الأوزان
+   * العملية الرئيسية: شحن الـ Workspace بالطاقة
    */
-  async process(tokens, stems = []) {
-    console.log("\n" + "%c[Attention Processing] START".repeat(1), "background: #FF9800; color: #fff; padding: 2px 5px;");
+  async process(workspace) {
+    console.log("\n" + "%c[Attention Energizing] STARTING...".repeat(1), "background: #FF9800; color: #fff; padding: 2px 5px;");
     
-    try {
-      // 1. التضمين (Embedding) مع مراعاة القواميس
-      console.log("   🔸 [Step 1] جاري تحويل الكلمات لمتجهات مشحونة نفسياً...");
-      const embeddings = tokens.map((t, i) => this.embeddingLayer.embed(t, stems[i] || t));
+    if (!workspace || !workspace.nodes) {
+        console.error("❌ [AttentionLayer]: Workspace مفقود.");
+        return;
+    }
 
-      // 2. حساب Query, Key, Value (مبسط لرأس واحد للتوضيح الرياضي)
+    try {
+      const nodes = workspace.nodes;
+      
+      // 1. تحويل العقد لمتجهات مشحونة (بناءً على هويتها وقواميسها)
+      console.log("   🔸 [Step 1] شحن عقد الفضاء بالجاذبية النفسية...");
+      const embeddings = nodes.map(node => 
+        this.embeddingLayer.embed(node.original, node.core)
+      );
+
+      // 2. حساب العلاقات الرياضية (Dot-Product Attention)
       const Q = matmul(embeddings, this.WQ);
       const K = matmul(embeddings, this.WK);
       const V = matmul(embeddings, this.WV);
 
-      // 3. حساب درجات الانتباه (Attention Scores)
-      console.log("   🔸 [Step 2] جاري حساب مصفوفة العلاقات (Attention Scores)...");
       const rawScores = this._computeScores(Q, K);
-      
-      // 4. تطبيق Softmax للحصول على الأوزان النهائية
-      const attentionWeights = rawScores.map(row => softmax(row));
+      const weights = rawScores.map(row => softmax(row));
 
-      // 5. استخراج "خريطة الأهمية" (Salience Map)
-      const salienceMap = this._generateSalienceMap(tokens, attentionWeights);
+      // 3. حقن الطاقة النهائية في الـ Workspace Nodes
+      console.log("   🔸 [Step 2] توزيع طاقة الانتباه على نسيج الجملة...");
+      nodes.forEach((node, i) => {
+        // متوسط الطاقة التي تلقتها هذه العقدة من باقي العقد
+        const nodeEnergy = weights.reduce((sum, row) => sum + row[i], 0) / nodes.length;
+        
+        // تحديث العقدة مباشرة داخل الفضاء
+        node.salience = nodeEnergy;
+        
+        if (nodeEnergy > 0.15) {
+            console.log(`      ✨ [Node ${i} Energized]: "${node.original}" حصلت على طاقة تركيز: ${nodeEnergy.toFixed(2)}`);
+        }
+      });
 
-      if (this.debug) {
-        const top = Object.entries(salienceMap).sort((a,b) => b[1]-a[1])[0];
-        console.log(`   ✅ [Attention Focus]: الكلمة الأكثر تأثيراً هي "${top[0]}" بوزن ${top[1].toFixed(2)}`);
-      }
+      // 4. تحديث حالة الفضاء الكلية
+      const topNode = [...nodes].sort((a,b) => b.salience - a.salience)[0];
+      workspace.state.focusNode = topNode.original;
+      workspace.state.fieldEnergy = topNode.salience;
 
-      return {
-        salienceMap,
-        attentionWeights,
-        focusToken: this._getTopToken(salienceMap)
-      };
+      console.log(`   ✅ [Energizing Complete]: بؤرة طاقة المجال هي "${topNode.original}"`);
 
     } catch (err) {
       console.error("❌ [AttentionLayer Error]:", err);
-      return { salienceMap: {}, focusToken: tokens[0] };
     }
   }
 
@@ -164,20 +177,6 @@ export class AttentionLayer {
       }
     }
     return scores;
-  }
-
-  _generateSalienceMap(tokens, weights) {
-    const map = {};
-    tokens.forEach((token, i) => {
-      // متوسط انتباه الجملة لهذه الكلمة
-      const avgWeight = weights.reduce((sum, row) => sum + row[i], 0) / tokens.length;
-      map[token] = avgWeight;
-    });
-    return map;
-  }
-
-  _getTopToken(map) {
-    return Object.entries(map).sort((a,b) => b[1]-a[1])[0]?.[0];
   }
 }
 
