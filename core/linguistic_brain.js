@@ -1,6 +1,6 @@
 
 // /core/linguistic_brain_v4.js
-// LinguisticBrain v8.2 - Full Consciousness & Crash-Proof Edition
+// LinguisticBrain v9.0 - Unified Cognitive Workspace Edition
 // ====================================================================
 
 import { normalizeArabic, tokenize } from './utils.js';
@@ -12,9 +12,10 @@ import { AttentionLayer } from './attention_layer.js';
 import { ReasoningEngine } from './reasoning_engine.js';
 import { KnowledgeEngine } from './knowledge_engine.js';
 
-// استيراد المكونات الجديدة (بوابة الوعي)
+// استيراد المكونات المتقدمة (بوابة الوعي والفضاء الموحد)
 import { HighFidelityReader } from './high_fidelity_reader.js';
 import { StateSynthesizer } from './state_synthesizer.js';
+import { UnifiedWorkspace } from './workspace.js'; // الاستيراد الحيوي الجديد
 import SITUATIONAL_CONTEXT from './situational_context.js';
 
 const DEFAULT_OPTIONS = {
@@ -34,7 +35,7 @@ const DEFAULT_OPTIONS = {
 
 export class LinguisticBrain {
     constructor(memorySystem, opts = {}) {
-        console.log("%c🧠 [Constructor] Creating LinguisticBrain v8.2 (Secure Consciousness)...", "color: #2196F3; font-weight: bold;");
+        console.log("%c🧠 [Constructor] Creating LinguisticBrain v9.0 (Global Workspace)...", "color: #2196F3; font-weight: bold;");
         this.options = Object.assign({}, DEFAULT_OPTIONS, opts);
         this.memory = memorySystem;
         this.dictionaries = {};
@@ -46,7 +47,7 @@ export class LinguisticBrain {
         if (this._isInitialized) return this;
 
         console.log("%c=======================================", "color: #4CAF50");
-        console.log("%c🧠 Brain Initialization Started (V8.2)", "color: #4CAF50; font-weight: bold;");
+        console.log("%c🧠 Brain Initialization Started (V9.0)", "color: #4CAF50; font-weight: bold;");
         console.log("%c=======================================", "color: #4CAF50");
 
         // --- الخطوة 1: تحميل القواميس الآمن ---
@@ -74,8 +75,9 @@ export class LinguisticBrain {
             AFFIX_DICTIONARY: semanticConfig.AFFIX_DICTIONARY
         };
 
-        // --- الخطوة 3: بناء المحركات (التسلسل المطور) ---
+        // --- الخطوة 3: بناء المحركات (الجيل السادس - Workspace Ready) ---
         try {
+            // [المرحلة 0]: القارئ فائق الدقة (Constructs the Field)
             this.engines.reader = new HighFidelityReader({
                 anchors: emotionConfig.EMOTIONAL_ANCHORS,
                 concepts: semanticConfig.CONCEPT_MAP,
@@ -83,27 +85,35 @@ export class LinguisticBrain {
                 affixes: semanticConfig.AFFIX_DICTIONARY
             });
 
-            this.engines.synthesizer = new StateSynthesizer();
-
+            // [المرحلة 1]: شاحن طاقة الانتباه (Field Energizer)
             this.engines.attention = new AttentionLayer({
                 anchors: emotionConfig.EMOTIONAL_ANCHORS,
                 concepts: semanticConfig.CONCEPT_MAP,
                 stopWords: semanticConfig.STOP_WORDS_SET
             });
 
+            // [المرحلة 2]: مترجم الموقف (Context Architect)
+            this.engines.synthesizer = new StateSynthesizer();
+
+            // [المرحلة 3]: المحلل الدلالي (Semantic Enricher)
             this.engines.semantic = new SemanticEngine(semanticConfig);
 
+            // [المرحلة 4]: محرك العواطف (Emotion Enricher)
             this.engines.emotion = new EmotionEngine(emotionConfig);
 
+            // [المرحلة 5]: محرك التركيب (Cognitive Weaver)
             this.engines.synthesis = new SynthesisEngine({
                 PATTERNS: this.dictionaries.psychological_patterns_hyperreal || {},
                 BEHAVIOR_VALUES: this.dictionaries.behavior_values_defenses || {}
             });
 
+            // [المرحلة 6]: المحرك الاستراتيجي (Strategic Hub)
             this.engines.reasoning = new ReasoningEngine(this.memory);
 
+            // [المرحلة 7]: أمين المكتبة (RAG Engine)
             this.engines.knowledge = new KnowledgeEngine();
 
+            // [المرحلة 8]: مهندس الرد النهائي (Response Architect)
             this.engines.catharsis = new CatharsisEngine(
                 { 
                     GENERATIVE_ENGINE: this.dictionaries.generative_responses_engine || {},
@@ -114,7 +124,7 @@ export class LinguisticBrain {
                 this.memory
             );
 
-            console.log("%c   🎉 CONSCIOUSNESS PIPELINE FULLY LINKED & SECURE", "color: #4CAF50; font-weight: bold;");
+            console.log("%c   🎉 GLOBAL WORKSPACE PIPELINE FULLY INTEGRATED", "color: #4CAF50; font-weight: bold;");
         } catch (e) {
             console.error("❌ Engine Instantiation Failed:", e);
             throw e;
@@ -125,90 +135,79 @@ export class LinguisticBrain {
     }
 
     /**
-     * البايبلاين الكامل مع حماية الانهيار
+     * عملية التحليل الكبرى داخل فضاء المعنى الموحد
      */
     async analyze(rawText, context = {}) {
         if (!this._isInitialized) return null;
         
-        console.log("\n" + "%c🚀 STARTING INTEGRATED CONSCIOUSNESS PIPELINE".repeat(1), "color: #fff; background: #E91E63; padding: 4px;");
+        // 1. إنشاء فضاء المعنى الموحد للجملة (The Holy Grail)
+        const workspace = new UnifiedWorkspace(rawText);
         const start = Date.now();
 
         try {
-            // [Phase 0]: القراءة فائقة الدقة
-            const readerResult = await this.engines.reader.read(rawText);
-            const tokens = readerResult.sequence.map(t => t.original);
-            const stems = readerResult.sequence.map(t => t.core);
+            // [Phase 0]: حقن النص وبناء نسيج العقد
+            await this.engines.reader.ingest(workspace);
 
-            // [Phase 1]: تركيب الحالة الكلية (مع تأمين الذاكرة)
-            const memoryHistory = (this.memory && Array.isArray(this.memory.workingMemory)) ? this.memory.workingMemory : [];
-            const globalState = await this.engines.synthesizer.synthesize(readerResult, memoryHistory);
+            // [Phase 1]: شحن المجال بطاقة الانتباه
+            await this.engines.attention.process(workspace);
 
-            // [Phase 2]: الانتباه
-            const attentionResult = await this.engines.attention.process(tokens, stems);
-            const attentionMap = attentionResult.salienceMap;
+            // [Phase 2]: تحليل الموقف والمسار الزمني
+            const history = (this.memory && this.memory.workingMemory) ? this.memory.workingMemory : [];
+            await this.engines.synthesizer.synthesize(workspace, history);
 
-            // [Phase 3]: التحليل الأساسي
-            const [semanticMap, emotionProfile] = await Promise.all([
-                this.engines.semantic.analyze(rawText, { ...context, attentionMap, globalState }),
-                this.engines.emotion.analyze(rawText, { ...context, attentionMap, globalState })
+            // [Phase 3]: الإثراء المتوازي (الدلالي والعاطفي)
+            // المحركان الآن يقرآن ويكتبان في نفس الـ Workspace لحظياً
+            await Promise.all([
+                this.engines.semantic.analyze(workspace, context),
+                this.engines.emotion.analyze(workspace, context)
             ]);
 
-            // [Phase 4]: التركيب النفسي
-            const synthesisProfile = await this.engines.synthesis.analyze({ semanticMap, emotionProfile });
+            // [Phase 4]: التركيب الاستنتاجي للروابط
+            await this.engines.synthesis.analyze(workspace, context);
 
-            // [Phase 5]: الاستدلال واتخاذ القرار الاستراتيجي
-            const strategicInsight = await this.engines.reasoning.computeStrategicInsight({
-                emotionProfile, semanticMap, attentionMap, synthesisProfile, globalState
-            });
+            // [Phase 5]: اتخاذ القرار الاستراتيجي (الاستدلال)
+            await this.engines.reasoning.computeStrategicInsight(workspace);
 
-            // [Phase 6]: استشارة المكتبة السريرية
-            const clinicalInsights = await this.engines.knowledge.consultLibrary({
-                semanticMap, attentionMap, globalState
-            });
+            // [Phase 6]: استشارة المكتبة السريرية بناءً على نسيج المجال
+            workspace.clinicalInsights = await this.engines.knowledge.consultLibrary(workspace);
 
-            return { 
-                rawText, readerResult, globalState, semanticMap, emotionProfile, 
-                synthesisProfile, strategicInsight, clinicalInsights, attentionMap,
-                _meta: { duration: Date.now() - start, focus: attentionResult.focusToken } 
-            };
+            // طباعة تقرير الميدان النهائي للمبرمج
+            workspace.generateFieldReport();
+
+            return workspace; // نعيد الـ Workspace كاملاً ليكون هو الـ Insight
         } catch (error) {
-            console.error("❌ Pipeline Crash During Analysis:", error);
-            return null; // سيتم التعامل معه في دالة process
+            console.error("❌ Pipeline Crash in Workspace Mode:", error);
+            return null;
         }
     }
 
-    async generateResponse(insight) {
-        if (!this._isInitialized || !insight) return null;
+    async generateResponse(workspace) {
+        if (!this._isInitialized || !workspace) return null;
         try {
-            console.log("%c[Pipeline Final] Orchestrating Conscious Response...", "color: #9C27B0; font-weight: bold;");
-            const response = await this.engines.catharsis.generateResponse(insight);
+            console.log("%c[Pipeline Final] Orchestrating Workspace Response...", "color: #9C27B0; font-weight: bold;");
             
-            // --- إصلاح الطباعة الأمنة (Anti-TypeError Logic) ---
-            const intentType = insight.strategicInsight?.masterIntent?.type || "empathetic_listening";
+            // نمرر الـ Workspace بالكامل لمحرك الرد
+            const response = await this.engines.catharsis.generateResponse(workspace);
             
-            let dnaName = "dynamic_standard";
-            if (response.emotionalDNA) {
-                dnaName = (typeof response.emotionalDNA === 'object') 
-                    ? (response.emotionalDNA.name || "custom_mix") 
-                    : response.emotionalDNA;
-            }
-
-            console.log(`🎯 Master Intent: %c${intentType}`, "color: #FF5722; font-weight: bold;");
-            console.log(`🧬 DNA Mix: %c${dnaName}`, "color: #FF5722; font-weight: bold;");
+            // استعراض الحالة النهائية للوعي
+            const dnaName = response.emotionalDNA?.name || "dynamic_model";
+            console.log(`🎯 Final Master Intent: %c${workspace.state.finalIntent}`, "color: #FF5722; font-weight: bold;");
+            console.log(`🧬 Active DNA Mix: %c${dnaName}`, "color: #FF5722; font-weight: bold;");
             
             return response;
         } catch (error) {
-            console.error("❌ Error in generateResponse:", error);
+            console.error("❌ Response Engineering Failed:", error);
             return { responseText: "أنا هنا معاك، حاسس بيك.. كمل كلامك أنا سامعك." };
         }
     }
 
     async process(rawText, context = {}) {
-        const insight = await this.analyze(rawText, context);
-        if (!insight) return { insight: null, response: { responseText: "عذراً، حدث خطأ تقني في معالجة الوعي." } };
+        // دورة الوعي الكاملة
+        const workspace = await this.analyze(rawText, context);
+        if (!workspace) return { insight: null, response: { responseText: "عذراً، حدث خطأ في معالجة الوعي الموحد." } };
         
-        const response = await this.generateResponse(insight);
-        return { insight, response };
+        const response = await this.generateResponse(workspace);
+        return { insight: workspace, response };
     }
 }
 
