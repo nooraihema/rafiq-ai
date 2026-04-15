@@ -1,18 +1,16 @@
 
 /**
  * /analysis_engines/catharsis_engine.js
- * CatharsisEngine v5.0 - The Narrative Alchemist (Unified Workspace Edition)
- * وظيفته: هندسة الرد النهائي بدمج (الاستدلال الاستراتيجي + التحليل الأسلوبي + المراجع السريرية).
- * التغيير الجوهري: تحليل نبرة المستخدم لضبط "بلاغة" الرد وضمان الرنين العاطفي.
+ * CatharsisEngine v5.1 - The Narrative Alchemist (Sovereign Edition)
+ * التحديث: دمج ذكي للمراجع السريرية دون ذكر المصادر، مع أنسنة كاملة للمعلومات العلمية.
  */
 
 import { sample, normalizeArabic } from '../core/utils.js';
 
 export class CatharsisEngine {
     constructor(dictionaries = {}, protocols = {}, memorySystem = {}) {
-        console.log("%c💬 [CatharsisEngine v5.0] تهيئة محرك البلاغة السريرية الموحد...", "color: #4CAF50; font-weight: bold;");
+        console.log("%c💬 [CatharsisEngine v5.1] تهيئة محرك البلاغة السريرية الموحد...", "color: #4CAF50; font-weight: bold;");
 
-        // 1. فك تغليف القواميس لضمان الوصول للبيانات
         const dynModule = dictionaries.EMOTIONAL_DYNAMICS || {};
         this.dynamics = dynModule.EMOTIONAL_DYNAMICS || dynModule.default?.EMOTIONAL_DYNAMICS || dynModule;
         
@@ -20,54 +18,44 @@ export class CatharsisEngine {
         this.patterns = dictionaries.PATTERNS || {}; 
         this.memory = memorySystem;
 
-        console.log("✅ [CatharsisEngine] جاهز لصياغة ردود منسوجة بذكاء أسلوبي.");
+        console.log("✅ [CatharsisEngine] نظام الأنسنة والدمج السريري مفعل.");
     }
 
-    /**
-     * الوظيفة الرئيسية: هندسة الرد المنسوج (The Woven Response)
-     */
     async generateResponse(workspace) {
-        console.log("\n" + "%c[Narrative Alchemy] STARTING FINAL SYNTHESIS...".repeat(1), "background: #4CAF50; color: #fff; padding: 2px 5px;");
-        
         try {
             if (!workspace || !workspace.emotion || !workspace.semantic) {
                 throw new Error("بيانات الفضاء الموحد غير مكتملة.");
             }
 
-            const { emotion, semantic, synthesis, reasoning, clinicalInsights, rawText } = workspace;
+            const { emotion, clinicalInsights, rawText } = workspace;
             const primaryLabel = emotion.primaryEmotion.name || "neutral";
             const intensity = emotion.intensity?.overall || 0.5;
 
-            // 1. فحص الأمان (Crisis Check)
-            const isCrisis = this._performCrisisCheck(primaryLabel, intensity, rawText || "");
-            if (isCrisis) return this._generateCrisisPayload();
+            // 1. فحص الأمان
+            if (this._performCrisisCheck(primaryLabel, intensity, rawText || "")) {
+                return this._generateCrisisPayload();
+            }
 
-            // 2. التحليل الأسلوبي للمستخدم (Verbal Style Analysis) 🔥 NEW
+            // 2. تحليل نمط المستخدم
             const userStyle = this._analyzeUserVerbalStyle(workspace);
-            console.log(`   🔸 [Style Intelligence]: تم رصد نمط لغوي [${userStyle}]`);
 
-            // 3. تحليل الحالة المركبة (Dynamics)
+            // 3. تحليل الحالة المركبة
             const compositeState = this._detectCompositeState(workspace);
 
-            // 4. تحديد النية والـ DNA (بناءً على قرار الاستدلال)
-            const intent = reasoning?.masterIntent?.type || "empathy";
+            // 4. تحديد النية والـ DNA
+            const reasoning = workspace.reasoning;
             const dnaMix = this._selectDNA(primaryLabel, intensity, reasoning, userStyle);
 
-            // 5. الخيمياء اللغوية: بناء الرد المنسوج
-            console.log("   🔸 [Step 5: Weaving] جاري دمج المراجع في نسيج تعاطفي...");
+            // 5. الخيمياء اللغوية (بناء الرد المنسوج)
             const responseText = this._weaveResponseText(workspace, compositeState, userStyle);
-
-            console.log(`✅ [Alchemy Success] Style: ${userStyle} | Intent: ${intent}`);
 
             return {
                 responseText,
-                intent,
+                intent: reasoning?.masterIntent?.type || "EMPATHETIC_LISTENING",
                 emotionalDNA: dnaMix,
                 metadata: {
                     userStyle,
-                    vadLabel: primaryLabel,
-                    clinicalImpact: clinicalInsights?.length || 0,
-                    dnaName: dnaMix.name
+                    clinicalImpact: clinicalInsights?.length || 0
                 }
             };
 
@@ -81,34 +69,26 @@ export class CatharsisEngine {
         }
     }
 
-    /**
-     * ذكاء اصطناعي أسلوبي: يحدد كيف يكتب المستخدم لكي نرد بنفس مستواه
-     */
     _analyzeUserVerbalStyle(workspace) {
-        const wordCount = workspace.state.wordCount || 0;
-        const selfFocus = workspace.state.dominantConcept === "self_blame" || (workspace.semantic?.concepts?.self_focus?.impact > 1);
+        const wordCount = workspace.state?.wordCount || 0;
+        const selfFocus = workspace.semantic?.concepts?.self_focus?.impact > 1.5;
         
-        if (wordCount > 12) return "EXPRESSIVE_DEEP"; // مستخدم مفصل
-        if (selfFocus) return "INTROSPECTIVE";       // مستخدم منغلق على ذاته
-        return "CONCISE_DIRECT";                      // مستخدم مختصر
+        if (wordCount > 15) return "EXPRESSIVE_DEEP";
+        if (selfFocus) return "INTROSPECTIVE";
+        return "CONCISE_DIRECT";
     }
 
     _performCrisisCheck(label, intensity, text) {
-        const dangerWords = ['انتحار', 'أقتل نفسي', 'أنهي حياتي', 'أذي نفسي'];
-        const hasDangerWord = dangerWords.some(w => normalizeArabic(text).includes(w));
-        return hasDangerWord || (intensity > 0.96 && label.includes('depression'));
+        const dangerWords = ['انتحار', 'أقتل نفسي', 'أنهي حياتي', 'أذي نفسي', 'موت'];
+        const normalized = normalizeArabic(text);
+        return dangerWords.some(w => normalized.includes(w)) || (intensity > 0.98 && label.includes('depression'));
     }
 
     _detectCompositeState(workspace) {
         const detectedMap = workspace.emotion.detectedEmotions || {};
-        if (Object.keys(detectedMap).length === 0) return null;
-
         for (const [key, state] of Object.entries(this.dynamics)) {
             if (state && Array.isArray(state.core_emotions)) {
-                const matchCount = state.core_emotions.filter(e => detectedMap[e]).length;
-                if (matchCount >= 1 && workspace.emotion.intensity?.overall > 0.6) {
-                    return state;
-                }
+                if (state.core_emotions.some(e => detectedMap[e])) return state;
             }
         }
         return null;
@@ -116,71 +96,72 @@ export class CatharsisEngine {
 
     _selectDNA(label, intensity, reasoning, style) {
         const dna = this.generative.EMOTIONAL_DNA || { dynamic: { name: "dynamic" } };
-        
-        // إذا كان المستخدم مفصل وعميق، نستخدم الـ DNA الشاعري
         if (style === "EXPRESSIVE_DEEP") return dna.poetic || dna.tender;
-        
-        // إذا كان القرار الاستراتيجي هو التنشيط
         if (reasoning?.masterIntent?.type === "GENTLE_ACTIVATION") return dna.grounded;
-        
-        if (label.includes('depression') || intensity > 0.8) return dna.tender;
-        return dna.dynamic;
+        return (label.includes('depression') || intensity > 0.7) ? dna.tender : dna.dynamic;
     }
 
     /**
-     * قلب المحرك: نسج الرد من 4 طبقات بأسلوب بلاغي
+     * الطبقة الجوهرية: نسج النص دون "برودة" أكاديمية
      */
     _weaveResponseText(workspace, composite, style) {
-        const { clinicalInsights, synthesis, emotion } = workspace;
+        const { clinicalInsights, emotion, semantic } = workspace;
         const layers = [];
 
-        // 1. طبقة الاحتواء (Opening)
-        const introPool = (composite && composite.dialogue_prompt) 
-            ? [composite.dialogue_prompt] 
-            : [
-                "أنا حاسس بتقل الكلام اللي بتقوله، ومقدر جداً إنك قدرت توصفه.",
-                "كلامك واصل لقلبي، وحاسس بمدى صعوبة اللحظة دي عليك.",
-                "أنا سامعك، وشايف الوجع اللي بين السطور في كلامك."
-            ];
+        // 1. طبقة الاحتواء (الافتتاحية) - تم حذف الهلوسة بالذكريات
+        const introPool = [
+            "أنا سامعك وحاسس بكل كلمة بتقولها، الكلام ده تقيل ومحتاج شجاعة عشان يتقال.",
+            "مقدر جداً إنك بتشاركني اللي بتمور بيه دلوقتي، أنا هنا معاك وبكل اهتمام.",
+            "واضح إنك شايل كتير في قلبك، ومهم تعرف إنك مش لوحدك في الإحساس ده."
+        ];
         layers.push(sample(introPool));
 
-        // 2. طبقة الخيمياء السريرية (Clinical Weaving)
+        // 2. طبقة الدمج السريري (Clinical Humanization) - التعديل الجوهري هنا
         if (clinicalInsights && clinicalInsights.length > 0) {
-            const mainRef = clinicalInsights[0];
-            // بدلاً من لغة جافة، نستخدم لغة دافئة ومسندة
-            let factText = `عارف، في مراجع النفس (زي ${mainRef.source})، بنتعلم إن ${mainRef.clinical_fact}`;
+            const insight = clinicalInsights[0];
             
-            // إذا كان المستخدم "عميق"، نضيف له منطق إعادة التأطير (Reframing)
-            if (style !== "CONCISE_DIRECT") {
-                factText += ` وده معناه إن اللي بتحسه ده هو محاولة من عقلك عشان يحميك.`;
-            }
-            layers.push(factText);
+            // تحويل "الحقيقة العلمية" إلى "دردشة ودودة"
+            const bridge = sample([
+                "عارف.. الحقيقة إن اللي بتمر بيه ده ليه تفسير بيطمن شوية، ",
+                "أوقات عقلنا بيتعامل مع الضغط بطريقة معينة، العلم بيقول إن ",
+                "مهم تعرف إن اللي بتحسه ده مش عيب فيك، ده رد فعل طبيعي لأن "
+            ]);
+
+            // دمج منطق إعادة التأطير (Reframing) بدلاً من الحقيقة الجافة فقط
+            const humanizedFact = insight.reframing_logic || insight.clinical_fact;
+            layers.push(`${bridge}${humanizedFact}`);
         } else {
-            // بصيرة مستنتجة لو مفيش مراجع
+            // بصيرة مشاعرية إذا لم يتوفر مرجع
             if (emotion.primaryEmotion.name.includes('depression')) {
-                layers.push("أحياناً العقل بيختار 'الجمود' كحيلة أخيرة عشان يفصلنا عن ألم مش قادرين نتحمله.");
+                layers.push("أوقات بنحس إن طاقتنا خلصت تماماً، وده بيكون إشارة من جسمنا إنه محتاج يهدى بعيد عن الضغط.");
             }
         }
 
-        // 3. طبقة التوجيه الاستراتيجي (Strategic Action)
+        // 3. طبقة التوجيه (The Action Step)
         if (clinicalInsights && clinicalInsights.length > 0) {
-            layers.push(`إيه رأيك نكسر الحالة دي بحاجة بسيطة جداً؟ ${clinicalInsights[0].action_step}`);
-        } else if (synthesis?.dominantPattern?.immediate_actions) {
-            layers.push(`ممكن نجرب خطوة مجهرية سوا: ${sample(synthesis.dominantPattern.immediate_actions)}`);
+            const actionBridge = sample([
+                "إيه رأيك نجرب حاجة مجهرية سوا؟ ",
+                "ممكن نكسر الحالة دي بخطوة بسيطة جداً: ",
+                "لو عندك طاقة بسيطة، ممكن نجرب ده: "
+            ]);
+            layers.push(`${actionBridge}${clinicalInsights[0].action_step}`);
         }
 
-        // 4. طبقة الخاتمة (Closing)
+        // 4. طبقة الخاتمة
         const closures = [
-            "أنا موجود هنا، مش هسيبك لوحدك في ده.",
-            "كمل حكيك، أنا هنا بسمعك بكل هدوء.",
-            "إحنا سوا في الرحلة دي، احكي لي أكتر لو حابب."
+            "أنا موجود هنا لو حابب تحكي أكتر..",
+            "خد وقتك تماماً، أنا بسمعك.",
+            "إحنا سوا، كمل كلامك لو ده هيريحك."
         ];
         layers.push(sample(closures));
 
-        // دمج الطبقات مع مراعاة أسلوب المستخدم (طول الرد)
-        return style === "CONCISE_DIRECT" 
-            ? layers.slice(0, 3).join(' ') // رد أسرع للمستخدم المختصر
-            : layers.join(' ');           // رد كامل للمستخدم العميق
+        // التحكم في طول الرد بناءً على نمط المستخدم
+        if (style === "CONCISE_DIRECT") {
+            // للمستخدم المختصر: ندمج الطبقات بشكل أكثر تكثيفاً
+            return `${layers[0]} ${layers[1]} ${layers[2]}`;
+        }
+
+        return layers.join('\n\n');
     }
 
     _generateCrisisPayload() {
