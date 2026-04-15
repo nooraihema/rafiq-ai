@@ -1,14 +1,14 @@
 
 /**
- * EmotionEngine v6.1 - Cognitive Field Integration (Stability Fix Edition)
- * تحسين: منع neutral collapse + تقوية semantic bias + تحسين التجميع
+ * EmotionEngine v6.2 - Cognitive Field Integration (Final Fix Edition)
+ * تحسين شامل: منع neutral collapse + تقوية semantic feedback loop + إدخال uncertainty awareness
  */
 
 import { normalizeArabic, tokenize } from '../core/utils.js';
 
 export class EmotionEngine {
     constructor(dictionaries = {}) {
-        console.log("%c💓 [EmotionEngine v6.1] Stable Cognitive Modeling Engine...", "color: #E91E63; font-weight: bold;");
+        console.log("%c💓 [EmotionEngine v6.2] Final Cognitive Modeling Engine...", "color: #E91E63; font-weight: bold;");
 
         this.anchors = dictionaries.EMOTIONAL_ANCHORS?.EMOTIONAL_DICTIONARY || dictionaries.EMOTIONAL_ANCHORS || {};
         this.intensityModifers = dictionaries.INTENSITY_ANALYZER?.HIERARCHICAL_MODIFIERS || dictionaries.INTENSITY_ANALYZER || {};
@@ -42,10 +42,14 @@ export class EmotionEngine {
 
             const semanticBias = this._calculateSemanticBias(workspace);
 
+            // 🔥 NEW: semantic uncertainty awareness
+            const semanticUncertainty = workspace.state.semanticUncertainty || 0;
+
             const emotionalData = this._extractWeightedEmotions(
                 tokens,
                 attentionMap,
                 semanticBias,
+                semanticUncertainty,
                 normalized
             );
 
@@ -56,7 +60,7 @@ export class EmotionEngine {
 
             const refinedModel = this._applyIntensityToModel(normalized, tokens, stateModel);
 
-            const fingerprint = this._generateFingerprint(refinedModel, semanticBias);
+            const fingerprint = this._generateFingerprint(refinedModel, semanticBias, semanticUncertainty);
 
             workspace.emotion = {
                 stateModel: refinedModel,
@@ -65,7 +69,7 @@ export class EmotionEngine {
                 detectedEmotions: detectedEmotionsMap,
                 attentionContribution: attentionMap,
                 riskIndicators: { level: this._assessRisk(refinedModel) },
-                _meta: { timestamp: new Date().toISOString(), version: "6.1" }
+                _meta: { timestamp: new Date().toISOString(), version: "6.2-Final" }
             };
 
             workspace.state.globalMood = fingerprint.label;
@@ -77,11 +81,12 @@ export class EmotionEngine {
     }
 
     /**
-     * 🔥 FIX 1: تقوية semantic bias بدل ما يكون ضعيف
+     * 🔥 FIX 1: semantic bias + uncertainty fusion
      */
     _calculateSemanticBias(workspace) {
         const dominant = workspace.state.dominantConcept || "neutral";
         const impact = workspace.state.semanticImpact || 0;
+        const uncertainty = workspace.state.semanticUncertainty || 0;
 
         const strongTargets = [
             "depression_symptom",
@@ -95,17 +100,17 @@ export class EmotionEngine {
         if (strongTargets.includes(dominant)) {
             return {
                 type: "NEGATIVE_CLINICAL",
-                force: Math.min(1.0, impact * 0.9) // 🔥 رفع القوة
+                force: Math.min(1.0, (impact * 0.7) + (uncertainty * 0.4))
             };
         }
 
-        return { type: "NEUTRAL", force: 0 };
+        return { type: "NEUTRAL", force: uncertainty > 0.6 ? 0.3 : 0 };
     }
 
     /**
-     * 🔥 FIX 2: منع reset للـ VAD (مهم جدًا)
+     * 🔥 FIX 2: No neutral collapse + uncertainty injection
      */
-    _extractWeightedEmotions(tokens, attentionMap, semanticBias, text) {
+    _extractWeightedEmotions(tokens, attentionMap, semanticBias, uncertainty, text) {
         const matches = [];
 
         const ngrams = [...tokens];
@@ -124,9 +129,9 @@ export class EmotionEngine {
                 const primaryKey = Object.keys(entry.mood_scores)[0];
                 let vadBase = { ...(this.VAD_MAP[primaryKey] || this.VAD_MAP.neutral) };
 
-                // 🔥 BOOST semantic bias effect
-                if (semanticBias.type === "NEGATIVE_CLINICAL") {
-                    vadBase.v -= semanticBias.force;
+                // 🔥 bias + uncertainty reinforcement
+                if (semanticBias.type === "NEGATIVE_CLINICAL" || uncertainty > 0.6) {
+                    vadBase.v -= semanticBias.force * 0.8;
                     vadBase.a -= semanticBias.force * 0.5;
                 }
 
@@ -145,14 +150,20 @@ export class EmotionEngine {
         });
 
         /**
-         * 🔥 FIX 3: fallback emotional injection بدل neutral
+         * 🔥 robust fallback system
          */
         if (!foundAny) {
-            if (text.includes("حزين") || text.includes("تعب") || text.includes("خنقة")) {
+            if (
+                text.includes("حزين") ||
+                text.includes("تعب") ||
+                text.includes("خنقة") ||
+                text.includes("مش قادر") ||
+                text.includes("اكتئاب")
+            ) {
                 matches.push({
                     key: "sadness",
                     vad: this.VAD_MAP.sadness,
-                    weight: 1.2
+                    weight: 1.4
                 });
             }
         }
@@ -161,7 +172,7 @@ export class EmotionEngine {
     }
 
     _calculateWeightedStateModel(data) {
-        if (!data.length) return { v: -0.2, a: -0.1, d: -0.3 }; // 🔥 بدل neutral
+        if (!data.length) return { v: -0.25, a: -0.15, d: -0.3 };
 
         let v = 0, a = 0, d = 0, w = 0;
 
@@ -199,25 +210,34 @@ export class EmotionEngine {
     }
 
     /**
-     * 🔥 FIX 4: lower threshold + sensitivity boost
+     * 🔥 FINAL FIX: uncertainty-aware fingerprinting
      */
-    _generateFingerprint(model, bias) {
+    _generateFingerprint(model, bias, uncertainty = 0) {
         const { v, a, d } = model;
 
         let label = "neutral";
 
-        if (v < -0.2) {
+        const adjustedV = v - (uncertainty * 0.1);
+
+        if (adjustedV < -0.2) {
             if (a < -0.2) label = "lethargic_depression";
             else label = "sadness";
         }
 
-        if (bias?.type === "NEGATIVE_CLINICAL" && v < -0.1) {
-            label = "clinical_depression";
+        if (bias?.type === "NEGATIVE_CLINICAL" || uncertainty > 0.6) {
+            if (adjustedV < -0.1) {
+                label = "clinical_depression";
+            }
         }
 
-        const intensity = Math.min(1, (Math.abs(v) + Math.abs(a) + Math.abs(d)) / 2.5);
+        const intensity =
+            Math.min(1, (Math.abs(v) + Math.abs(a) + Math.abs(d)) / 2.3)
+            + (uncertainty * 0.1);
 
-        return { label, intensity };
+        return {
+            label,
+            intensity: Math.min(1, intensity)
+        };
     }
 
     _assessRisk(m) {
