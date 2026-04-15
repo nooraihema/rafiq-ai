@@ -1,6 +1,6 @@
 
 // /core/linguistic_brain_v4.js
-// LinguisticBrain v9.0 - Unified Cognitive Workspace Edition
+// LinguisticBrain v10.0 - Sovereign Autonomous Learning Edition
 // ====================================================================
 
 import { normalizeArabic, tokenize } from './utils.js';
@@ -15,8 +15,11 @@ import { KnowledgeEngine } from './knowledge_engine.js';
 // استيراد المكونات المتقدمة (بوابة الوعي والفضاء الموحد)
 import { HighFidelityReader } from './high_fidelity_reader.js';
 import { StateSynthesizer } from './state_synthesizer.js';
-import { UnifiedWorkspace } from './workspace.js'; // الاستيراد الحيوي الجديد
+import { UnifiedWorkspace } from './workspace.js'; 
 import SITUATIONAL_CONTEXT from './situational_context.js';
+
+// [إضافة]: استيراد محرك التعلم السيادي
+import { UltimateKnowledgeEngine } from './ultimate_knowledge_engine.js';
 
 const DEFAULT_OPTIONS = {
   debug: true,
@@ -35,7 +38,7 @@ const DEFAULT_OPTIONS = {
 
 export class LinguisticBrain {
     constructor(memorySystem, opts = {}) {
-        console.log("%c🧠 [Constructor] Creating LinguisticBrain v9.0 (Global Workspace)...", "color: #2196F3; font-weight: bold;");
+        console.log("%c🧠 [Constructor] Creating LinguisticBrain v10.0 (Global Workspace)...", "color: #2196F3; font-weight: bold;");
         this.options = Object.assign({}, DEFAULT_OPTIONS, opts);
         this.memory = memorySystem;
         this.dictionaries = {};
@@ -47,7 +50,7 @@ export class LinguisticBrain {
         if (this._isInitialized) return this;
 
         console.log("%c=======================================", "color: #4CAF50");
-        console.log("%c🧠 Brain Initialization Started (V9.0)", "color: #4CAF50; font-weight: bold;");
+        console.log("%c🧠 Brain Initialization Started (V10.0)", "color: #4CAF50; font-weight: bold;");
         console.log("%c=======================================", "color: #4CAF50");
 
         // --- الخطوة 1: تحميل القواميس الآمن ---
@@ -75,9 +78,9 @@ export class LinguisticBrain {
             AFFIX_DICTIONARY: semanticConfig.AFFIX_DICTIONARY
         };
 
-        // --- الخطوة 3: بناء المحركات (الجيل السادس - Workspace Ready) ---
+        // --- الخطوة 3: بناء المحركات (الجيل العاشر - Workspace Ready) ---
         try {
-            // [المرحلة 0]: القارئ فائق الدقة (Constructs the Field)
+            // [المرحلة 0]: القارئ فائق الدقة
             this.engines.reader = new HighFidelityReader({
                 anchors: emotionConfig.EMOTIONAL_ANCHORS,
                 concepts: semanticConfig.CONCEPT_MAP,
@@ -85,35 +88,42 @@ export class LinguisticBrain {
                 affixes: semanticConfig.AFFIX_DICTIONARY
             });
 
-            // [المرحلة 1]: شاحن طاقة الانتباه (Field Energizer)
+            // [المرحلة 1]: شاحن طاقة الانتباه
             this.engines.attention = new AttentionLayer({
                 anchors: emotionConfig.EMOTIONAL_ANCHORS,
                 concepts: semanticConfig.CONCEPT_MAP,
                 stopWords: semanticConfig.STOP_WORDS_SET
             });
 
-            // [المرحلة 2]: مترجم الموقف (Context Architect)
+            // [المرحلة 2]: مترجم الموقف
             this.engines.synthesizer = new StateSynthesizer();
 
-            // [المرحلة 3]: المحلل الدلالي (Semantic Enricher)
+            // [المرحلة 3]: المحلل الدلالي (يعدل الـ Workspace)
             this.engines.semantic = new SemanticEngine(semanticConfig);
 
-            // [المرحلة 4]: محرك العواطف (Emotion Enricher)
+            // [المرحلة 4]: محرك العواطف (يعدل الـ Workspace)
             this.engines.emotion = new EmotionEngine(emotionConfig);
 
-            // [المرحلة 5]: محرك التركيب (Cognitive Weaver)
+            // [المرحلة 5]: محرك التركيب
             this.engines.synthesis = new SynthesisEngine({
                 PATTERNS: this.dictionaries.psychological_patterns_hyperreal || {},
                 BEHAVIOR_VALUES: this.dictionaries.behavior_values_defenses || {}
             });
 
-            // [المرحلة 6]: المحرك الاستراتيجي (Strategic Hub)
+            // [المرحلة 6]: المحرك الاستراتيجي
             this.engines.reasoning = new ReasoningEngine(this.memory);
 
-            // [المرحلة 7]: أمين المكتبة (RAG Engine)
+            // [المرحلة 7]: أمين المكتبة التقليدي
             this.engines.knowledge = new KnowledgeEngine();
 
-            // [المرحلة 8]: مهندس الرد النهائي (Response Architect)
+            // [الجديد]: محرك التعلم السيادي (الذي يبني الرسم البياني المعرفي)
+            this.engines.learner = new UltimateKnowledgeEngine({
+                stopWords: semanticConfig.STOP_WORDS_SET,
+                concepts: semanticConfig.CONCEPT_MAP,
+                synonyms: this.dictionaries.generative_responses_engine?.LEXICAL_POOLS?.synonyms || {}
+            });
+
+            // [المرحلة 8]: مهندس الرد النهائي
             this.engines.catharsis = new CatharsisEngine(
                 { 
                     GENERATIVE_ENGINE: this.dictionaries.generative_responses_engine || {},
@@ -135,12 +145,21 @@ export class LinguisticBrain {
     }
 
     /**
+     * وظيفة التعلم: تغذية رفيق بنصوص الكتب لزيادة خبرته
+     */
+    async feedBookKnowledge(text) {
+        if (!this._isInitialized) await this.init();
+        console.log("%c📚 [Brain Learning]: جاري امتصاص المعرفة الجديدة من النص...", "color: #00E5FF; font-weight: bold;");
+        return await this.engines.learner.digest(text);
+    }
+
+    /**
      * عملية التحليل الكبرى داخل فضاء المعنى الموحد
      */
     async analyze(rawText, context = {}) {
         if (!this._isInitialized) return null;
         
-        // 1. إنشاء فضاء المعنى الموحد للجملة (The Holy Grail)
+        // 1. إنشاء فضاء المعنى الموحد للجملة
         const workspace = new UnifiedWorkspace(rawText);
         const start = Date.now();
 
@@ -156,7 +175,6 @@ export class LinguisticBrain {
             await this.engines.synthesizer.synthesize(workspace, history);
 
             // [Phase 3]: الإثراء المتوازي (الدلالي والعاطفي)
-            // المحركان الآن يقرآن ويكتبان في نفس الـ Workspace لحظياً
             await Promise.all([
                 this.engines.semantic.analyze(workspace, context),
                 this.engines.emotion.analyze(workspace, context)
@@ -168,13 +186,16 @@ export class LinguisticBrain {
             // [Phase 5]: اتخاذ القرار الاستراتيجي (الاستدلال)
             await this.engines.reasoning.computeStrategicInsight(workspace);
 
-            // [Phase 6]: استشارة المكتبة السريرية بناءً على نسيج المجال
+            // [Phase 6]: استشارة المكتبة السريرية (التقليدية)
             workspace.clinicalInsights = await this.engines.knowledge.consultLibrary(workspace);
+
+            // [Phase 7]: ربط الذاكرة السيادية (ما تعلمه رفيق من الكتب)
+            workspace.sovereignGraph = this.engines.learner.knowledgeGraph;
 
             // طباعة تقرير الميدان النهائي للمبرمج
             workspace.generateFieldReport();
 
-            return workspace; // نعيد الـ Workspace كاملاً ليكون هو الـ Insight
+            return workspace; 
         } catch (error) {
             console.error("❌ Pipeline Crash in Workspace Mode:", error);
             return null;
