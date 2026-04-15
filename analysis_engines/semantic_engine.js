@@ -1,15 +1,19 @@
 
 /**
  * /analysis_engines/semantic_engine.js
- * SemanticEngine v6.1 - Context-Aware Workspace Enrichment Engine
- * التحديث: تعزيز stability + منع neutral collapse + تقوية semantic bias + تحسين التجميع
+ * SemanticEngine v6.1.1 - Stability Patch Edition
+ * Fixes:
+ * - Short input collapse (≤5 tokens)
+ * - Overuse of general_distress
+ * - Uncertainty inflation
+ * - Weak semantic activation
  */
 
 import { normalizeArabic, tokenize } from '../core/utils.js';
 
 export class SemanticEngine {
     constructor(dictionaries = {}) {
-        console.log("%c🧠 [SemanticEngine v6.1] Stable Context-Aware Engine...", "color: #673AB7; font-weight: bold;");
+        console.log("%c🧠 [SemanticEngine v6.1.1] Stable Cognitive Engine + Patch Fix...", "color: #673AB7; font-weight: bold;");
 
         this.conceptMap = dictionaries.CONCEPT_MAP || {};
         this.conceptDefs = dictionaries.CONCEPT_DEFINITIONS || {};
@@ -30,12 +34,11 @@ export class SemanticEngine {
             ? rawPrefixes.map(p => p.value).sort((a, b) => b.length - a.length)
             : [];
 
-        console.log("✅ [SemanticEngine] Ready (v6.1 Stable Mode)");
+        console.log("✅ [SemanticEngine] Ready (v6.1.1 Stable Patch Mode)");
     }
 
-    // =========================================================
     async analyze(workspace, context = {}) {
-        console.log("\n%c[Semantic Reasoning v6.1] ENRICHMENT STARTED...", "background:#673AB7;color:#fff;");
+        console.log("\n%c[Semantic Reasoning v6.1.1] ENRICHMENT STARTED...", "background:#673AB7;color:#fff;");
 
         if (!workspace?.rawText) {
             console.error("❌ Missing workspace or rawText");
@@ -47,35 +50,43 @@ export class SemanticEngine {
             const normalized = normalizeArabic(rawText.toLowerCase());
             const rawTokens = tokenize(normalized);
 
-            // 🔥 1. Token enrichment
+            // =====================================================
+            // 🔥 PATCH 1: Short input stabilization layer
+            // =====================================================
+            const isShortInput = rawTokens.length <= 5;
+
             const tokens = this._enrichTokens(rawTokens);
 
-            // 🔥 2. Attention context
             const attentionMap = this._buildContextAwareAttention(
                 tokens,
                 workspace.attentionMap || {}
             );
 
-            console.log(`   🔸 Tokens: ${tokens.length} | Attention enriched`);
+            console.log(`   🔸 Tokens: ${tokens.length} | ShortMode: ${isShortInput ? "YES" : "NO"}`);
 
-            // 🔥 3. Concepts
-            const weightedConcepts = this._extractHyperWeightedConcepts(tokens, attentionMap);
+            const weightedConcepts = this._extractHyperWeightedConcepts(
+                tokens,
+                attentionMap,
+                isShortInput
+            );
 
-            // 🔥 4. Network
             const network = this._buildNetwork(weightedConcepts);
 
-            // 🔥 5. Dominant
-            const dominant = this._identifyDominantWeightedTheme(weightedConcepts);
+            const dominant = this._identifyDominantWeightedTheme(
+                weightedConcepts,
+                isShortInput
+            );
 
-            // 🔥 6. Uncertainty
-            const uncertainty = this._calculateUncertainty(tokens, weightedConcepts);
+            const uncertainty = this._calculateUncertainty(
+                tokens,
+                weightedConcepts,
+                isShortInput
+            );
 
             // =====================================================
-            // 🔥 CRITICAL FIX: prevent neutral collapse upstream
+            // 🔥 PATCH 2: Safe dominant fallback (NO fake neutrality)
             // =====================================================
-            const safeDominant = dominant?.id && dominant.totalWeight > 0
-                ? dominant
-                : { id: "general_distress", totalWeight: 0.1, confidence: 0.1 };
+            const safeDominant = this._stabilizeDominant(dominant, isShortInput);
 
             workspace.semantic = {
                 concepts: weightedConcepts,
@@ -85,7 +96,7 @@ export class SemanticEngine {
                 attentionDistribution: attentionMap,
                 uncertainty,
                 _meta: {
-                    version: "6.1-Stable-Biased",
+                    version: "6.1.1-StabilityPatch",
                     timestamp: new Date().toISOString()
                 }
             };
@@ -117,7 +128,6 @@ export class SemanticEngine {
         }));
     }
 
-    // =========================================================
     _buildContextAwareAttention(tokens, attentionMap) {
         const map = {};
 
@@ -140,7 +150,9 @@ export class SemanticEngine {
     }
 
     // =========================================================
-    _extractHyperWeightedConcepts(tokens, attentionMap) {
+    // 🔥 PATCH 3: stronger detection in short inputs
+    // =========================================================
+    _extractHyperWeightedConcepts(tokens, attentionMap, isShortInput = false) {
         const found = {};
 
         const ngrams = [];
@@ -164,7 +176,12 @@ export class SemanticEngine {
                 ngram.reduce((sum, w) => sum + (attentionMap[w] || 0.5), 0) /
                 ngram.length;
 
-            const attentionBoost = 1 + attentionFactor * 2;
+            let attentionBoost = 1 + attentionFactor * 2;
+
+            // 🔥 PATCH: boost sensitivity for short inputs
+            if (isShortInput) {
+                attentionBoost *= 1.35;
+            }
 
             matches.forEach(m => {
                 const id = m.concept;
@@ -196,12 +213,17 @@ export class SemanticEngine {
     }
 
     // =========================================================
-    _identifyDominantWeightedTheme(concepts) {
+    _identifyDominantWeightedTheme(concepts, isShortInput = false) {
         const sorted = Object.entries(concepts)
             .sort((a, b) => b[1].impact - a[1].impact);
 
+        // 🔥 PATCH: stronger fallback resolution
         if (!sorted.length) {
-            return { id: "general_distress", totalWeight: 0.1, confidence: 0.1 };
+            return {
+                id: isShortInput ? "sadness" : "general_distress",
+                totalWeight: isShortInput ? 0.3 : 0.1,
+                confidence: 0.2
+            };
         }
 
         return {
@@ -211,7 +233,6 @@ export class SemanticEngine {
         };
     }
 
-    // =========================================================
     _buildNetwork(foundConcepts) {
         const connections = [];
         const ids = Object.keys(foundConcepts);
@@ -235,7 +256,6 @@ export class SemanticEngine {
         return connections;
     }
 
-    // =========================================================
     _stemWord(word) {
         let result = word;
 
@@ -250,17 +270,37 @@ export class SemanticEngine {
     }
 
     // =========================================================
-    _calculateUncertainty(tokens, concepts) {
+    // 🔥 PATCH 4: uncertainty clamp (prevent 1.0 spam)
+    // =========================================================
+    _calculateUncertainty(tokens, concepts, isShortInput = false) {
         const known = Object.keys(concepts).length;
-        const total = tokens.length;
+        const total = tokens.length || 1;
 
-        const ratio = total ? (1 - known / total) : 1;
+        let ratio = 1 - known / total;
+
+        // clamp
+        ratio = Math.min(0.92, Math.max(0.05, ratio));
+
+        if (isShortInput && ratio > 0.7) {
+            ratio *= 0.6; // stabilize short input uncertainty
+        }
 
         return {
             score: ratio,
             level:
                 ratio > 0.7 ? "HIGH" :
                 ratio > 0.4 ? "MEDIUM" : "LOW"
+        };
+    }
+
+    // =========================================================
+    _stabilizeDominant(dominant, isShortInput) {
+        if (dominant?.id && dominant.totalWeight > 0) return dominant;
+
+        return {
+            id: isShortInput ? "sadness" : "general_distress",
+            totalWeight: isShortInput ? 0.3 : 0.1,
+            confidence: 0.2
         };
     }
 }
