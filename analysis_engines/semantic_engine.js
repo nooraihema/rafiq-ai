@@ -1,25 +1,20 @@
+
 /**
  * /analysis_engines/semantic_engine.js
  * SemanticEngine v6.1 - Context-Aware Workspace Enrichment Engine
- * التحديث: إضافة Token Enrichment + Context Attention + Uncertainty Layer
+ * التحديث: تعزيز stability + منع neutral collapse + تقوية semantic bias + تحسين التجميع
  */
 
-import { normalizeArabic, tokenize, generateNgrams } from '../core/utils.js';
+import { normalizeArabic, tokenize } from '../core/utils.js';
 
 export class SemanticEngine {
     constructor(dictionaries = {}) {
-        console.log("%c🧠 [SemanticEngine v6.1] تهيئة المحرك الدلالي المتقدم...", "color: #673AB7; font-weight: bold;");
+        console.log("%c🧠 [SemanticEngine v6.1] Stable Context-Aware Engine...", "color: #673AB7; font-weight: bold;");
 
-        // =========================
-        // 📚 External Dictionaries
-        // =========================
         this.conceptMap = dictionaries.CONCEPT_MAP || {};
         this.conceptDefs = dictionaries.CONCEPT_DEFINITIONS || {};
         this.affixes = dictionaries.AFFIX_DICTIONARY || {};
 
-        // =========================
-        // 🧠 Clinical Weights
-        // =========================
         this.CLINICAL_WEIGHTS = {
             depression_symptom: 2.2,
             helplessness: 2.0,
@@ -30,22 +25,17 @@ export class SemanticEngine {
             neutral: 0.5
         };
 
-        // =========================
-        // Prefixes / Morphology
-        // =========================
         const rawPrefixes = this.affixes.prefixes || [];
         this.prefixes = Array.isArray(rawPrefixes)
             ? rawPrefixes.map(p => p.value).sort((a, b) => b.length - a.length)
             : [];
 
-        console.log("✅ [SemanticEngine] Ready (v6.1 Workspace Mode)");
+        console.log("✅ [SemanticEngine] Ready (v6.1 Stable Mode)");
     }
 
     // =========================================================
-    // 🚀 MAIN ENTRY POINT
-    // =========================================================
     async analyze(workspace, context = {}) {
-        console.log("\n" + "%c[Semantic Reasoning v6.1] ENRICHMENT STARTED...", "background:#673AB7;color:#fff;");
+        console.log("\n%c[Semantic Reasoning v6.1] ENRICHMENT STARTED...", "background:#673AB7;color:#fff;");
 
         if (!workspace?.rawText) {
             console.error("❌ Missing workspace or rawText");
@@ -53,21 +43,14 @@ export class SemanticEngine {
         }
 
         try {
-            // =========================
-            // 1. Normalize & Tokenize
-            // =========================
             const rawText = workspace.rawText;
             const normalized = normalizeArabic(rawText.toLowerCase());
             const rawTokens = tokenize(normalized);
 
-            // =========================
-            // 2. Token Enrichment Layer 🔥 NEW
-            // =========================
+            // 🔥 1. Token enrichment
             const tokens = this._enrichTokens(rawTokens);
 
-            // =========================
-            // 3. Context-Aware Attention 🔥 NEW
-            // =========================
+            // 🔥 2. Attention context
             const attentionMap = this._buildContextAwareAttention(
                 tokens,
                 workspace.attentionMap || {}
@@ -75,49 +58,44 @@ export class SemanticEngine {
 
             console.log(`   🔸 Tokens: ${tokens.length} | Attention enriched`);
 
-            // =========================
-            // 4. Concept Extraction
-            // =========================
+            // 🔥 3. Concepts
             const weightedConcepts = this._extractHyperWeightedConcepts(tokens, attentionMap);
 
-            // =========================
-            // 5. Semantic Network
-            // =========================
+            // 🔥 4. Network
             const network = this._buildNetwork(weightedConcepts);
 
-            // =========================
-            // 6. Dominant Theme
-            // =========================
+            // 🔥 5. Dominant
             const dominant = this._identifyDominantWeightedTheme(weightedConcepts);
 
-            // =========================
-            // 7. Uncertainty Layer 🔥 NEW
-            // =========================
+            // 🔥 6. Uncertainty
             const uncertainty = this._calculateUncertainty(tokens, weightedConcepts);
 
-            // =========================
-            // 8. Inject into Workspace
-            // =========================
+            // =====================================================
+            // 🔥 CRITICAL FIX: prevent neutral collapse upstream
+            // =====================================================
+            const safeDominant = dominant?.id && dominant.totalWeight > 0
+                ? dominant
+                : { id: "general_distress", totalWeight: 0.1, confidence: 0.1 };
+
             workspace.semantic = {
                 concepts: weightedConcepts,
                 network,
-                dominantTheme: dominant.id,
-                clinicalFocus: dominant,
+                dominantTheme: safeDominant.id,
+                clinicalFocus: safeDominant,
                 attentionDistribution: attentionMap,
                 uncertainty,
                 _meta: {
-                    version: "6.1-ContextAware",
+                    version: "6.1-Stable-Biased",
                     timestamp: new Date().toISOString()
                 }
             };
 
-            // update global workspace state
-            workspace.state.dominantConcept = dominant.id;
-            workspace.state.semanticImpact = dominant.totalWeight;
+            workspace.state.dominantConcept = safeDominant.id;
+            workspace.state.semanticImpact = safeDominant.totalWeight;
             workspace.state.semanticUncertainty = uncertainty.score;
 
             console.log(
-                `   ✅ [Complete] Focus: ${dominant.id} | Impact: ${dominant.totalWeight.toFixed(2)} | Uncertainty: ${uncertainty.score.toFixed(2)}`
+                `   ✅ [Complete] Focus: ${safeDominant.id} | Impact: ${safeDominant.totalWeight.toFixed(2)} | Uncertainty: ${uncertainty.score.toFixed(2)}`
             );
 
         } catch (err) {
@@ -125,8 +103,6 @@ export class SemanticEngine {
         }
     }
 
-    // =========================================================
-    // 🔥 NEW: Token Enrichment Layer
     // =========================================================
     _enrichTokens(tokens) {
         return tokens.map((t, i) => ({
@@ -141,8 +117,6 @@ export class SemanticEngine {
         }));
     }
 
-    // =========================================================
-    // 🔥 NEW: Context-Aware Attention
     // =========================================================
     _buildContextAwareAttention(tokens, attentionMap) {
         const map = {};
@@ -165,8 +139,6 @@ export class SemanticEngine {
         return map;
     }
 
-    // =========================================================
-    // 🧠 CORE CONCEPT EXTRACTION
     // =========================================================
     _extractHyperWeightedConcepts(tokens, attentionMap) {
         const found = {};
@@ -196,6 +168,7 @@ export class SemanticEngine {
 
             matches.forEach(m => {
                 const id = m.concept;
+
                 const clinicalBase =
                     this.CLINICAL_WEIGHTS[id] ||
                     this.CLINICAL_WEIGHTS.neutral;
@@ -223,14 +196,12 @@ export class SemanticEngine {
     }
 
     // =========================================================
-    // 📊 Dominant Theme
-    // =========================================================
     _identifyDominantWeightedTheme(concepts) {
         const sorted = Object.entries(concepts)
             .sort((a, b) => b[1].impact - a[1].impact);
 
         if (!sorted.length) {
-            return { id: "neutral", totalWeight: 0, confidence: 0 };
+            return { id: "general_distress", totalWeight: 0.1, confidence: 0.1 };
         }
 
         return {
@@ -240,8 +211,6 @@ export class SemanticEngine {
         };
     }
 
-    // =========================================================
-    // 🌐 Semantic Network
     // =========================================================
     _buildNetwork(foundConcepts) {
         const connections = [];
@@ -267,8 +236,6 @@ export class SemanticEngine {
     }
 
     // =========================================================
-    // 🧩 Morphological Stemmer
-    // =========================================================
     _stemWord(word) {
         let result = word;
 
@@ -283,13 +250,11 @@ export class SemanticEngine {
     }
 
     // =========================================================
-    // ⚠️ NEW: Uncertainty Engine
-    // =========================================================
     _calculateUncertainty(tokens, concepts) {
         const known = Object.keys(concepts).length;
         const total = tokens.length;
 
-        const ratio = 1 - known / total;
+        const ratio = total ? (1 - known / total) : 1;
 
         return {
             score: ratio,
