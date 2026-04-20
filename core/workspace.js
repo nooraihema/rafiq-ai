@@ -1,33 +1,35 @@
 
 /**
  * /core/workspace.js
- * Unified Semantic Workspace v1.0 - "The Cognitive Field"
- * وظيفته: العمل كفضاء موحد لكل المحركات (القارئ، العواطف، الانتباه، الاستدلال).
- * هو "المائدة المستديرة" التي يتم فوقها نسج الوعي بالحالة.
+ * Unified Semantic Workspace v2.0 - [THE GOLDEN FIELD]
+ * وظيفته: العمل كفضاء موحد "مشحون" بالبيانات من LexicalProcessor.
+ * هو "المائدة المستديرة" التي يجتمع عليها العقل والقلب والذاكرة.
  */
 
 export class UnifiedWorkspace {
     constructor(rawText) {
-        // البيانات الخام
+        // 1. البيانات الأساسية والهوية
         this.rawText = rawText;
         this.createdAt = Date.now();
+        this.id = `field_${Math.random().toString(36).substr(2, 9)}`;
 
-        // 1. نسيج العقد (Node Mesh) - سيملؤه الـ Reader
+        // 2. [القلب النابض الجديد]: طبق الذهب (Gold Plate)
+        // سيتم ملؤه بواسطة LexicalProcessor في أول مرحلة
+        this.goldPlate = null; 
+
+        // 3. نسيج العقد (Node Mesh) - يملؤه الـ Reader للعرض والتحليل المكاني
         this.nodes = []; 
-        
-        // 2. شبكة العلاقات (Relational Links)
         this.links = [];
 
-        // 3. طبقات البيانات (Data Layers) - تملؤها المحركات تباعاً
-        this.attentionMap = {}; // خريطة الانتباه
-        this.semantic = null;    // البيانات الدلالية
-        this.emotion = null;     // البيانات العاطفية (VAD)
-        this.synthesis = null;   // البيانات التركيبية
-        this.reasoning = null;   // القرار الاستراتيجي
-        this.clinicalInsights = []; // المراجع الطبية
+        // 4. طبقات المعالجة (Processed Layers)
+        this.attentionMap = {};    // توزيع طاقة التركيز
+        this.semantic = null;       // التحليل الدلالي الإكلينيكي
+        this.emotion = null;        // التحليل العاطفي (VAD)
+        this.synthesis = null;      // التركيب النفسي والفرضيات
+        this.reasoning = null;      // القرار الاستراتيجي النهائي
+        this.clinicalInsights = []; // المراجع العلمية المستدعاة
 
-        // 4. الحالة العالمية للفضاء (Global Field State)
-        // هذا الكائن يتم تحديثه لحظياً من كل محرك ليعكس "الخلاصة"
+        // 5. الحالة العالمية للمجال (Global Field State)
         this.state = {
             dominantConcept: null,
             globalMood: "neutral",
@@ -37,58 +39,69 @@ export class UnifiedWorkspace {
             certainty: 0.5,
             fieldIntensity: 0,
             conflictDetected: false,
-            semanticImpact: 0
+            semanticImpact: 0,
+            intelligenceDepth: 'BASIC'
         };
 
-        console.log("%c🌌 [UnifiedWorkspace] تم إنشاء فضاء المعنى الموحد للجملة.", "color: #607D8B; font-weight: bold;");
+        console.log("%c🌌 [UnifiedWorkspace v2.0] تم إنشاء فضاء الوعي الموحد.", "color: #607D8B; font-weight: bold;");
     }
 
     /**
-     * وظيفة لإضافة رابط بين عقدتين (علاقة نفي، تضخيم، فاعل، الخ)
+     * وظيفة للتحقق: هل الفضاء جاهز للمعالجة العميقة؟
+     */
+    isGoldReady() {
+        return this.goldPlate !== null && this.goldPlate.nodes.length > 0;
+    }
+
+    /**
+     * إضافة رابط بين العقد (علاقة نفي، تضخيم، إلخ)
      */
     addLink(fromIndex, toIndex, type, weight = 1.0) {
         const link = { from: fromIndex, to: toIndex, type, weight };
         this.links.push(link);
-        // تحديث العقد لإعلامها بالرابط
         if (this.nodes[fromIndex]) this.nodes[fromIndex].relations.influences.push(link);
         if (this.nodes[toIndex]) this.nodes[toIndex].relations.influencedBy.push(link);
     }
 
     /**
-     * وظيفة استدلالية: هل يوجد تناقض في هذا الفضاء؟
+     * كشف التنافر المعرفي بين الكلمات (GoldPlate) والمزاج (VAD)
      */
     hasDissonance() {
-        // إذا وجد السيمانتيك اكتئاباً والعواطف وجدت فرحاً (أو العكس)
-        const isDepressed = this.state.dominantConcept === "depression_symptom";
-        const isPositiveV = this.emotion?.stateModel?.v > 0.3;
-        return isDepressed && isPositiveV;
+        if (!this.emotion || !this.state.dominantConcept) return false;
+        
+        // مثال: اكتشاف حالة "الابتسامة الحزينة"
+        const isDepressedConcept = ["depression_symptom", "sadness"].includes(this.state.dominantConcept);
+        const isPositiveValence = this.emotion.stateModel.v > 0.4;
+        
+        return isDepressedConcept && isPositiveValence;
     }
 
     /**
-     * حساب "كتلة الوعي" (Cognitive Mass) للموقف
-     * تجمع بين الانتباه والشدة والأثر الدلالي
-     */
-    calculateFieldMass() {
-        const impact = this.state.semanticImpact || 0;
-        const intensity = this.emotion?.intensity?.overall || 0;
-        const certainty = this.state.certainty || 0.5;
-
-        return (impact * intensity * certainty);
-    }
-
-    /**
-     * توليد "تقرير الميدان" (Field Report) لـ Console
+     * توليد "تقرير الميدان" النهائي (Field Report)
+     * تم تعديله ليظهر بيانات طبق الذهب
      */
     generateFieldReport() {
-        console.log("\n" + "%c📊 [Unified Field Report]".repeat(1), "background: #263238; color: #fff; padding: 2px 5px;");
-        console.log(`   📍 Focus: ${this.state.dominantConcept || 'none'}`);
-        console.log(`   💓 Mood: ${this.state.globalMood} (Energy: ${this.state.energyLevel.toFixed(2)})`);
+        console.log("\n" + "%c📊 [ULTIMATE FIELD REPORT]".repeat(1), "background: #263238; color: #fff; padding: 2px 5px;");
+        
+        // إحصائيات طبق الذهب
+        const gp = this.goldPlate;
+        const gpStats = gp ? `Concepts: ${gp.nodes.flatMap(n=>n.concepts).length} | Emotions: ${gp.nodes.filter(n=>n.emotion).length}` : "EMPTY";
+
+        console.log(`   🔸 Gold Plate Status: ${gpStats}`);
+        console.log(`   📍 Primary Focus: ${this.state.dominantConcept || 'none'}`);
+        console.log(`   💓 Mood/VAD: ${this.state.globalMood} (Energy: ${this.state.energyLevel.toFixed(2)})`);
         console.log(`   🎯 Strategic Intent: ${this.state.intent}`);
-        console.log(`   📈 Trajectory: ${this.state.trajectory}`);
-        console.log(`   ⚖️ Conflict: ${this.state.conflictDetected ? "YES" : "NO"}`);
-        console.log(`   🔗 Total Relations: ${this.links.length}`);
+        console.log(`   📈 User Trajectory: ${this.state.trajectory}`);
+        console.log(`   ⚖️ Internal Conflict: ${this.state.conflictDetected ? "YES" : "NO"}`);
+        console.log(`   🔍 Intelligence Depth: ${this.state.intelligenceDepth}`);
+        
+        if (this.clinicalInsights.length > 0) {
+            console.log(`   📖 Clinical Reference: [${this.clinicalInsights[0].source}]`);
+        }
+        
         console.log("-----------------------------------------");
     }
 }
 
 export default UnifiedWorkspace;
+
