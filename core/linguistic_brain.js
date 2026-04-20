@@ -1,6 +1,7 @@
 
 // /core/linguistic_brain_v4.js
-// LinguisticBrain v9.0 - Unified Cognitive Workspace Edition (Clean Logs)
+// LinguisticBrain v10.0 - Global Workspace Stability Edition
+// تم التعديل لضمان الربط الحديدي بين المحركات والقواميس ومعالجة ثغرات الاستيراد.
 
 import { normalizeArabic, tokenize } from './utils.js';
 import { SemanticEngine } from '../analysis_engines/semantic_engine.js';
@@ -10,11 +11,9 @@ import { CatharsisEngine } from '../analysis_engines/catharsis_engine.js';
 import { AttentionLayer } from './attention_layer.js';
 import { ReasoningEngine } from './reasoning_engine.js';
 import { KnowledgeEngine } from './knowledge_engine.js';
-
 import { HighFidelityReader } from './high_fidelity_reader.js';
 import { StateSynthesizer } from './state_synthesizer.js';
 import { UnifiedWorkspace } from './workspace.js';
-import SITUATIONAL_CONTEXT from './situational_context.js';
 
 const DEFAULT_OPTIONS = {
   debug: true,
@@ -33,7 +32,7 @@ const DEFAULT_OPTIONS = {
 
 export class LinguisticBrain {
     constructor(memorySystem, opts = {}) {
-        console.log("%c🧠 [Brain] init v9.0 (Workspace Mode)", "color:#2196F3;font-weight:bold;");
+        console.log("%c🧠 [System] LinguisticBrain v10.0 Initializing...", "color:#2196F3; font-weight:bold;");
         this.options = Object.assign({}, DEFAULT_OPTIONS, opts);
         this.memory = memorySystem;
         this.dictionaries = {};
@@ -41,46 +40,68 @@ export class LinguisticBrain {
         this._isInitialized = false;
     }
 
+    /**
+     * دالة مساعدة لضمان استخراج البيانات من القاموس مهما كان نوع التصدير
+     */
+    _extract(mod) {
+        if (!mod) return {};
+        // إذا كان القاموس يستخدم export default
+        if (mod.default) return mod.default;
+        // إذا كان يستخدم named exports، نعيد الموديول كاملاً
+        return mod;
+    }
+
     async init() {
         if (this._isInitialized) return this;
 
-        console.log("%c🧠 Brain Booting...", "color:#4CAF50;font-weight:bold;");
+        console.log("%c🚀 [Boot] Loading Dictionary Assets...", "color:#4CAF50; font-weight:bold;");
 
-        // =========================
-        // Load dictionaries (silent but tracked)
-        // =========================
         const dictFileNames = this.options.dictionaryFileNames;
 
+        // تحميل القواميس بشكل متوازي مع فحص الاستيراد
         await Promise.all(Object.entries(dictFileNames).map(async ([key, fileName]) => {
             try {
                 const mod = await import(`../dictionaries/${fileName}`);
                 this.dictionaries[key] = mod;
-                console.log(`   ✅ Engine Asset: ${key}`);
+                console.log(`   ✅ Asset Loaded: %c${key}`, "color:#009688;");
             } catch (e) {
-                console.log(`   ❌ Missing Asset: ${key}`);
+                console.error(`   ❌ Failed to load asset: ${key} from ${fileName}`, e);
             }
         }));
 
-        // =========================
-        // configs
-        // =========================
+        // =========================================================
+        // 🛠️ التجهيز الحديدي لإعدادات المحركات (Mapping Layer)
+        // هنا نربط كل محرك بالبيانات الدقيقة التي يحتاجها
+        // =========================================================
+        
+        const conceptsMod = this.dictionaries.psychological_concepts_engine;
+        const anchorsMod = this.dictionaries.emotional_anchors;
+        const intensityMod = this.dictionaries.intensity_analyzer;
+        const affixesMod = this.dictionaries.affixes;
+        const stopWordsMod = this.dictionaries.stop_words;
+
         const semanticConfig = {
-            CONCEPT_MAP: this.dictionaries.psychological_concepts_engine?.CONCEPT_MAP || {},
-            CONCEPT_DEFINITIONS: this.dictionaries.psychological_concepts_engine?.CONCEPT_DEFINITIONS || {},
-            AFFIX_DICTIONARY: this.dictionaries.affixes?.AFFIX_DICTIONARY || this.dictionaries.affixes || {},
-            STOP_WORDS_SET: this.dictionaries.stop_words?.STOP_WORDS_SET || new Set()
+            CONCEPT_MAP: conceptsMod?.CONCEPT_MAP || this._extract(conceptsMod)?.CONCEPT_MAP || {},
+            CONCEPT_DEFINITIONS: conceptsMod?.CONCEPT_DEFINITIONS || this._extract(conceptsMod)?.CONCEPT_DEFINITIONS || {},
+            AFFIX_DICTIONARY: affixesMod?.AFFIX_DICTIONARY || this._extract(affixesMod) || {},
+            STOP_WORDS_SET: stopWordsMod?.STOP_WORDS_SET || this._extract(stopWordsMod) || new Set()
         };
 
         const emotionConfig = {
-            EMOTIONAL_ANCHORS: this.dictionaries.emotional_anchors?.EMOTIONAL_DICTIONARY || this.dictionaries.emotional_anchors || {},
-            INTENSITY_ANALYZER: this.dictionaries.intensity_analyzer?.HIERARCHICAL_MODIFIERS || this.dictionaries.intensity_analyzer || {},
+            EMOTIONAL_ANCHORS: anchorsMod?.EMOTIONAL_DICTIONARY || this._extract(anchorsMod)?.EMOTIONAL_DICTIONARY || {},
+            INTENSITY_ANALYZER: intensityMod?.HIERARCHICAL_MODIFIERS || this._extract(intensityMod)?.HIERARCHICAL_MODIFIERS || {},
             AFFIX_DICTIONARY: semanticConfig.AFFIX_DICTIONARY
         };
 
-        // =========================
-        // ENGINE REGISTRY LOG (clean)
-        // =========================
-        console.log("%c⚙️ Initializing Engines...", "color:#673AB7;font-weight:bold;");
+        // التحقق من صحة البيانات قبل التشغيل
+        if (Object.keys(semanticConfig.CONCEPT_MAP).length === 0) {
+            console.warn("⚠️ [Warning] CONCEPT_MAP is empty. Semantic analysis might fail.");
+        }
+
+        // =========================================================
+        // ⚙️ تسجيل المحركات وربطها بالبيانات والدوال
+        // =========================================================
+        console.log("%c⚙️ [Registry] Finalizing Engine Connections...", "color:#673AB7; font-weight:bold;");
 
         this.engines.reader = new HighFidelityReader({
             anchors: emotionConfig.EMOTIONAL_ANCHORS,
@@ -99,9 +120,10 @@ export class LinguisticBrain {
         this.engines.semantic = new SemanticEngine(semanticConfig);
         this.engines.emotion = new EmotionEngine(emotionConfig);
 
+        // هنا نمرر القاموس "كاملاً" لضمان وصول دوال البحث (Logic)
         this.engines.synthesis = new SynthesisEngine({
-            PATTERNS: this.dictionaries.psychological_patterns_hyperreal || {},
-            BEHAVIOR_VALUES: this.dictionaries.behavior_values_defenses || {}
+            PATTERNS: this._extract(this.dictionaries.psychological_patterns_hyperreal),
+            BEHAVIOR_VALUES: this._extract(this.dictionaries.behavior_values_defenses)
         });
 
         this.engines.reasoning = new ReasoningEngine(this.memory);
@@ -109,75 +131,83 @@ export class LinguisticBrain {
 
         this.engines.catharsis = new CatharsisEngine(
             {
-                GENERATIVE_ENGINE: this.dictionaries.generative_responses_engine || {},
-                EMOTIONAL_DYNAMICS: this.dictionaries.emotional_dynamics_engine || {},
-                PATTERNS: this.dictionaries.psychological_patterns_hyperreal || {}
+                GENERATIVE_ENGINE: this._extract(this.dictionaries.generative_responses_engine),
+                EMOTIONAL_DYNAMICS: this._extract(this.dictionaries.emotional_dynamics_engine),
+                PATTERNS: this._extract(this.dictionaries.psychological_patterns_hyperreal)
             },
             {},
             this.memory
         );
 
-        console.log("%c✅ All Engines Online", "color:#4CAF50;font-weight:bold;");
+        console.log("%c✅ [Brain] All Systems Calibrated & Online", "color:#4CAF50; font-weight:bold;");
 
         this._isInitialized = true;
         return this;
     }
 
     // =========================================================
-    // ANALYSIS PIPELINE (clean logs only)
+    // 🌌 دورة حياة التحليل (The Pipeline)
     // =========================================================
     async analyze(rawText, context = {}) {
-        if (!this._isInitialized) return null;
+        if (!this._isInitialized) {
+            console.error("❌ Brain is not initialized. Call init() first.");
+            return null;
+        }
 
         const workspace = new UnifiedWorkspace(rawText);
 
         try {
-            console.log("\n%c🌌 Workspace Started", "color:#607D8B;font-weight:bold;");
+            console.log(`\n%c🌌 [Workspace] New Field Energy Detected: "${rawText}"`, "color:#607D8B; font-weight:bold;");
 
+            // 1. القراءة وتوزيع الانتباه
             await this.engines.reader.ingest(workspace);
             await this.engines.attention.process(workspace);
+            
+            // 2. دمج الحالة الحالية بالماضي
             await this.engines.synthesizer.synthesize(workspace, this.memory?.workingMemory || []);
 
-            console.log("⚡ Running Cognitive Engines...");
+            console.log("%c⚡ [Process] Activating Cognitive Engines...", "color:#FF9800;");
 
+            // 3. تحليل العاطفة والمعنى (بشكل متوازي للسرعة)
             await Promise.all([
                 this.engines.semantic.analyze(workspace, context),
                 this.engines.emotion.analyze(workspace, context)
             ]);
 
+            // 4. دمج الخيوط واتخاذ القرار الاستراتيجي
             await this.engines.synthesis.analyze(workspace, context);
             await this.engines.reasoning.computeStrategicInsight(workspace);
 
-            workspace.clinicalInsights =
-                await this.engines.knowledge.consultLibrary(workspace);
+            // 5. استشارة المراجع العلمية
+            workspace.clinicalInsights = await this.engines.knowledge.consultLibrary(workspace);
 
-            // 🔥 ONLY IMPORTANT OUTPUT
+            // طباعة التقرير النهائي للمجال المعرفي
             workspace.generateFieldReport();
 
-            console.log("%c✔ Pipeline Complete", "color:#4CAF50;font-weight:bold;");
+            console.log("%c✔ [Success] Full Context Synthesized", "color:#4CAF50; font-weight:bold;");
 
             return workspace;
 
         } catch (e) {
-            console.error("❌ Pipeline Error:", e);
+            console.error("🚨 [Pipeline Failure]:", e);
             return null;
         }
     }
 
     async generateResponse(workspace) {
         try {
-            console.log("%c💬 Generating Response...", "color:#9C27B0;font-weight:bold;");
+            console.log("%c💬 [Response] Orchestrating Catharsis...", "color:#9C27B0; font-weight:bold;");
 
             const response = await this.engines.catharsis.generateResponse(workspace);
 
-            console.log("🎯 Intent:", workspace.state.finalIntent || "unknown");
-            console.log("🧬 DNA:", response.emotionalDNA?.name || "default");
+            console.log(`🎯 [Final Intent]: %c${workspace.state.finalIntent || "neutral_support"}`, "color:#E91E63; font-weight:bold;");
+            console.log(`🧬 [Style DNA]: %c${response.emotionalDNA?.name || "dynamic"}`, "color:#2196F3;");
 
             return response;
 
         } catch (e) {
-            console.error("❌ Response Error:", e);
-            return { responseText: "أنا معاك، كمل." };
+            console.error("❌ Response Generation Error:", e);
+            return { responseText: "أنا سامعك وحاسس بيك.. كمل كلامك، أنا معاك." };
         }
     }
 
@@ -186,7 +216,7 @@ export class LinguisticBrain {
         if (!workspace) {
             return {
                 insight: null,
-                response: { responseText: "حصل خطأ في المعالجة." }
+                response: { responseText: "عذراً، حصل خطأ داخلي في معالجة البيانات." }
             };
         }
 
