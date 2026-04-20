@@ -1,253 +1,183 @@
 
 /**
- * EmotionEngine v6.2 - Cognitive Field Integration (Final Fix Edition)
- * تحسين شامل: منع neutral collapse + تقوية semantic feedback loop + إدخال uncertainty awareness
+ * /analysis_engines/emotion_engine.js
+ * EmotionEngine v7.0 - [GOLD PLATE MODELING EDITION]
+ * وظيفته: تحويل ذرات العواطف من طبق الذهب إلى نموذج VAD ثلاثي الأبعاد وبصمة عاطفية.
  */
 
-import { normalizeArabic, tokenize } from '../core/utils.js';
-
 export class EmotionEngine {
-    constructor(dictionaries = {}) {
-        console.log("%c💓 [EmotionEngine v6.2] Final Cognitive Modeling Engine...", "color: #E91E63; font-weight: bold;");
+    constructor() {
+        console.log("%c💓 [EmotionEngine v7.0] تهيئة محرك النمذجة العاطفية لطبق الذهب...", "color: #E91E63; font-weight: bold;");
 
-        this.anchors = dictionaries.EMOTIONAL_ANCHORS?.EMOTIONAL_DICTIONARY || dictionaries.EMOTIONAL_ANCHORS || {};
-        this.intensityModifers = dictionaries.INTENSITY_ANALYZER?.HIERARCHICAL_MODIFIERS || dictionaries.INTENSITY_ANALYZER || {};
-        this.affixes = dictionaries.AFFIX_DICTIONARY || {};
-
-        const rawPrefixes = this.affixes.prefixes || [];
-        this.prefixes = Array.isArray(rawPrefixes)
-            ? rawPrefixes.map(p => p.value).sort((a,b) => b.length - a.length)
-            : [];
-
+        // خارطة القيم الافتراضية لأبعاد (التبدل، الاستثارة، السيطرة)
         this.VAD_MAP = {
-            sadness:     { v: -0.6, a: -0.2, d: -0.4 },
-            depression:  { v: -0.95, a: -0.75, d: -0.95 },
-            anxiety:     { v: -0.7, a: 0.8,  d: -0.6 },
-            anger:       { v: -0.5, a: 0.9,  d: 0.7  },
-            joy:         { v: 0.8,  a: 0.6,  d: 0.6  },
-            hopelessness:{ v: -0.9, a: -0.5, d: -0.8 },
-            neutral:     { v: 0.0,  a: 0.0,  d: 0.0  }
+            sadness:      { v: -0.6, a: -0.2, d: -0.4 },
+            depression:   { v: -0.9, a: -0.7, d: -0.9 },
+            anxiety:      { v: -0.7, a: 0.8,  d: -0.6 },
+            anger:        { v: -0.5, a: 0.9,  d: 0.7  },
+            joy:          { v: 0.8,  a: 0.6,  d: 0.6  },
+            fear:         { v: -0.8, a: 0.8,  d: -0.8 },
+            loneliness:   { v: -0.5, a: -0.3, d: -0.5 },
+            neutral:      { v: 0.0,  a: 0.0,  d: 0.0  }
         };
     }
 
     async analyze(workspace, context = {}) {
-        if (!workspace || !workspace.rawText) return;
+        const goldPlate = workspace.goldPlate;
+        if (!goldPlate) {
+            console.error("❌ [EmotionEngine]: طبق الذهب مفقود. المحرك العاطفي لا يمكنه العمل بدون بيانات مفتتة.");
+            return;
+        }
 
         try {
-            const rawText = workspace.rawText;
-            const normalized = normalizeArabic(rawText.toLowerCase());
-            const tokens = tokenize(normalized);
+            console.log("\n%c[Emotion Modeling v7.0] EXTRACTING VAD FROM GOLD PLATE...", "background:#E91E63;color:#fff;");
 
-            const attentionMap = workspace.attentionMap || {};
-
+            // 1. حساب الانحياز الدلالي (لو العقل لقى حاجة خطيرة، القلب لازم يتأثر)
             const semanticBias = this._calculateSemanticBias(workspace);
 
-            // 🔥 NEW: semantic uncertainty awareness
-            const semanticUncertainty = workspace.state.semanticUncertainty || 0;
+            // 2. استخراج بيانات VAD الموزونة من العقد
+            const emotionalMatches = this._extractVADData(goldPlate, semanticBias);
 
-            const emotionalData = this._extractWeightedEmotions(
-                tokens,
-                attentionMap,
-                semanticBias,
-                semanticUncertainty,
-                normalized
-            );
+            // 3. بناء النموذج الرياضي المبدئي
+            let stateModel = this._calculateStateModel(emotionalMatches);
 
-            const detectedEmotionsMap = {};
-            emotionalData.forEach(i => i.key && (detectedEmotionsMap[i.key] = true));
+            // 4. تطبيق الشدة الكلية (Intensity) المستخرجة من طبق الذهب
+            stateModel = this._applyGlobalIntensity(stateModel, goldPlate.summary.globalIntensity);
 
-            const stateModel = this._calculateWeightedStateModel(emotionalData);
+            // 5. توليد البصمة النهائية (Fingerprint)
+            const fingerprint = this._generateFingerprint(stateModel, semanticBias, goldPlate.summary.compositeState);
 
-            const refinedModel = this._applyIntensityToModel(normalized, tokens, stateModel);
-
-            const fingerprint = this._generateFingerprint(refinedModel, semanticBias, semanticUncertainty);
-
+            // =====================================================
+            // 🚀 حقن النتائج النهائية في الـ Workspace
+            // =====================================================
             workspace.emotion = {
-                stateModel: refinedModel,
-                primaryEmotion: { name: fingerprint.label, score: fingerprint.intensity },
-                intensity: { overall: fingerprint.intensity },
-                detectedEmotions: detectedEmotionsMap,
-                attentionContribution: attentionMap,
-                riskIndicators: { level: this._assessRisk(refinedModel) },
-                _meta: { timestamp: new Date().toISOString(), version: "6.2-Final" }
+                stateModel,
+                primaryEmotion: { name: fingerprint.label, score: fingerprint.confidence },
+                intensity: { overall: goldPlate.summary.globalIntensity },
+                detectedEmotions: goldPlate.summary.primaryEmotions,
+                riskIndicators: { level: this._assessRisk(stateModel) },
+                _meta: { version: "7.0-Gold-Plate-Ready" }
             };
 
+            // تحديث الحالة العالمية للفضاء
             workspace.state.globalMood = fingerprint.label;
-            workspace.state.energyLevel = refinedModel.a;
+            workspace.state.energyLevel = stateModel.a;
+
+            console.log(`   ✅ [Emotion Complete] Mood: ${fingerprint.label} | Energy: ${stateModel.a.toFixed(2)}`);
 
         } catch (err) {
-            console.error(err);
+            console.error("❌ [EmotionEngine Error]:", err);
         }
     }
 
     /**
-     * 🔥 FIX 1: semantic bias + uncertainty fusion
+     * يستخرج قيم VAD من كل عقدة في طبق الذهب
      */
-    _calculateSemanticBias(workspace) {
-        const dominant = workspace.state.dominantConcept || "neutral";
-        const impact = workspace.state.semanticImpact || 0;
-        const uncertainty = workspace.state.semanticUncertainty || 0;
+    _extractVADData(plate, bias) {
+        const results = [];
 
-        const strongTargets = [
-            "depression_symptom",
-            "helplessness",
-            "sadness",
-            "self_blame",
-            "fatigue",
-            "anhedonia"
-        ];
+        plate.nodes.forEach(node => {
+            if (!node.emotion) return;
 
-        if (strongTargets.includes(dominant)) {
-            return {
-                type: "NEGATIVE_CLINICAL",
-                force: Math.min(1.0, (impact * 0.7) + (uncertainty * 0.4))
-            };
-        }
+            const emoName = node.emotion.name;
+            let vadBase = { ...(this.VAD_MAP[emoName] || this.VAD_MAP.neutral) };
 
-        return { type: "NEUTRAL", force: uncertainty > 0.6 ? 0.3 : 0 };
+            // حقن الانحياز الدلالي: لو فيه اكتئاب دلالي، نغرق قيم التبدل (Valence)
+            if (bias.force > 0) {
+                vadBase.v -= bias.force * 0.5;
+                vadBase.a -= bias.force * 0.3;
+            }
+
+            // الوزن يعتمد على: (قوة الكلمة في القاموس * هل هي منفية؟)
+            const nodeWeight = (node.emotion.intensity || 1.0) * (node.isNegated ? 0.5 : 1.2);
+
+            results.push({ vad: vadBase, weight: nodeWeight });
+        });
+
+        return results;
     }
 
     /**
-     * 🔥 FIX 2: No neutral collapse + uncertainty injection
+     * دمج القيم العاطفية في نموذج واحد (متوسط موزون)
      */
-    _extractWeightedEmotions(tokens, attentionMap, semanticBias, uncertainty, text) {
-        const matches = [];
+    _calculateStateModel(matches) {
+        if (!matches.length) return { v: -0.1, a: -0.1, d: -0.1 }; // حالة سكون افتراضية
 
-        const ngrams = [...tokens];
-        for (let i = 0; i < tokens.length - 1; i++) {
-            ngrams.push(`${tokens[i]} ${tokens[i+1]}`);
-        }
+        let v = 0, a = 0, d = 0, totalW = 0;
 
-        let foundAny = false;
-
-        ngrams.forEach(phrase => {
-            const entry = this.anchors[phrase];
-
-            if (entry && entry.mood_scores) {
-                foundAny = true;
-
-                const primaryKey = Object.keys(entry.mood_scores)[0];
-                let vadBase = { ...(this.VAD_MAP[primaryKey] || this.VAD_MAP.neutral) };
-
-                // 🔥 bias + uncertainty reinforcement
-                if (semanticBias.type === "NEGATIVE_CLINICAL" || uncertainty > 0.6) {
-                    vadBase.v -= semanticBias.force * 0.8;
-                    vadBase.a -= semanticBias.force * 0.5;
-                }
-
-                const words = phrase.split(' ');
-                const attentionFactor =
-                    words.reduce((s, w) => s + (attentionMap[w] || 0.5), 0) / words.length;
-
-                const finalWeight = (entry.intensity || 1) * (1 + attentionFactor * 2);
-
-                matches.push({
-                    key: primaryKey,
-                    vad: vadBase,
-                    weight: finalWeight
-                });
-            }
+        matches.forEach(m => {
+            v += m.vad.v * m.weight;
+            a += m.vad.a * m.weight;
+            d += m.vad.d * m.weight;
+            totalW += m.weight;
         });
 
-        /**
-         * 🔥 robust fallback system
-         */
-        if (!foundAny) {
-            if (
-                text.includes("حزين") ||
-                text.includes("تعب") ||
-                text.includes("خنقة") ||
-                text.includes("مش قادر") ||
-                text.includes("اكتئاب")
-            ) {
-                matches.push({
-                    key: "sadness",
-                    vad: this.VAD_MAP.sadness,
-                    weight: 1.4
-                });
-            }
-        }
-
-        return matches;
+        return { v: v / totalW, a: a / totalW, d: d / totalW };
     }
 
-    _calculateWeightedStateModel(data) {
-        if (!data.length) return { v: -0.25, a: -0.15, d: -0.3 };
-
-        let v = 0, a = 0, d = 0, w = 0;
-
-        data.forEach(i => {
-            v += i.vad.v * i.weight;
-            a += i.vad.a * i.weight;
-            d += i.vad.d * i.weight;
-            w += i.weight;
-        });
-
-        return { v: v / w, a: a / w, d: d / w };
-    }
-
-    _applyIntensityToModel(text, tokens, model) {
-        let multiplier = 1.0;
-
-        for (const group of Object.values(this.intensityModifers || {})) {
-            if (typeof group !== 'object') continue;
-
-            for (const words of Object.values(group)) {
-                for (const word of Object.keys(words)) {
-                    if (text.includes(normalizeArabic(word))) {
-                        multiplier *= words[word].multiplier || 1.1;
-                    }
-                }
-            }
-        }
-
+    /**
+     * تعديل الأبعاد بناءً على المؤكدات والمضاعفات (جداً، خالص، إلخ)
+     */
+    _applyGlobalIntensity(model, intensity) {
         return {
-            v: Math.max(-1, Math.min(1, model.v * multiplier)),
-            a: Math.max(-1, Math.min(1, model.a * multiplier)),
-            d: Math.max(-1, Math.min(1, model.d * (1 / multiplier))),
-            multiplier
+            v: Math.max(-1, Math.min(1, model.v)), // التبدل لا يتأثر بالشدة طردياً دائماً
+            a: Math.max(-1, Math.min(1, model.a * intensity)), // الاستثارة تزيد مع الشدة
+            d: Math.max(-1, Math.min(1, model.d * (1/intensity))), // السيطرة تقل غالباً مع زيادة الشدة
+            multiplier: intensity
         };
     }
 
     /**
-     * 🔥 FINAL FIX: uncertainty-aware fingerprinting
+     * تصنيف الحالة النهائية بناءً على إحداثيات VAD
      */
-    _generateFingerprint(model, bias, uncertainty = 0) {
+    _generateFingerprint(model, bias, composite) {
         const { v, a, d } = model;
-
         let label = "neutral";
 
-        const adjustedV = v - (uncertainty * 0.1);
-
-        if (adjustedV < -0.2) {
+        // منطق التصنيف الفراغي
+        if (v < -0.3) {
             if (a < -0.2) label = "lethargic_depression";
+            else if (a > 0.4) label = "agitated_anxiety";
             else label = "sadness";
+        } else if (v > 0.4) {
+            label = "joy_contentment";
         }
 
-        if (bias?.type === "NEGATIVE_CLINICAL" || uncertainty > 0.6) {
-            if (adjustedV < -0.1) {
-                label = "clinical_depression";
-            }
+        // إعطاء الأولوية للحالة المركبة المكتشفة في طبق الذهب (مثل المرارة أو الاحتراق)
+        if (composite) {
+            label = `composite:${composite.name}`;
         }
 
-        const intensity =
-            Math.min(1, (Math.abs(v) + Math.abs(a) + Math.abs(d)) / 2.3)
-            + (uncertainty * 0.1);
+        // لو فيه انحياز إكلينيكي قوي
+        if (bias.force > 0.7 && v < 0) {
+            label = "clinical_distress";
+        }
 
         return {
             label,
-            intensity: Math.min(1, intensity)
+            confidence: Math.min(1, (Math.abs(v) + Math.abs(a)) / 1.5)
+        };
+    }
+
+    _calculateSemanticBias(workspace) {
+        const impact = workspace.state.semanticImpact || 0;
+        const dominant = workspace.state.dominantConcept;
+        
+        // إذا اكتشف المحرك الدلالي مفاهيم ثقيلة
+        const isCritical = ["depression_symptom", "helplessness", "self_blame"].includes(dominant);
+        
+        return {
+            force: isCritical ? Math.min(1.0, impact / 5) : 0,
+            target: dominant
         };
     }
 
     _assessRisk(m) {
-        if (m.v < -0.8 && m.a < -0.5) return "CRITICAL";
+        if (m.v < -0.8 && m.a < -0.6) return "CRITICAL";
+        if (m.v < -0.5) return "MODERATE";
         return "LOW";
-    }
-
-    _stem(token) {
-        return token;
     }
 }
 
 export default EmotionEngine;
+
