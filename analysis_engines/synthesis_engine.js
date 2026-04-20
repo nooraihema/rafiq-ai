@@ -1,237 +1,147 @@
 
-// /analysis_engines/synthesis_engine.js
-// SynthesisEngine v3.0 - Unified Workspace & Cognitive Field Integration
-// وظيفته: ربط الخيوط الدلالية والعاطفية داخل الـ Workspace لإنتاج "البصيرة الكلية"
-
-import { getTopN } from '../core/utils.js';
+/**
+ * /analysis_engines/synthesis_engine.js
+ * SynthesisEngine v4.0 - [GOLD PLATE INTEGRATION]
+ * وظيفته: استهلاك "طبق الذهب" وتحويله إلى فرضيات نفسية وبصيرة كلية.
+ */
 
 export class SynthesisEngine {
     constructor(dictionaries) {
-        console.log("%c🧬 [SynthesisEngine v3.0] تهيئة محرك النسيج المعرفي الموحد...", "color: #4CAF50; font-weight: bold;");
+        console.log("%c🧬 [SynthesisEngine v4.0] تهيئة المحلل الاستراتيجي لطبق الذهب...", "color: #4CAF50; font-weight: bold;");
         
-        if (!dictionaries || !dictionaries.PATTERNS || !dictionaries.BEHAVIOR_VALUES) {
-            console.error("❌ [SynthesisEngine]: القواميس المطلوبة مفقودة!");
-            this.patternsDict = { findPatternsByConcepts: () => [], NARRATIVE_TENSIONS_V6: [] };
-            this.behaviorValuesDict = { analyzeUserProfile: () => ({ topValues: [] }), VALUE_SYSTEMS: {} };
-        } else {
-            this.patternsDict = dictionaries.PATTERNS;
-            this.behaviorValuesDict = dictionaries.BEHAVIOR_VALUES;
-            console.log("✅ [SynthesisEngine] تم ربط المحرك بقواميس الأنماط والقيم السلوكية.");
-        }
+        // القواميس هنا تستخدم فقط للمرجعية العميقة عند صياغة الفرضيات
+        this.patternsDict = dictionaries.PATTERNS;
+        this.behaviorValuesDict = dictionaries.BEHAVIOR_VALUES;
     }
 
     /**
-     * العملية الرئيسية: إثراء الـ Workspace بالتركيب النفسي (Synthesis)
+     * العملية الرئيسية: قراءة طبق الذهب من الفضاء الموحد وتحويله لنتائج
      */
     async analyze(workspace, context = {}) {
-        console.log("\n" + "%c[Cognitive Synthesis] STARTING ENRICHMENT...".repeat(1), "background: #4CAF50; color: #fff; padding: 2px 5px;");
+        console.log("\n%c[Cognitive Synthesis] STARTING GOLD-PLATE INTERPRETATION...", "background: #4CAF50; color: #fff; padding: 2px 5px;");
 
-        if (!workspace || !workspace.semantic || !workspace.emotion) {
-            console.error("❌ [SynthesisEngine]: بيانات السيمانتيك أو العواطف مفقودة في الـ Workspace.");
+        // التأكد من أن طبق الذهب موجود في الفضاء الموحد
+        const goldPlate = workspace.goldPlate; 
+        if (!goldPlate) {
+            console.error("❌ [SynthesisEngine]: طبق الذهب (Gold Plate) مفقود من الفضاء الموحد!");
             return;
         }
 
         try {
-            const semanticMap = workspace.semantic;
-            const emotionProfile = workspace.emotion;
+            // 1. استخراج الأنماط والتوترات المكتشفة مسبقاً في طبق الذهب
+            const detectedPatterns = goldPlate.summary.causalChains;
+            const detectedTensions = goldPlate.summary.narrativeTensions;
+            const emotions = goldPlate.summary.primaryEmotions;
 
-            // 1. إثراء المفاهيم (Enriching)
-            const enrichedConcepts = this._enrichConcepts(semanticMap);
+            // 2. إثراء المفاهيم وتعديل أوزانها بناءً على الشدة العاطفية (Heart-Mind Fusion)
+            const conceptProfile = this._fuseHeartAndMind(goldPlate);
 
-            // 2. حقن التحيز العاطفي (Emotion Bias Injection)
-            // المحرك هنا "يستشعر" حالة القلب (Emotion) ويعدل أوزان العقل (Concepts)
-            const conceptProfile = this._injectEmotionBias(enrichedConcepts, emotionProfile);
+            // 3. كشف المعاني العميقة (Meta-Insights) بناءً على تداخل المفاهيم
+            const metaInsights = this._generateMetaInsights(conceptProfile, goldPlate.summary.compositeState);
 
-            // 3. كشف المعاني العميقة (Meta Meaning Detection)
-            const metaInsights = this._detectMetaMeaning(conceptProfile);
-
-            // 4. البحث عن الأنماط والتوترات (Patterns & Tensions)
-            const { topPattern, topTension, allPatterns, allTensions } =
-                this._findPatternsAndTensions(conceptProfile);
-
-            // 5. توليد الفرضيات النفسية (Core Hypotheses)
+            // 4. توليد الفرضيات النفسية (Core Hypotheses) بربط الأنماط بالقيم
             const hypotheses = this._generateCoreHypotheses(
-                topPattern,
-                topTension,
-                conceptProfile,
-                metaInsights
+                detectedPatterns[0], 
+                detectedTensions[0], 
+                goldPlate.summary.behavioralMarkers
             );
 
             // =========================================================
-            // 🚀 حقن النتائج في الـ Workspace (إكمال الصورة الكبيرة)
-            // =========================================================
+            // 🚀 حقن النتائج النهائية في الـ Workspace
+            // =========================
             workspace.synthesis = {
-                dominantPattern: topPattern,
-                coreConflict: topTension,
+                dominantPattern: detectedPatterns[0] || null,
+                coreConflict: detectedTensions[0] || null,
+                compositeState: goldPlate.summary.compositeState,
                 cognitiveHypotheses: hypotheses,
                 metaInsights,
                 narrative: {
-                    shadow: topPattern?.description || "لم يتم رصد نمط سلبي واضح.",
-                    light: topTension?.description || "لم يتم رصد صراع قيمي واضح."
-                },
-                _meta: {
-                    allDetectedPatterns: allPatterns,
-                    allDetectedTensions: allTensions,
-                    engineVersion: "3.0-Workspace-Ready"
+                    shadow: detectedPatterns[0]?.description || "استجابة عاطفية طبيعية.",
+                    light: detectedTensions[0]?.description || "لا توجد صراعات قيمية حادة حالياً."
                 }
             };
 
-            // تحديث حالة الـ Workspace الكلية لاتخاذ القرار النهائي
-            workspace.state.dominantPattern = topPattern?.pattern_id || "general_case";
-            workspace.state.conflictDetected = !!topTension;
-            workspace.state.intelligenceDepth = 'HIGH';
+            // تحديث حالة الـ Workspace لاتخاذ القرار النهائي في المحركات القادمة
+            workspace.state.dominantPattern = detectedPatterns[0]?.pattern_id || "general_case";
+            workspace.state.conflictDetected = !!detectedTensions.length;
+            workspace.state.intelligenceDepth = hypotheses.length > 0 ? 'ULTRA' : 'HIGH';
 
-            console.log(`   ✅ [Synthesis Complete]: تم رصد نمط [${workspace.state.dominantPattern}] مع ${metaInsights.length} رؤى عميقة.`);
+            console.log(`   ✅ [Synthesis Complete]: تم تحليل النمط [${workspace.state.dominantPattern}] بدقة طبق الذهب.`);
 
         } catch (err) {
             console.error("❌ [SynthesisEngine Error]:", err);
         }
     }
 
-    // =============================================================================
-    // 🧠 1. إثراء المفاهيم (Enriching) - نفس منطقك الأصلي
-    // =============================================================================
-    _enrichConcepts(semanticMap) {
-        console.log("   🔍 [Step 1: Enrich] دمج المفاهيم والأنماط من الفضاء الدلالي...");
-        const enriched = {};
+    /**
+     * دمج العاطفة مع المفاهيم لإنتاج "بروفايل ذهني" مشحون طاقياً
+     */
+    _fuseHeartAndMind(plate) {
+        const profile = {};
+        const intensity = plate.summary.globalIntensity;
+        
+        plate.detectedConcepts.forEach(c => {
+            // القاعدة: كلما زادت شدة العاطفة في طبق الذهب، زاد وزن المفهوم المرتبط بها
+            profile[c.id] = c.weight * intensity;
+        });
 
-        if (semanticMap.concepts) {
-            for (const [key, val] of Object.entries(semanticMap.concepts)) {
-                enriched[key] = val.impact || val.importance || 0.5;
-            }
-        }
-
-        if (semanticMap.psychologicalPatterns) {
-            const p = semanticMap.psychologicalPatterns;
-            p.distortions?.forEach(d => { enriched[`distortion:${d.type}`] = 0.9; });
-            p.defenses?.forEach(d => { enriched[`defense:${d.type}`] = 0.8; });
-        }
-
-        return enriched;
+        return profile;
     }
 
-    // =============================================================================
-    // 🧠 2. كشف المعاني العميقة (Meta Meaning Detection) - نفس منطقك الأصلي
-    // =============================================================================
-    _detectMetaMeaning(concepts) {
-        console.log("   🔍 [Step 2: Meta-Awareness] فحص التفاعلات بين المفاهيم المكتشفة...");
+    /**
+     * توليد رؤى "ما وراء المعنى"
+     */
+    _generateMetaInsights(conceptProfile, compositeState) {
         const insights = [];
-        const keys = Object.keys(concepts);
+        const ids = Object.keys(conceptProfile);
 
-        const hasDoubt = keys.some(c => c.includes('شك') || c.includes('uncertainty'));
-        const hasGeneralization = keys.some(c => c.includes('all_or_nothing'));
-
-        if (hasDoubt && hasGeneralization) {
-            console.log("      ⚠️ [Insight]: تم رصد إشارة فقدان ثقة عام.");
-            insights.push({ type: 'paranoia_signal', description: 'فقدان ثقة عام في الآخرين', confidence: 0.9 });
+        // مثال: إذا وجدنا "اكتئاب" وفي نفس الوقت "حالة مركبة من الحزن والغضب" (مرارة)
+        if (ids.includes('depression_symptom') && compositeState?.name?.includes('مرارة')) {
+            insights.push({ 
+                type: 'clinical_nuance', 
+                description: 'الاكتئاب هنا ممزوج باستياء مكبوت (مرارة)، مما يتطلب تعاملاً مع الغضب أولاً.',
+                confidence: 0.9 
+            });
         }
 
-        const hasFear = keys.some(c => c.includes('fear'));
-        if (hasFear && hasDoubt) {
-            console.log("      ⚠️ [Insight]: تم رصد نمط عدم أمان يؤدي للشك.");
-            insights.push({ type: 'insecurity_pattern', description: 'الشعور بعدم الأمان يؤدي إلى الشك', confidence: 0.8 });
+        // رصد أنماط العجز
+        if (ids.includes('helplessness') && conceptProfile['helplessness'] > 1.2) {
+            insights.push({ 
+                type: 'stagnation_alert', 
+                description: 'المستخدم يشعر بحالة شلل في الإرادة (عجز مكتسب) عالية الشدة.',
+                confidence: 0.85 
+            });
         }
 
         return insights;
     }
 
-    // =============================================================================
-    // 🧠 3. حقن التحيز العاطفي (Emotion Bias Injection) - نفس منطقك الأصلي
-    // =============================================================================
-    _injectEmotionBias(concepts, emotionProfile) {
-        if (!emotionProfile) return concepts;
-        console.log(`   🔍 [Step 3: Bias] تعديل أوزان العقل بناءً على نبض القلب [${emotionProfile.primaryEmotion?.name}]...`);
-
-        const boosted = { ...concepts };
-        const primary = emotionProfile.primaryEmotion?.name;
-
-        if (primary === 'fear' || primary === 'anxiety') {
-            Object.keys(boosted).forEach(k => boosted[k] *= 1.2);
-        }
-
-        if (primary === 'anger') {
-            Object.keys(boosted).forEach(k => boosted[k] *= 1.1);
-        }
-
-        return boosted;
-    }
-
-    // =============================================================================
-    // 🔍 4. البحث عن الأنماط والتوترات (Patterns & Tensions) - نفس منطقك الأصلي
-    // =============================================================================
-    _findPatternsAndTensions(conceptProfile = {}) {
-        console.log("   🔍 [Step 4: Matching] مطابقة مخرجات الفضاء مع الأنماط السريرية...");
-        const presentConcepts = Object.keys(conceptProfile);
-
-        const detectedPatterns = this.patternsDict.findPatternsByConcepts ?
-            this.patternsDict.findPatternsByConcepts(presentConcepts, this.patternsDict.CAUSAL_PATTERNS_V6) : [];
-
-        const detectedTensions = [];
-        const tensionsList = this.patternsDict.NARRATIVE_TENSIONS_V6 || [];
-
-        for (const tension of tensionsList) {
-            const poleA_present = tension.pole_a.concepts.some(c => presentConcepts.includes(c));
-            const poleB_present = tension.pole_b.concepts.some(c => presentConcepts.includes(c));
-
-            if (poleA_present && poleB_present) {
-                const poleA_strength = tension.pole_a.concepts.reduce((sum, c) => sum + (conceptProfile[c] || 0), 0);
-                const poleB_strength = tension.pole_b.concepts.reduce((sum, c) => sum + (conceptProfile[c] || 0), 0);
-                detectedTensions.push({ ...tension, strength: poleA_strength + poleB_strength });
-                console.log(`      ⚖️ [Tension]: رصد صراع بين [${tension.pole_a.name}] و [${tension.pole_b.name}]`);
-            }
-        }
-
-        detectedTensions.sort((a, b) => b.strength - a.strength);
-
-        return {
-            topPattern: detectedPatterns[0] || null,
-            topTension: detectedTensions[0] || null,
-            allPatterns: detectedPatterns,
-            allTensions: detectedTensions
-        };
-    }
-
-    // =============================================================================
-    // 🧠 5. توليد الفرضيات النفسية (Core Hypotheses) - نفس منطقك الأصلي
-    // =============================================================================
-    _generateCoreHypotheses(topPattern, topTension, conceptProfile, metaInsights) {
-        console.log("   🔍 [Step 5: Logic] بناء الفرضيات الاستنتاجية للحالة...");
+    /**
+     * بناء الفرضيات بربط السلوكيات المكتشفة بالقيم الأساسية
+     */
+    _generateCoreHypotheses(topPattern, topTension, behaviors) {
         const hypotheses = [];
 
-        if (topPattern) {
-            const analysis = this.behaviorValuesDict.analyzeUserProfile(
-                topPattern.trigger_concepts.concat(topPattern.resulting_concepts)
-            );
-
-            const topValue = analysis.topValues?.[0];
-            if (topValue) {
-                const valueData = this.behaviorValuesDict.VALUE_SYSTEMS[topValue.key];
+        // ربط النمط السائد بالدفاعات النفسية المكتشفة في طبق الذهب
+        if (topPattern && behaviors.length > 0) {
+            const defense = behaviors.find(b => b.type === 'defense');
+            if (defense) {
                 hypotheses.push({
-                    id: 'pattern_driven_by_value',
-                    type: 'causal_hypothesis',
-                    statement: `النمط '${topPattern.description}' قد يكون مرتبط بقيمة '${valueData?.value || topValue.key}'.`,
-                    confidence: 0.75
+                    id: 'pattern_defense_link',
+                    statement: `نمط '${topPattern.pattern_id}' يتم تعزيزه حالياً بواسطة آلية '${defense.name}'.`,
+                    confidence: 0.8
                 });
             }
         }
 
+        // ربط التوتر الصراعي بالقيم (من قاموس القيم السلوكية)
         if (topTension) {
             hypotheses.push({
-                id: 'tension_as_choice',
-                type: 'framing_hypothesis',
-                statement: `يبدو أنك بين '${topTension.pole_a.name}' و '${topTension.pole_b.name}'.`,
-                confidence: 0.85
+                id: 'value_conflict',
+                statement: `الصراع بين ${topTension.pole_a.name} و ${topTension.pole_b.name} يسبب استنزافاً طاقياً.`,
+                confidence: 0.9
             });
         }
-
-        metaInsights.forEach(insight => {
-            hypotheses.push({
-                id: insight.type,
-                type: 'meta_insight',
-                statement: insight.description,
-                confidence: insight.confidence
-            });
-        });
 
         return hypotheses;
     }
