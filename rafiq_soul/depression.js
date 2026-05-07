@@ -2,15 +2,15 @@
 /**
  * 🧠 المفهوم: الاكتئاب (Depression)
  * المسار: rafiq_soul/depression.js
- * الإصدار: 7.1
+ * الإصدار: 9.0-UltraCognitive Core (Full Stack Psy-Engine)
  */
 
 export const DEPRESSION_CORE = {
   id: "depression_major",
-  version: "7.1",
+  version: "9.0",
 
   // ======================================================
-  // 🧭 تعريف التكامل مع المحركات
+  // 🧭 تعريف التكامل الموحد (Unified Integration)
   // ======================================================
   integration: {
     analysis_engine: {
@@ -19,13 +19,23 @@ export const DEPRESSION_CORE = {
         "signal_extractor",
         "cognitive_geometry",
         "neural_links",
-        "activation_model"
+        "activation_model",
+        "defensive_armor",
+        "somatic_mapping",
+        "meta_cognition_layer",      // جديد
+        "context_memory_layer",      // جديد
+        "uncertainty_model"          // جديد
       ],
       produces: [
         "activation_score",
         "detected_signals",
         "matched_patterns",
-        "confidence_level"
+        "detected_defense",
+        "somatic_load",
+        "confidence_level",
+        "meta_state_profile",        // جديد
+        "context_weight",            // جديد
+        "risk_estimation"            // جديد
       ]
     },
 
@@ -34,210 +44,268 @@ export const DEPRESSION_CORE = {
         "activation_score",
         "confidence_level",
         "detected_signals",
-        "neural_links"
+        "detected_defense",
+        "narrative_archetype",
+        "identity_profile",
+        "conversational_signature",
+        "meta_state_profile",        // جديد
+        "risk_estimation"            // جديد
       ],
       produces: [
         "final_response",
-        "response_type"
+        "response_type",
+        "defense_break_strategy",
+        "emotional_tone",
+        "response_trace",            // جديد (Explainability)
+        "adaptive_style",            // جديد
+        "safety_layer_state"         // جديد
       ]
     }
   },
 
   // ======================================================
-  // 1. محرك التجذير والتكاثر اللغوي
+  // 🧠 طبقة الميتا كوجنيشن (Meta Cognition Layer)
   // ======================================================
-  linguistic_generator: {
-    input: "raw_text",
+  meta_cognition_layer: {
+    self_awareness_depth: "high",
+    emotion_reasoning_bridge: true,
+    thought_observer: true,
 
-    roots: ["كأب", "حزن", "ضيق", "فقد", "موت", "يأس"],
-
-    morph_patterns: {
-      "إفتعال": "اكتئاب، اختناق، انطواء",
-      "مُفتعل": "مكتئب، مختنق، منعزل",
-      "فعل": "حزن، ضيق، يأس",
-      "فعيل": "حزين، ضيق، قتيل",
-      "أفعل": "أضيق، أحزن، أصعب"
+    distortions_detected: {
+      catastrophizing: 0.0,
+      over_generalization: 0.0,
+      mind_reading: 0.0,
+      emotional_fusion: 0.0
     },
 
-    auto_multipliers: {
-      subject_starts: ["أنا", "حاسس إني", "بقيت", "روحي", "قلبي", "الدنيا"],
-      state_seeds: ["مكتئب", "حزين", "مخنوق", "مطفي", "يائس", "ضايع"],
-      intensity_tails: ["جداً", "خالص", "موت", "لأبعد حد", "بقالي فترة", "فوق طاقتي"]
-    },
-
-    output: {
-      generated_tokens: [],
-      expanded_patterns: []
+    correction_logic: {
+      gentle_reframe: true,
+      avoid_invalidating_user: true,
+      preserve_emotional_truth: true
     }
   },
 
   // ======================================================
-  // 1.5 استخراج الإشارات (Bridge Layer)
+  // 🧠 الذاكرة السياقية (Context Memory Layer)
   // ======================================================
-  signal_extractor: {
-    input: "tokens",
+  context_memory_layer: {
+    short_term_window: 6,
+    emotional_tracking: true,
 
-    detect: {
-      self_reference: ["أنا", "نفسي"],
-      intensity: ["جداً", "موت", "فوق طاقتي"],
-      temporal: ["بقالي", "زمان", "الفترة دي"],
-      negation: ["مش", "مفيش"]
+    memory_fields: [
+      "user_emotion_flow",
+      "topic_repetition",
+      "stress_accumulation",
+      "positive_moments"
+    ],
+
+    compression_logic: "semantic_summarization"
+  },
+
+  // ======================================================
+  // ⚖️ نموذج عدم اليقين (Uncertainty Model)
+  // ======================================================
+  uncertainty_model: {
+    confidence_factors: {
+      signal_strength: 0.4,
+      linguistic_clarity: 0.3,
+      somatic_alignment: 0.2,
+      contradiction_check: 0.1
     },
 
     output: {
-      detected_signals: [],
-      signal_strength: 0
+      confidence_level: 0.0,
+      ambiguity_flag: false,
+      need_clarification: false
     }
   },
 
   // ======================================================
-  // 2. شبكة الربط العصبي
+  // 🧠 الهوية النفسية
+  // ======================================================
+  identity_profile: {
+    emotional_signature: "heavy_empty_hopeless",
+    cognitive_style: "negative_filtering",
+    behavioral_tendency: "withdrawal",
+    energy_profile: "collapsed",
+    communication_pressure: "low_slow_soft"
+  },
+
+  // ======================================================
+  // 🧩 تحسين النماذج السردية
+  // ======================================================
+  narrative_archetypes: {
+    the_martyr: {
+      pattern: "التضحية + لوم الذات + انتظار المقابل المفقود",
+      core_need: "Recognition",
+      alchemy_tweak: "Focus on Self-Worth",
+      risk_level: "medium"
+    },
+    the_void: {
+      pattern: "فراغ + عدم جدوى + غياب المعنى",
+      core_need: "Existence Validation",
+      alchemy_tweak: "Focus on Presence",
+      risk_level: "high"
+    },
+    the_fallen_hero: {
+      pattern: "مقارنة بالماضي + انهيار القيمة الذاتية",
+      core_need: "Acceptance",
+      alchemy_tweak: "Self Compassion",
+      risk_level: "medium"
+    }
+  },
+
+  // ======================================================
+  // 🛡️ الدفاعات النفسية (Expanded)
+  // ======================================================
+  defensive_armor: {
+    intellectualization: {
+      detect: ["منطقياً", "كيميا", "تحليل", "دراسة"],
+      response_strategy: "GENTLE_EMOTIONAL_PULL"
+    },
+    minimization: {
+      detect: ["عادي", "مش مهم", "كل الناس"],
+      response_strategy: "VALIDATION_ENFORCEMENT"
+    },
+    humor_deflection: {
+      detect: ["😂", "هههه", "بهزر"],
+      response_strategy: "SINCERITY_ANCHOR"
+    },
+    silence_withdrawal: {               // جديد
+      detect: ["..."],
+      response_strategy: "SAFE_OPENING"
+    }
+  },
+
+  // ======================================================
+  // 🧘 الجسد + الإشارة العصبية
+  // ======================================================
+  somatic_mapping: {
+    indicators: {
+      weight: ["تقيل", "مكبل", "مشدود"],
+      constriction: ["خنقة", "ضيق", "ضغط"],
+      collapse: ["مفيش طاقة", "منهار"],
+      numbing: ["مش حاسس", "فارغ"]
+    },
+
+    interoception_model: {   // جديد
+      body_awareness_score: 0.0,
+      disconnection_level: 0.0
+    }
+  },
+
+  // ======================================================
+  // 🧠 الشبكة العصبية (Enhanced)
   // ======================================================
   neural_links: {
     triggers_activation: {
-      "anxiety": 0.6,
-      "self_blame": 0.8,
-      "insomnia": 0.7,
-      "meaninglessness": 0.9
+      anxiety: 0.6,
+      self_blame: 0.8,
+      insomnia: 0.7,
+      meaninglessness: 0.9,
+      isolation: 1.0
     },
-
     inhibitors: {
-      "joy_high": 0.9,
-      "motivation": 0.8
-    },
-
-    output: {
-      influenced_states: [],
-      modulation_factor: 1.0
+      joy_high: 0.9,
+      motivation: 0.8,
+      social_support: 1.0
     }
   },
 
   // ======================================================
-  // 3. تحليل الإحداثيات والزمن
-  // ======================================================
-  cognitive_geometry: {
-    input: ["tokens", "signals"],
-
-    vad_coordinates: { v: -0.95, a: -0.85, d: -0.90 },
-
-    time_focus: "past_dominant",
-    locus_of_control: "external_negative",
-
-    domain_weights: {
-      "self": 1.0,
-      "social": 0.8,
-      "future": 0.9
-    },
-
-    output: {
-      vad_vector: {},
-      temporal_weight: 1.0,
-      domain_vector: {}
-    }
-  },
-
-  // ======================================================
-  // 4. نموذج التفعيل (قرار التحليل)
+  // 📊 نموذج التفعيل (Normalized Scoring)
   // ======================================================
   activation_model: {
-    input: [
-      "generated_tokens",
-      "detected_signals",
-      "vad_vector",
-      "neural_links"
-    ],
-
     scoring: {
-      direct_match: 2,
-      pattern_match: 1,
-      signal_boost: 1.5,
-      neural_influence: 0.5
+      direct_match: 2.0,
+      morph_match: 1.5,
+      somatic_boost: 1.8,
+      defense_penalty: -0.5,
+      neural_influence: 0.5,
+      context_boost: 0.7,     // جديد
+      emotional_drift: 0.6     // جديد
     },
-
-    threshold: 3,
-
-    output: {
-      activation_score: 0,
-      confidence_level: 0,
-      is_active: false
-    }
+    normalization: true,
+    threshold: 3.0
   },
 
   // ======================================================
-  // 5. محرك الردود المتكاثرة
+  // 🧠 كيمياء الرد (Ultra Layered System)
   // ======================================================
   response_alchemy: {
-    input: ["activation_score", "confidence_level"],
+    layer_0_defense_break: {
+      intellectualization: "خلينا نحس قبل ما نفسر...",
+      humor_deflection: "واضح إن في حاجة أعمق من الهزار ده...",
+      minimization: "الإحساس اللي جواك مش صغير..."
+    },
 
     layer_1_validation: [
-      "أنا سامع الثقل اللي في كلامك عن {seed}..",
-      "واضح إن {subject} شايل حمل كبير فوق طاقته..",
-      "إحساس الـ {seed} لما بيتمكن مننا بيبقى كأنه ضباب مغطي كل حاجة.."
+      "أنا حاسس بثقل اللي جواك...",
+      "واضح إن في حمل تقيل...",
+      "الإحساس ده مش بسيط..."
     ],
 
     layer_2_bridge: [
-      "والحقيقة إن الـ {seed} دايماً بيجيب معاه {linked_concept}، وده اللي بيخليك تحس بـ {symptom}..",
-      "كأن عقلك بيحاول يحميك بالانعزال ده، بس النتيجة إن الـ {linked_concept} بيزيد.."
+      "ده ممكن يخلّي العقل يدخل في دائرة {linked_concept}...",
+      "واللي بيزود إحساس {symptom}..."
     ],
 
     layer_3_reframe: [
-      "تفتكر الوجع ده رسالة من روحك إنك محتاج مساحة أمان أكتر؟",
-      "أوقات الاكتئاب بيكون 'استراحة إجبارية' للنفس لأنها قاومت كتير.."
+      "ممكن يكون ده تعبير عن إرهاق داخلي مش ضعف...",
+      "مش لازم تقاوم لوحدك..."
     ],
 
     layer_4_action: [
-      "مش طالب منك تغير كل ده دلوقتي، إيه رأيك بس نتنفس سوا لدقيقة؟",
-      "ممكن نحدد حاجة واحدة بس صغيرة جداً تعملها لنفسك النهاردة؟"
+      "نفس واحد بس دلوقتي...",
+      "خطوة صغيرة جدًا تكفي..."
     ],
 
-    output: {
-      response_blocks: []
-    }
+    layer_5_presence: [   // جديد
+      "أنا معاك هنا دلوقتي بدون حكم...",
+      "مش لازم تشرح كل حاجة..."
+    ]
   },
 
   // ======================================================
-  // 6. التحكم في الرد (حسب شدة الحالة)
-  // ======================================================
-  response_control: {
-    input: ["activation_score"],
-
-    by_activation: {
-      low: ["layer_1_validation"],
-      medium: ["layer_1_validation", "layer_3_reframe"],
-      high: ["layer_1_validation", "layer_2_bridge", "layer_4_action"]
-    },
-
-    output: {
-      selected_layers: []
-    }
-  },
-
-  // ======================================================
-  // 7. البروتوكولات السريرية
+  // 🧯 نظام الأمان (Expanded Crisis System)
   // ======================================================
   clinical_protocols: {
     logic: "CBT_DBT_Hybrid",
 
-    detect_negation_flip: true,
+    crisis_escalation_levels: {   // جديد
+      level_1: "emotional_distress",
+      level_2: "psychological_risk",
+      level_3: "self_harm_thoughts"
+    },
 
     safety_check: {
-      critical_tokens: ["انتحار", "أنهي حياتي", "سكينة", "سم", "موت"],
-      action: "ACTIVATE_CRISIS_PROTOCOL"
+      critical_tokens: [
+        "انتحار",
+        "أنهي حياتي",
+        "أموت نفسي",
+        "سم",
+        "سكينة",
+        "أختفي"
+      ],
+      action: "ACTIVATE_CRISIS_PROTOCOL",
+      response_mode: "IMMEDIATE_STABILIZATION"
     }
   },
 
   // ======================================================
-  // 📤 الخرج النهائي للمفهوم (للربط مع المحركات)
+  // 📤 الخرج النهائي
   // ======================================================
   final_output_contract: {
     analysis: [
       "activation_score",
       "confidence_level",
-      "detected_signals"
+      "risk_estimation",
+      "meta_state_profile"
     ],
     response: [
-      "response_blocks",
-      "selected_layers"
+      "response_trace",
+      "final_response",
+      "adaptive_style"
     ]
   }
 };
