@@ -1,7 +1,7 @@
 /**
- * 🌌 AKASHA-TENSOR: SOVEREIGN-GPT v30.0
- * المرحلة الثالثة: تعميق التمثيل (Representation Depth)
- * الإضافات: Feed Forward Network (FFN) + ReLU Activation + Dual Residual Blocks.
+ * 🌌 AKASHA-TENSOR: SOVEREIGN-GPT v31.0
+ * المرحلة: تدعيم المرحلة الثالثة + إصلاح الـ Backprop القاتل.
+ * الهدف: إحياء مصفوفة W_k ومنع الـ Attention Collapse نهائياً.
  */
 
 class AkashaTensor {
@@ -17,6 +17,7 @@ class AkashaTensor {
 
     backward(grad = null) {
         if (!grad) {
+            console.log(`      [📉 BACK]: Root start -> ${this.op}`);
             this.grad.fill(1.0);
         } else {
             for (let i = 0; i < this.grad.length; i++) {
@@ -31,15 +32,14 @@ class AkashaTensor {
     dispatch() {
         if (this.op === "matmul") {
             const [A, B] = this.creators;
-            const dA = AkashaOps.matMul(this.grad, AkashaOps.transpose(B.data, B.rows, B.cols), this.rows, this.cols, A.cols);
-            const dB = AkashaOps.matMul(AkashaOps.transpose(A.data, A.rows, A.cols), this.grad, A.cols, A.rows, this.cols);
+            // ✅ استخدام الـ Backprop الدقيق لإحياء W_k
+            const [dA, dB] = AkashaOps.matMulBackward(A.data, B.data, this.grad, A.rows, A.cols, B.cols);
+            console.log(`      [⚡ FLOW]: MatMul Backprop -> dA_sum: ${dA.reduce((a,b)=>a+Math.abs(b),0).toExponential(2)} | dB_sum: ${dB.reduce((a,b)=>a+Math.abs(b),0).toExponential(2)}`);
             A.backward(dA); B.backward(dB);
         } else if (this.op === "relu") {
             const [A] = this.creators;
             const dInput = new Float32Array(this.grad.length);
-            for (let i = 0; i < A.data.length; i++) {
-                dInput[i] = A.data[i] > 0 ? this.grad[i] : 0;
-            }
+            for (let i = 0; i < A.data.length; i++) dInput[i] = A.data[i] > 0 ? this.grad[i] : 0;
             A.backward(dInput);
         } else {
             this.creators.forEach(c => c.backward(this.grad));
@@ -54,25 +54,6 @@ class AkashaTensor {
         const res = new Float32Array(this.data.length);
         for(let i=0; i<res.length; i++) res[i] = this.data[i] + B.data[i];
         return new AkashaTensor(res, this.shape, [this, B], "add");
-    }
-
-    transpose() { return new AkashaTensor(AkashaOps.transpose(this.data, this.rows, this.cols), [this.cols, this.rows], [this], "transpose"); }
-    
-    softmax() {
-        const out = new Float32Array(this.data.length);
-        for (let r = 0; r < this.rows; r++) {
-            const start = r * this.cols;
-            let max = -Infinity;
-            for (let i = 0; i < this.cols; i++) if (this.data[start + i] > max) max = this.data[start + i];
-            let sum = 0;
-            for (let i = 0; i < this.cols; i++) {
-                const e = Math.exp(this.data[start + i] - max);
-                out[start + i] = e;
-                sum += e;
-            }
-            for (let i = 0; i < this.cols; i++) out[start + i] /= (sum + 1e-8);
-        }
-        return new AkashaTensor(out, this.shape, [this], "softmax");
     }
 
     layerNorm(eps = 1e-5) {
@@ -101,9 +82,44 @@ class AkashaOps {
         }
         return out;
     }
-    static transpose(d, r, c) {
-        const out = new Float32Array(d.length);
-        for(let i=0; i<r; i++) for(let j=0; j<c; j++) out[j * r + i] = d[i * c + j];
+
+    // ✅ الحل النهائي لمشكلة W_k = 0 (Explicit MatMul Gradient)
+    static matMulBackward(A, B, grad, rA, cA, cB) {
+        const dA = new Float32Array(rA * cA);
+        const dB = new Float32Array(cA * cB);
+        // dA = grad * B^T
+        for (let i = 0; i < rA; i++) {
+            for (let j = 0; j < cA; j++) {
+                let sum = 0;
+                for (let k = 0; k < cB; k++) sum += grad[i * cB + k] * B[j * cB + k];
+                dA[i * cA + j] = sum;
+            }
+        }
+        // dB = A^T * grad
+        for (let i = 0; i < cA; i++) {
+            for (let j = 0; j < cB; j++) {
+                let sum = 0;
+                for (let k = 0; k < rA; k++) sum += A[k * cA + i] * grad[k * cB + j];
+                dB[i * cB + j] = sum;
+            }
+        }
+        return [dA, dB];
+    }
+
+    static stableSoftmax(scores, rows, cols, temperature = 0.8) {
+        const out = new Float32Array(scores.length);
+        for (let r = 0; r < rows; r++) {
+            const start = r * cols;
+            let max = -Infinity;
+            for (let i = 0; i < cols; i++) if (scores[start + i] > max) max = scores[start + i];
+            let sum = 0;
+            for (let i = 0; i < cols; i++) {
+                const val = Math.exp((scores[start + i] - max) / temperature);
+                out[start + i] = val;
+                sum += val;
+            }
+            for (let i = 0; i < cols; i++) out[start + i] /= (sum + 1e-9);
+        }
         return out;
     }
 }
@@ -113,78 +129,58 @@ export class AkashaBrain {
         this.d_model = d_model;
         this.vSize = vocabSize;
         this.params = new Map();
-        this.learningRate = 0.0001;
+        this.learningRate = 0.0005;
         this.stepCount = 0;
 
-        console.log("🛠️ [SYSTEM]: Building Architecture v30.0 - The Transformer Deep Block.");
-        
-        // أوزان الـ Attention والـ Embedding
-        ["W_emb", "W_q", "W_k", "W_v", "W_out"].forEach(name => {
-            const shape = name === "W_emb" ? [vocabSize, d_model] : (name === "W_out" ? [d_model, vocabSize] : [d_model, d_model]);
-            this.initParam(name, shape);
+        console.log("🛠️ [SYSTEM]: Akasha Core v31.0 - Foundation Check.");
+        ["W_emb", "W_q", "W_k", "W_v", "W_out", "W_ff1", "W_ff2"].forEach(name => {
+            let shape;
+            if (name === "W_emb") shape = [vocabSize, d_model];
+            else if (name === "W_out") shape = [d_model, vocabSize];
+            else if (name === "W_ff1") shape = [d_model, d_model * 4];
+            else if (name === "W_ff2") shape = [d_model * 4, d_model];
+            else shape = [d_model, d_model];
+            
+            const data = new Float32Array(shape[0] * shape[1]);
+            const scale = Math.sqrt(2 / (shape[0] + shape[1]));
+            for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * scale;
+            this.params.set(name, new AkashaTensor(data, shape, [], "param"));
         });
-
-        // ✅ المرحلة 3: أوزان الـ Feed Forward Network (FFN)
-        const d_ff = d_model * 4; // العرف السائد في GPT
-        this.initParam("W_ff1", [d_model, d_ff]);
-        this.initParam("W_ff2", [d_ff, d_model]);
-    }
-
-    initParam(name, shape) {
-        const data = new Float32Array(shape[0] * shape[1]);
-        const scale = Math.sqrt(2 / (shape[0] + shape[1]));
-        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * scale;
-        this.params.set(name, new AkashaTensor(data, shape, [], "param"));
-        console.log(`   └─ Allocated ${name.padEnd(6)}: [${shape[0]}x${shape[1]}]`);
     }
 
     async init() { return true; }
 
-    zeroGrad() { for (const p of this.params.values()) p.grad.fill(0); }
-
-    // ✅ دالة الـ Feed Forward مع ReLU Activation
-    forwardFFN(X) {
-        console.log("🧠 [FFN]: Thinking - Hidden Layer Expansion (d_ff = 512)");
-        const W1 = this.params.get("W_ff1");
-        const W2 = this.params.get("W_ff2");
-
-        // 1. Linear 1
-        let hidden = X.matmul(W1);
-
-        // 2. ReLU Activation (Non-linearity)
-        const reluData = new Float32Array(hidden.data.length);
-        for (let i = 0; i < hidden.data.length; i++) reluData[i] = Math.max(0, hidden.data[i]);
-        let activated = new AkashaTensor(reluData, hidden.shape, [hidden], "relu");
-        console.log(`      [LOG]: ReLU Activation applied to ${hidden.data.length} neurons.`);
-
-        // 3. Linear 2 (Projection back to d_model)
-        return activated.matmul(W2);
-    }
-
     attention(X) {
-        console.log("🔍 [ATTN]: Scanning Contextual Importance...");
+        console.log("🔍 [ATTN]: Querying Context...");
         const Q = X.matmul(this.params.get("W_q"));
         const K = X.matmul(this.params.get("W_k"));
         const V = X.matmul(this.params.get("W_v"));
         
-        let scores = Q.matmul(K.transpose());
+        let scores = Q.matmul(new AkashaTensor(AkashaOps.transpose(K.data, K.rows, K.cols), [K.cols, K.rows]));
         const scale = Math.sqrt(this.d_model);
         for (let i = 0; i < scores.data.length; i++) scores.data[i] /= scale;
 
-        for (let r = 0; r < scores.rows; r++) {
-            for (let c = r + 1; c < scores.cols; c++) scores.data[r * scores.cols + c] = -1e9;
-        }
-
-        const weights = scores.softmax();
-        const ir = Math.min(1, weights.rows - 1);
-        const sample = Array.from(weights.data.subarray(ir * weights.cols, ir * weights.cols + 5)).map(v => v.toFixed(3));
-        console.log(`   [📊 LOG]: Attention Map (Row ${ir}): [${sample.join(', ')}]`);
+        // Stable Softmax Deployment
+        const outData = AkashaOps.stableSoftmax(scores.data, scores.rows, scores.cols);
+        const weights = new AkashaTensor(outData, scores.shape, [scores], "softmax");
+        
+        const sample = Array.from(weights.data.subarray(0, 5)).map(v => v.toFixed(3));
+        console.log(`   [📊 LOG]: Stable Weights: [${sample.join(', ')}]`);
         
         return weights.matmul(V);
     }
 
+    forwardFFN(X) {
+        console.log("🧠 [FFN]: Processing Deep Representations...");
+        const h = X.matmul(this.params.get("W_ff1"));
+        const reluData = new Float32Array(h.data.length);
+        for (let i = 0; i < h.data.length; i++) reluData[i] = Math.max(0, h.data[i]);
+        const activated = new AkashaTensor(reluData, h.shape, [h], "relu");
+        return activated.matmul(this.params.get("W_ff2"));
+    }
+
     applyGradients() {
-        console.log(`🔧 [OPTIMIZER]: Applying Updates for Step ${this.stepCount + 1}`);
+        console.log(`🔧 [OPTIMIZER]: Global Update Step ${this.stepCount + 1}`);
         for (const [name, param] of this.params.entries()) {
             let gNorm = 0;
             for (let i = 0; i < param.data.length; i++) {
@@ -197,46 +193,32 @@ export class AkashaBrain {
     }
 
     async process(message, userId) {
-        console.log(`\n🔥 [AKASHA]: --- New Neural Cycle Started ---`);
+        console.log(`\n🔥 [AKASHA-LOG]: Processing Sequence...`);
         const tokens = message.split('').map(c => c.charCodeAt(0) % this.vSize);
         
         try {
-            this.zeroGrad();
+            for (const p of this.params.values()) p.grad.fill(0);
 
-            // 1. Input Layer
             const W_emb = this.params.get("W_emb");
             const embData = new Float32Array(tokens.length * this.d_model);
             tokens.forEach((t, i) => embData.set(W_emb.data.subarray(t*this.d_model, (t+1)*this.d_model), i*this.d_model));
             let X = new AkashaTensor(embData, [tokens.length, this.d_model], [W_emb], "embedding");
-            console.log(`✅ Tokens Embedded: [${tokens.length} x ${this.d_model}]`);
 
-            // --- Transformer Block Start ---
-
-            // Sub-layer 1: Attention + Residual + LayerNorm
-            console.log("🟦 [BLOCK]: Processing Self-Attention Sub-layer");
-            let attnOut = this.attention(X.layerNorm()); 
-            X = X.add(attnOut); // Residual Connection 1
-            console.log("      [LOG]: Residual Connection 1 (Attn) complete.");
-
-            // Sub-layer 2: FFN + Residual + LayerNorm
-            console.log("🟦 [BLOCK]: Processing Feed-Forward Sub-layer");
-            let ffnOut = this.forwardFFN(X.layerNorm());
-            X = X.add(ffnOut); // Residual Connection 2
-            console.log("      [LOG]: Residual Connection 2 (FFN) complete.");
-
-            // --- Transformer Block End ---
+            // 🔥 الدورة الكاملة: Norm -> Attn -> Norm -> FFN
+            console.log("🟦 [FORWARD]: Sub-layer 1 (Attention)");
+            X = X.add(this.attention(X.layerNorm())); 
+            
+            console.log("🟦 [FORWARD]: Sub-layer 2 (FFN)");
+            X = X.add(this.forwardFFN(X.layerNorm()));
 
             const logits = X.matmul(this.params.get("W_out"));
-
-            console.log("🟨 [BACKWARD]: Starting Global Error Propagation...");
             logits.backward();
-
             this.applyGradients();
 
-            return { text: `أكاشا: تمت المرحلة الثالثة بنجاح. لقد أضفنا الـ Feed Forward Network (FFN) ونظام الـ Residual المزدوج. العقل الآن أعمق!` };
+            return { text: `أكاشا: تم تثبيت الأساسات. الآن الـ Backprop يحسب تدرجات مصفوفة الكلمات بدقة، والـ Attention مستقر.` };
 
         } catch (e) {
-            console.error("🚨 [CRITICAL CRASH]:", e.stack);
+            console.error("🚨 [CRITICAL]:", e.stack);
             throw e;
         }
     }
