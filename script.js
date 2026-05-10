@@ -1,27 +1,27 @@
 /**
- * 🧠 script.js - Soul Companion Runtime
- * الربط بين الواجهة والنواة المحلية مع نظام السجلات (Logs)
+ * 🚀 SOUL COMPANION - PRODUCTION RUNTIME (Vercel Ready)
+ * هذا الملف يربط الواجهة بالنواة المحلية دون الحاجة لسيرفر خارجي
  */
+
+// التأكد من استدعاء النواة
+const soul = new SoulCompanion(5000); 
 
 const chatBox = document.getElementById("chat-box");
 const userInput = document.getElementById("user-input");
 const systemLogs = document.getElementById("system-logs");
 
-// 1. استدعاء النواة (Core) المحملة في الذاكرة
-// تأكد أن ملف core.js يحتوي على class SoulCompanion
-const soul = new SoulCompanion(5000);
-
-// 2. دالة تحديث السجلات (System Logs) لتظهر في الشاشة السوداء
+// دالة لتحديث السجلات في الواجهة
 function pushLog(message) {
     const time = new Date().toLocaleTimeString();
-    systemLogs.innerHTML += `<div>> [${time}] ${message}</div>`;
-    systemLogs.scrollTop = systemLogs.scrollHeight;
-    console.log(`[System]: ${message}`);
+    if (systemLogs) {
+        systemLogs.innerHTML += `<div>> [${time}] ${message}</div>`;
+        systemLogs.scrollTop = systemLogs.scrollHeight;
+    }
 }
 
 function addMessage(sender, text) {
     const messageDiv = document.createElement("div");
-    messageDiv.className = `msg ${sender}`; // استخدام الكلاسات الجديدة
+    messageDiv.className = `msg ${sender}`;
     messageDiv.innerText = text;
     chatBox.appendChild(messageDiv);
     chatBox.scrollTop = chatBox.scrollHeight;
@@ -33,56 +33,45 @@ async function sendMessage(text) {
     addMessage("user", text);
     userInput.value = "";
     
-    pushLog("بدء المعالجة السيادية...");
+    pushLog("بدء المعالجة المحلية (Sovereign Mode)...");
 
     try {
-        // تحويل النص إلى توكنز (Encoding)
-        pushLog("جاري تحويل النص إلى مطابقة تنسورات...");
+        // 1. تحويل النص لتوكنز
         const tokens = text.split('').map(c => c.charCodeAt(0) % 5000);
 
-        // تشغيل النواة (المعالجة عبر الـ 15 مرحلة)
-        pushLog("تشغيل محرك الـ MatMul و الـ Attention...");
+        // 2. تشغيل النواة - الـ 15 مرحلة
+        // ملاحظة: soul.process هو المحرك اللي في ملف core.js
         const result = soul.process(tokens);
 
-        // تفعيل التعلم العكسي (تطوير الأوزان بناءً على الحوار)
-        pushLog("تحديث الأوزان (Backpropagation) مفعل...");
+        // 3. تفعيل التعلم الذاتي
         result.backward();
 
-        // حفظ الحالة في ذاكرة الهاتف
+        // 4. التخزين على الموبايل (حتى مع Vercel التخزين بيفضل في موبايلك أنت)
         localStorage.setItem('soul_memory_v1', JSON.stringify(soul.memoryContext));
-        pushLog("تم تأمين الذاكرة محلياً في الهاتف.");
+        pushLog("تم تحديث مصفوفة الذاكرة وحفظها محلياً.");
 
-        // الرد المحاكي (سيتم تطويره ليصبح توليداً كاملاً للنصوص)
+        // 5. الرد (سيتم تطويره لاحقاً ليولد كلمات حقيقية)
         setTimeout(() => {
-            const reply = "تم تحليل رسالتك ودمجها في نموذج العالم الخاص بي بنجاح.";
-            addMessage("bot", reply);
-            pushLog("استجابة كاملة. النظام مستقر.");
-        }, 600);
+            addMessage("bot", "تم استيعاب رسالتك ودمجها في نموذج العالم الخاص بي. أنا الآن أعيد معايرة أوزاني بناءً على حوارنا.");
+            pushLog("اكتملت الدورة العصبية بنجاح.");
+        }, 500);
 
     } catch (err) {
-        pushLog(`خطأ فني: ${err.message}`);
-        addMessage("bot", "⚡ حدث اضطراب في النواة. يرجى مراجعة السجلات.");
-        console.error("Core Error:", err);
+        pushLog(`خطأ: ${err.message}`);
+        console.error(err);
     }
 }
 
-// 3. استعادة الذاكرة عند بدء التشغيل
+// استعادة الذاكرة عند فتح الرابط من Vercel
 window.onload = () => {
-    pushLog("جاري استدعاء الوعي من ذاكرة الهاتف...");
+    pushLog("جاري الاتصال بالنواة السيادية...");
     const savedMemory = localStorage.getItem('soul_memory_v1');
     if (savedMemory) {
         soul.memoryContext = JSON.parse(savedMemory);
-        pushLog("تمت استعادة 50 نقطة سياقية من الذاكرة.");
-    } else {
-        pushLog("بداية جديدة: لا توجد ذاكرة سابقة.");
+        pushLog("تم استعادة السياق السابق من ذاكرة الهاتف.");
     }
-    pushLog("نظام رفيق الروح جاهز.");
+    pushLog("رفيق الروح جاهز للعمل على Vercel.");
 };
 
-document.getElementById("send-btn").addEventListener("click", () => {
-    sendMessage(userInput.value);
-});
-
-userInput.addEventListener("keypress", (e) => {
-    if (e.key === "Enter") sendMessage(userInput.value);
-});
+document.getElementById("send-btn").addEventListener("click", () => sendMessage(userInput.value));
+userInput.addEventListener("keypress", (e) => { if (e.key === "Enter") sendMessage(userInput.value); });
