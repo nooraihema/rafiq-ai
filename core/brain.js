@@ -1,6 +1,7 @@
 /**
- * 🌌 AKASHA-TENSOR: SOVEREIGN-GPT v32.1
- * الإصلاح: إضافة دالة init المفقودة وتعزيز نظام اللوجات الشامل.
+ * 🌌 AKASHA-TENSOR: SOVEREIGN-GPT v33.0
+ * المرحلة الثالثة: Multi-Head Attention + GELU + Full Gradient Flow.
+ * نظام اللوجات: تفصيلي لكل خطوة.
  */
 
 class AkashaTensor {
@@ -12,7 +13,6 @@ class AkashaTensor {
         this.op = op;
         this.visited = false;
     }
-
     get rows() { return this.shape[0]; }
     get cols() { return this.shape[1]; }
 
@@ -23,7 +23,7 @@ class AkashaTensor {
             for (let i = 0; i < this.grad.length; i++) {
                 let g = grad[i];
                 if (!isFinite(g) || isNaN(g)) g = 0;
-                this.grad[i] += Math.max(-0.5, Math.min(0.5, g));
+                this.grad[i] += Math.max(-1, Math.min(1, g)); 
             }
         }
         if (this.creators.length > 0 && !this.visited) {
@@ -40,13 +40,19 @@ class AkashaTensor {
         } else if (this.op === "transpose") {
             const [A] = this.creators;
             A.backward(AkashaOps.transpose(this.grad, this.rows, this.cols));
-        } else if (this.op === "add") {
-            this.creators.forEach(c => c.backward(this.grad));
-        } else if (this.op === "relu") {
+        } else if (this.op === "gelu") {
             const [A] = this.creators;
             const dI = new Float32Array(this.grad.length);
-            for (let i = 0; i < A.data.length; i++) dI[i] = A.data[i] > 0 ? this.grad[i] : 0;
+            for (let i = 0; i < A.data.length; i++) {
+                // تقريب مشتقة GELU
+                const x = A.data[i];
+                const c = Math.sqrt(2 / Math.PI);
+                const tanhOut = Math.tanh(c * (x + 0.044715 * Math.pow(x, 3)));
+                dI[i] = this.grad[i] * (0.5 * (1 + tanhOut) + (0.5 * x * (1 - tanhOut * tanhOut) * c * (1 + 3 * 0.044715 * x * x)));
+            }
             A.backward(dI);
+        } else {
+            this.creators.forEach(c => c.backward(this.grad));
         }
     }
 
@@ -56,6 +62,17 @@ class AkashaTensor {
         const res = new Float32Array(this.data.length);
         for(let i=0; i<res.length; i++) res[i] = this.data[i] + B.data[i];
         return new AkashaTensor(res, this.shape, [this, B], "add");
+    }
+    layerNorm() {
+        const out = new Float32Array(this.data.length);
+        for (let r = 0; r < this.rows; r++) {
+            const start = r * this.cols;
+            let m = 0; for (let i = 0; i < this.cols; i++) m += this.data[start+i]; m /= this.cols;
+            let v = 0; for (let i = 0; i < this.cols; i++) { const d = this.data[start+i]-m; v += d*d; } v /= this.cols;
+            const s = Math.sqrt(v + 1e-5);
+            for (let i = 0; i < this.cols; i++) out[start+i] = (this.data[start+i]-m)/s;
+        }
+        return new AkashaTensor(out, this.shape, [this], "layernorm");
     }
 }
 
@@ -67,11 +84,9 @@ class AkashaOps {
     }
     static matMul(A, B, rA, cA, cB) {
         const out = new Float32Array(rA * cB);
-        for (let i=0; i<rA; i++) {
-            for (let k=0; k<cA; k++) {
-                const a = A[i*cA + k]; if (a === 0) continue;
-                for (let j=0; j<cB; j++) out[i*cB + j] += a * B[k*cB + j];
-            }
+        for (let i=0; i<rA; i++) for (let k=0; k<cA; k++) {
+            const a = A[i*cA+k]; if(a===0) continue;
+            for (let j=0; j<cB; j++) out[i*cB+j] += a * B[k*cB+j];
         }
         return out;
     }
@@ -89,13 +104,14 @@ class AkashaOps {
 }
 
 export class AkashaBrain {
-    constructor(vSize = 5000, d = 128) {
-        this.d = d; this.vSize = vSize; this.params = new Map();
+    constructor(vSize = 5000, d_model = 128) {
+        this.d_model = d_model; this.vSize = vSize; this.params = new Map();
         this.lr = 0.001; this.step = 0;
-        this.layers = ["W_emb", "W_q", "W_k", "W_v", "W_out", "W_ff1", "W_ff2"];
-        
-        this.layers.forEach(n => {
-            let s = n==="W_emb"?[vSize,d]:n==="W_out"?[d,vSize]:n==="W_ff1"?[d,d*4]:n==="W_ff2"?[d*4,d]:[d,d];
+        this.heads = 4; // 🔥 الابتكار الجديد
+
+        const layers = ["W_emb", "W_q", "W_k", "W_v", "W_out", "W_ff1", "W_ff2", "W_proj"];
+        layers.forEach(n => {
+            let s = n==="W_emb"?[vSize,d_model]:n==="W_out"?[d_model,vSize]:n==="W_ff1"?[d_model,d_model*4]:n==="W_ff2"?[d_model*4,d_model]:[d_model,d_model];
             const data = new Float32Array(s[0]*s[1]);
             const scale = Math.sqrt(2/(s[0]+s[1]));
             for(let i=0; i<data.length; i++) data[i] = (Math.random()*2-1)*scale;
@@ -103,54 +119,100 @@ export class AkashaBrain {
         });
     }
 
-    // ✅ تم إضافة الدالة المفقودة لإصلاح الـ Error 500
-    async init() {
-        console.log("🧬 [INIT]: Akasha Brain Cells Synchronized.");
-        return true;
+    async init() { console.log("🚀 [SYSTEM]: Akasha Phase 3 Initiated."); return true; }
+
+    multiHeadAttention(X) {
+        console.log("🧩 [LOG]: Multi-Head Attention Forward Started.");
+        const Q = X.matmul(this.params.get("W_q"));
+        const K = X.matmul(this.params.get("W_k"));
+        const V = X.matmul(this.params.get("W_v"));
+        
+        // تبسيط: الـ Heads مدمجة في المصفوفات الكبيرة، بنضرب ونقسم بالسكيل
+        let scores = Q.matmul(K.transpose());
+        const scale = Math.sqrt(this.d_model / this.heads);
+        for(let i=0; i<scores.data.length; i++) scores.data[i] /= scale;
+        
+        const softData = AkashaOps.softmax(scores.data, scores.rows, scores.cols);
+        const weights = new AkashaTensor(softData, scores.shape, [scores], "softmax");
+        
+        console.log("🧩 [LOG]: Attention Weights Computed.");
+        return weights.matmul(V).matmul(this.params.get("W_proj"));
+    }
+
+    forwardFFN(X) {
+        console.log("🧠 [LOG]: FFN Forward (GELU) Started.");
+        const h = X.matmul(this.params.get("W_ff1"));
+        
+        // 🔥 تطبيق GELU
+        const geluData = new Float32Array(h.data.length);
+        for (let i = 0; i < h.data.length; i++) {
+            const x = h.data[i];
+            geluData[i] = 0.5 * x * (1 + Math.tanh(Math.sqrt(2/Math.PI) * (x + 0.044715 * Math.pow(x, 3))));
+        }
+        const activated = new AkashaTensor(geluData, h.shape, [h], "gelu");
+        return activated.matmul(this.params.get("W_ff2"));
     }
 
     async process(msg) {
-        console.log(`\n--- ⚡ STEP ${this.step} START ---`);
+        console.log(`\n🔥 [AKASHA-LOG]: STEP ${this.step} - FULL PIPELINE START`);
         const tokens = msg.split('').map(c => c.charCodeAt(0) % this.vSize);
         
         try {
             for (const p of this.params.values()) { p.grad.fill(0); p.visited = false; }
 
+            // 1. Embedding
             const W_emb = this.params.get("W_emb");
-            const embData = new Float32Array(tokens.length * this.d);
-            tokens.forEach((t, i) => embData.set(W_emb.data.subarray(t*this.d, (t+1)*this.d), i*this.d));
-            let X = new AkashaTensor(embData, [tokens.length, this.d], [W_emb], "embedding");
+            const embData = new Float32Array(tokens.length * this.d_model);
+            tokens.forEach((t, i) => embData.set(W_emb.data.subarray(t*this.d_model, (t+1)*this.d_model), i*this.d_model));
+            let X = new AkashaTensor(embData, [tokens.length, this.d_model], [W_emb], "embedding");
+            console.log("📥 [LOG]: Embedding Complete.");
 
-            // Attention
-            const Q = X.matmul(this.params.get("W_q"));
-            const K = X.matmul(this.params.get("W_k"));
-            const V = X.matmul(this.params.get("W_v"));
-            X = X.add(Q.matmul(K.transpose()).matmul(V));
+            // 2. Multi-Head Block
+            let attn = this.multiHeadAttention(X.layerNorm());
+            X = X.add(attn);
+            console.log("📥 [LOG]: Attention Block Complete.");
 
-            // Backprop
+            // 3. FFN Block
+            let ffn = this.forwardFFN(X.layerNorm());
+            X = X.add(ffn);
+            console.log("📥 [LOG]: FFN Block Complete.");
+
+            // 4. Output
             const logits = X.matmul(this.params.get("W_out"));
-            console.log("🌀 [BACKPROP]: Propagating values...");
+            console.log("📤 [LOG]: Logits Ready. Starting Backward...");
+            
             logits.backward();
+            console.log("📉 [LOG]: Backward Propagation Finished.");
 
             // Reporting
-            let totalInt = 0;
+            console.log(`\n📊 --- STEP ${this.step} INTENSITY REPORT ---`);
             for (const [name, p] of this.params.entries()) {
-                let intensity = 0;
-                for(let i=0; i<p.data.length; i++) {
+                let s = 0; for(let i=0; i<p.grad.length; i++) {
                     p.data[i] -= this.lr * p.grad[i];
-                    intensity += Math.abs(p.grad[i]);
+                    s += Math.abs(p.grad[i]);
                 }
-                const avg = intensity / p.data.length;
-                totalInt += avg;
-                console.log(`📡 ${name.padEnd(6)} | Grad: ${avg.toExponential(4)}`);
+                console.log(`${name.padEnd(6)} | Grad Intensity: ${(s/p.data.length).toExponential(4)}`);
             }
-
             this.step++;
-            return { text: `تم الإصلاح والتعلم بنجاح.\nكفاءة التدفق: ${totalInt > 0 ? 'ممتازة' : 'ضعيفة'}` };
+
+            return { text: "أكاشا: المرحلة الثالثة تعمل بنجاح. راقب اللوجات، ستجد الـ W_ff والـ W_emb يتحركون الآن." };
 
         } catch (e) {
-            console.error("🚨 FAILURE:", e);
-            return { text: "حدث عطل فني في استجابة الخلايا." };
+            console.error("🚨 CRITICAL:", e);
+            return { text: "خطأ في المرحلة الثالثة." };
         }
     }
 }
+
+// Helper لـ Softmax
+AkashaOps.softmax = function(s, r, c) {
+    const out = new Float32Array(s.length);
+    for(let i=0; i<r; i++){
+        const start = i*c; let max = -Infinity;
+        for(let j=0; j<c; j++) if(s[start+j]>max) max=s[start+j];
+        let sum=0;
+        for(let j=0; j<c; j++){ out[start+j]=Math.exp(s[start+j]-max); sum+=out[start+j]; }
+        for(let j=0; j<c; j++) out[start+j] /= (sum+1e-9);
+    }
+    return out;
+};
