@@ -1,7 +1,6 @@
 /**
- * 🌌 AKASHA-TENSOR: SOVEREIGN-GPT v31.0
- * المرحلة: تدعيم المرحلة الثالثة + إصلاح الـ Backprop القاتل.
- * الهدف: إحياء مصفوفة W_k ومنع الـ Attention Collapse نهائياً.
+ * 🌌 AKASHA-TENSOR: SOVEREIGN-GPT v31.1
+ * الإصلاح: إضافة دالة transpose المفقودة وتأمين عمليات المصفوفات.
  */
 
 class AkashaTensor {
@@ -17,7 +16,6 @@ class AkashaTensor {
 
     backward(grad = null) {
         if (!grad) {
-            console.log(`      [📉 BACK]: Root start -> ${this.op}`);
             this.grad.fill(1.0);
         } else {
             for (let i = 0; i < this.grad.length; i++) {
@@ -32,9 +30,7 @@ class AkashaTensor {
     dispatch() {
         if (this.op === "matmul") {
             const [A, B] = this.creators;
-            // ✅ استخدام الـ Backprop الدقيق لإحياء W_k
             const [dA, dB] = AkashaOps.matMulBackward(A.data, B.data, this.grad, A.rows, A.cols, B.cols);
-            console.log(`      [⚡ FLOW]: MatMul Backprop -> dA_sum: ${dA.reduce((a,b)=>a+Math.abs(b),0).toExponential(2)} | dB_sum: ${dB.reduce((a,b)=>a+Math.abs(b),0).toExponential(2)}`);
             A.backward(dA); B.backward(dB);
         } else if (this.op === "relu") {
             const [A] = this.creators;
@@ -70,6 +66,17 @@ class AkashaTensor {
 }
 
 class AkashaOps {
+    // ✅ تمت إعادة إضافة الدالة المفقودة
+    static transpose(d, r, c) {
+        const out = new Float32Array(d.length);
+        for(let i = 0; i < r; i++) {
+            for(let j = 0; j < c; j++) {
+                out[j * r + i] = d[i * c + j];
+            }
+        }
+        return out;
+    }
+
     static matMul(A, B, rA, cA, cB) {
         const out = new Float32Array(rA * cB);
         for (let i = 0; i < rA; i++) {
@@ -83,11 +90,9 @@ class AkashaOps {
         return out;
     }
 
-    // ✅ الحل النهائي لمشكلة W_k = 0 (Explicit MatMul Gradient)
     static matMulBackward(A, B, grad, rA, cA, cB) {
         const dA = new Float32Array(rA * cA);
         const dB = new Float32Array(cA * cB);
-        // dA = grad * B^T
         for (let i = 0; i < rA; i++) {
             for (let j = 0; j < cA; j++) {
                 let sum = 0;
@@ -95,7 +100,6 @@ class AkashaOps {
                 dA[i * cA + j] = sum;
             }
         }
-        // dB = A^T * grad
         for (let i = 0; i < cA; i++) {
             for (let j = 0; j < cB; j++) {
                 let sum = 0;
@@ -132,7 +136,6 @@ export class AkashaBrain {
         this.learningRate = 0.0005;
         this.stepCount = 0;
 
-        console.log("🛠️ [SYSTEM]: Akasha Core v31.0 - Foundation Check.");
         ["W_emb", "W_q", "W_k", "W_v", "W_out", "W_ff1", "W_ff2"].forEach(name => {
             let shape;
             if (name === "W_emb") shape = [vocabSize, d_model];
@@ -151,27 +154,24 @@ export class AkashaBrain {
     async init() { return true; }
 
     attention(X) {
-        console.log("🔍 [ATTN]: Querying Context...");
         const Q = X.matmul(this.params.get("W_q"));
         const K = X.matmul(this.params.get("W_k"));
         const V = X.matmul(this.params.get("W_v"));
         
-        let scores = Q.matmul(new AkashaTensor(AkashaOps.transpose(K.data, K.rows, K.cols), [K.cols, K.rows]));
+        // استخدام transpose بعد التأكد من وجود الدالة
+        const kT = new AkashaTensor(AkashaOps.transpose(K.data, K.rows, K.cols), [K.cols, K.rows]);
+        let scores = Q.matmul(kT);
+        
         const scale = Math.sqrt(this.d_model);
         for (let i = 0; i < scores.data.length; i++) scores.data[i] /= scale;
 
-        // Stable Softmax Deployment
         const outData = AkashaOps.stableSoftmax(scores.data, scores.rows, scores.cols);
         const weights = new AkashaTensor(outData, scores.shape, [scores], "softmax");
-        
-        const sample = Array.from(weights.data.subarray(0, 5)).map(v => v.toFixed(3));
-        console.log(`   [📊 LOG]: Stable Weights: [${sample.join(', ')}]`);
         
         return weights.matmul(V);
     }
 
     forwardFFN(X) {
-        console.log("🧠 [FFN]: Processing Deep Representations...");
         const h = X.matmul(this.params.get("W_ff1"));
         const reluData = new Float32Array(h.data.length);
         for (let i = 0; i < h.data.length; i++) reluData[i] = Math.max(0, h.data[i]);
@@ -180,22 +180,19 @@ export class AkashaBrain {
     }
 
     applyGradients() {
-        console.log(`🔧 [OPTIMIZER]: Global Update Step ${this.stepCount + 1}`);
         for (const [name, param] of this.params.entries()) {
             let gNorm = 0;
             for (let i = 0; i < param.data.length; i++) {
                 param.data[i] -= this.learningRate * param.grad[i];
                 gNorm += Math.abs(param.grad[i]);
             }
-            console.log(`   └─ ${name.padEnd(6)} | Intensity: ${(gNorm/param.data.length).toExponential(4)}`);
+            console.log(`🔧 [Step ${this.stepCount}] ${name}: Grad Intensity ${(gNorm/param.data.length).toExponential(2)}`);
         }
         this.stepCount++;
     }
 
     async process(message, userId) {
-        console.log(`\n🔥 [AKASHA-LOG]: Processing Sequence...`);
         const tokens = message.split('').map(c => c.charCodeAt(0) % this.vSize);
-        
         try {
             for (const p of this.params.values()) p.grad.fill(0);
 
@@ -204,21 +201,16 @@ export class AkashaBrain {
             tokens.forEach((t, i) => embData.set(W_emb.data.subarray(t*this.d_model, (t+1)*this.d_model), i*this.d_model));
             let X = new AkashaTensor(embData, [tokens.length, this.d_model], [W_emb], "embedding");
 
-            // 🔥 الدورة الكاملة: Norm -> Attn -> Norm -> FFN
-            console.log("🟦 [FORWARD]: Sub-layer 1 (Attention)");
             X = X.add(this.attention(X.layerNorm())); 
-            
-            console.log("🟦 [FORWARD]: Sub-layer 2 (FFN)");
             X = X.add(this.forwardFFN(X.layerNorm()));
 
             const logits = X.matmul(this.params.get("W_out"));
             logits.backward();
             this.applyGradients();
 
-            return { text: `أكاشا: تم تثبيت الأساسات. الآن الـ Backprop يحسب تدرجات مصفوفة الكلمات بدقة، والـ Attention مستقر.` };
-
+            return { text: "أكاشا: تم إصلاح الخطأ البرمجي بنجاح. المحرك يعمل الآن بكامل طاقته في المرحلة الثالثة." };
         } catch (e) {
-            console.error("🚨 [CRITICAL]:", e.stack);
+            console.error("🚨 Error:", e.message);
             throw e;
         }
     }
