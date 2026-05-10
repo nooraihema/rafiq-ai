@@ -1,7 +1,7 @@
 /**
- * 🌌 AKASHA-TENSOR: SOVEREIGN-GPT v26.0
- * المرحلة: تحصين النظام ضد الانهيار (NaN Neutralization)
- * التعديل: منع الـ NaN من التسلل للـ Gradients + نظام مراقبة فائق الكثافة.
+ * 🌌 AKASHA-TENSOR: SOVEREIGN-GPT v27.0
+ * المرحلة: إحياء الانتباه والوعي المكاني (Spatial Revival)
+ * التعديل: إضافة Positional Encoding + تنظيف الـ Attention Scaling.
  */
 
 class AkashaTensor {
@@ -15,45 +15,35 @@ class AkashaTensor {
     get rows() { return this.shape[0]; }
     get cols() { return this.shape[1]; }
 
-    // 🔥 الحل الجذري لمنع NaN
     backward(grad = null) {
         if (!grad) {
-            console.log(`   [📉 BACK-START]: Originating grad for ${this.op || 'Output'}`);
             this.grad.fill(1.0);
         } else {
             for (let i = 0; i < this.grad.length; i++) {
                 let g = grad[i];
-                // فحص الأمان: لو القيمة مش رقم أو مالانهاية، خليها صفر فوراً
                 if (!isFinite(g) || isNaN(g)) g = 0;
-                // Clipping (قص التدرج) لمنع الانفجار
-                this.grad[i] += Math.max(-1, Math.min(1, g));
+                this.grad[i] += Math.max(-1, Math.min(1, g)); // Clip gradients
             }
         }
         if (this.creators.length > 0) this.dispatch();
     }
 
     dispatch() {
-        console.log(`      [⚡ DISPATCH]: Propagating from ${this.op.toUpperCase()}`);
         if (this.op === "matmul") {
             const [A, B] = this.creators;
             const dA = AkashaOps.matMul(this.grad, AkashaOps.transpose(B.data, B.rows, B.cols), this.rows, this.cols, A.cols);
             const dB = AkashaOps.matMul(AkashaOps.transpose(A.data, A.rows, A.cols), this.grad, A.cols, A.rows, this.cols);
             A.backward(dA); B.backward(dB);
         } else if (["softmax", "add", "embedding", "positional", "layernorm"].includes(this.op)) {
-            this.creators.forEach((c, idx) => {
-                console.log(`         -> Driving grad to creator[${idx}] (${this.op})`);
-                c.backward(this.grad);
-            });
+            this.creators.forEach(c => c.backward(this.grad));
         }
     }
 
     matmul(B) { 
-        console.log(`      [OP: MATMUL]: Input A(${this.shape}) x Input B(${B.shape})`);
         return new AkashaTensor(AkashaOps.matMul(this.data, B.data, this.rows, this.cols, B.cols), [this.rows, B.cols], [this, B], "matmul"); 
     }
     
     add(B) {
-        console.log(`      [OP: ADD]: Summing ${this.data.length} elements (Residual/PE)`);
         const res = new Float32Array(this.data.length);
         for(let i=0; i<res.length; i++) res[i] = this.data[i] + B.data[i];
         return new AkashaTensor(res, this.shape, [this, B], "add");
@@ -62,7 +52,6 @@ class AkashaTensor {
     transpose() { return new AkashaTensor(AkashaOps.transpose(this.data, this.rows, this.cols), [this.cols, this.rows], [this], "transpose"); }
     
     softmax() {
-        console.log(`      [OP: SOFTMAX]: Activating Probabilities [Rows: ${this.rows}]`);
         const out = new Float32Array(this.data.length);
         for (let r = 0; r < this.rows; r++) {
             const start = r * this.cols;
@@ -105,120 +94,128 @@ export class AkashaBrain {
         this.d_model = d_model;
         this.vSize = vocabSize;
         this.params = new Map();
-        this.learningRate = 0.0005; // تقليل الـ LR قليلاً لزيادة الاستقرار
+        this.learningRate = 0.001;
         this.stepCount = 0;
 
-        console.log("🛠️ [INIT]: Akasha Tensor Fortress v26.0 - Ready for training.");
+        console.log("🛠️ [INIT]: Akasha Spatial Engine v27.0");
         ["W_emb", "W_q", "W_k", "W_v", "W_out"].forEach(name => {
             const shape = name === "W_emb" ? [vocabSize, d_model] : (name === "W_out" ? [d_model, vocabSize] : [d_model, d_model]);
             const data = new Float32Array(shape[0] * shape[1]);
             for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.sqrt(2 / (shape[0] + shape[1]));
             this.params.set(name, new AkashaTensor(data, shape, [], "param"));
-            console.log(`   [PARAM]: ${name} [${shape}] Created.`);
         });
     }
 
-    async init() { return true; }
+    // ✅ الخطوة 1: إضافة الوعي بالترتيب (Positional Encoding)
+    positionalEncoding(seqLen, d_model) {
+        console.log(`🧭 [PE]: Generating Sin/Cos waves for ${seqLen} tokens.`);
+        const pe = new Float32Array(seqLen * d_model);
+        for (let pos = 0; pos < seqLen; pos++) {
+            for (let i = 0; i < d_model; i++) {
+                const angle = pos / Math.pow(10000, (2 * Math.floor(i / 2)) / d_model);
+                pe[pos * d_model + i] = (i % 2 === 0) ? Math.sin(angle) : Math.cos(angle);
+            }
+        }
+        return new AkashaTensor(pe, [seqLen, d_model], [], "positional");
+    }
 
     zeroGrad() {
-        console.log("🧹 [LOG]: Zeroing Gradients for all parameters...");
-        for (const [name, param] of this.params.entries()) {
-            param.grad.fill(0);
-        }
+        for (const p of this.params.values()) p.grad.fill(0);
     }
 
     applyGradients() {
-        console.log("🔧 [OPTIMIZER]: Starting Weight Update...");
+        console.log("🔧 [OPTIMIZER]: Updating Weights...");
         for (const [name, param] of this.params.entries()) {
             const data = param.data;
             const grad = param.grad;
-            let gradNorm = 0;
-            let nanCount = 0;
-
+            let gNorm = 0;
             for (let i = 0; i < data.length; i++) {
-                let g = grad[i];
-                if (isNaN(g)) { nanCount++; g = 0; }
-                data[i] -= this.learningRate * g;
-                gradNorm += Math.abs(g);
+                data[i] -= this.learningRate * grad[i];
+                gNorm += Math.abs(grad[i]);
             }
-            
-            const avgGrad = gradNorm / data.length;
-            console.log(`   [UPDATE]: ${name} | AvgGrad: ${avgGrad.toExponential(4)} | NaNs Blocked: ${nanCount}`);
+            console.log(`   └─ ${name} | Mean Grad: ${(gNorm/data.length).toExponential(3)}`);
         }
         this.stepCount++;
-        console.log(`✅ [LOG]: Training Step ${this.stepCount} Completed Successfully.`);
     }
 
-    // --- Helper Blocks ---
     layerNorm(X, eps = 1e-5) {
-        console.log("🧪 [OP: LNORM]: Normalizing activations...");
         const out = new Float32Array(X.data.length);
         for (let r = 0; r < X.rows; r++) {
             const start = r * X.cols;
-            let m = 0; for (let i = 0; i < X.cols; i++) m += X.data[start + i];
-            m /= X.cols;
-            let v = 0; for (let i = 0; i < X.cols; i++) { const d = X.data[start+i]-m; v += d*d; }
-            v /= X.cols;
+            let m = 0; for (let i = 0; i < X.cols; i++) m += X.data[start + i]; m /= X.cols;
+            let v = 0; for (let i = 0; i < X.cols; i++) { const d = X.data[start+i]-m; v += d*d; } v /= X.cols;
             const s = Math.sqrt(v + eps);
             for (let i = 0; i < X.cols; i++) out[start + i] = (X.data[start + i] - m) / s;
         }
         return new AkashaTensor(out, X.shape, [X], "layernorm");
     }
 
+    // ✅ الخطوة 2: إصلاح الـ Attention وتجنب الـ Collapse
     attention(X) {
-        console.log("🔍 [OP: ATTN]: Contextualizing...");
+        console.log("🔍 [ATTN]: Head scanning...");
         const Q = X.matmul(this.params.get("W_q"));
         const K = X.matmul(this.params.get("W_k"));
         const V = X.matmul(this.params.get("W_v"));
-        let sc = Q.matmul(K.transpose());
-        const d = Math.sqrt(this.d_model);
-        for (let i = 0; i < sc.data.length; i++) sc.data[i] /= d;
-
-        for (let r = 0; r < sc.rows; r++) {
-            for (let c = r + 1; c < sc.cols; c++) sc.data[r * sc.cols + c] = -1e9;
+        
+        let scores = Q.matmul(K.transpose());
+        
+        // Scaled Dot-Product Attention: القسمة على جذر d_model فقط
+        const scale = Math.sqrt(this.d_model);
+        console.log(`      [LOG]: Attention Scale Factor: ${scale.toFixed(4)}`);
+        for (let i = 0; i < scores.data.length; i++) {
+            scores.data[i] /= scale;
         }
 
-        const w = sc.softmax();
-        const ir = Math.min(5, w.rows - 1);
-        const sample = Array.from(w.data.subarray(ir * w.cols, ir * w.cols + 5)).map(v => v.toFixed(3));
-        console.log(`      [📊 ATTN-LOG]: Sample Weights Row ${ir}: [${sample.join(',')}]`);
-        return w.matmul(V);
+        // Causal Mask
+        for (let r = 0; r < scores.rows; r++) {
+            for (let c = r + 1; c < scores.cols; c++) scores.data[r * scores.cols + c] = -1e9;
+        }
+
+        const weights = scores.softmax();
+        
+        // Log لمراقبة التباين (Discrimination)
+        const ir = Math.min(5, weights.rows - 1);
+        const sample = Array.from(weights.data.subarray(ir * weights.cols, ir * weights.cols + Math.min(10, weights.cols))).map(v => v.toFixed(4));
+        console.log(`   [📊 ATTN-REVIVAL]: Row ${ir} Distribution: [${sample.join(', ')}]`);
+        
+        return weights.matmul(V);
     }
 
     async process(message, userId) {
-        console.log(`\n🔥 [SYSTEM-LOG]: --- START STEP ${this.stepCount + 1} ---`);
+        console.log(`\n🚀 [AKASHA]: Starting Step ${this.stepCount + 1}`);
         const tokens = message.split('').map(c => c.charCodeAt(0) % this.vSize);
-        console.log(`🔢 [TOKENS]: Sequence length: ${tokens.length}`);
         
         try {
             this.zeroGrad();
 
-            // 1. Forward
-            console.log("🟦 [FORWARD]: Computing graph...");
+            // 1. Embedding
             const W_emb = this.params.get("W_emb");
-            const emb = new Float32Array(tokens.length * this.d_model);
-            tokens.forEach((t, i) => emb.set(W_emb.data.subarray(t*this.d_model, (t+1)*this.d_model), i*this.d_model));
-            let X = new AkashaTensor(emb, [tokens.length, this.d_model], [W_emb], "embedding");
-            
+            const embData = new Float32Array(tokens.length * this.d_model);
+            tokens.forEach((t, i) => embData.set(W_emb.data.subarray(t*this.d_model, (t+1)*this.d_model), i*this.d_model));
+            let X = new AkashaTensor(embData, [tokens.length, this.d_model], [W_emb], "embedding");
+            console.log("   ✅ Embedding Matrix Prepared.");
+
+            // ✅ الخطوة 3: دمج المعلومات المكانية (PE)
+            const PE = this.positionalEncoding(tokens.length, this.d_model);
+            X = X.add(PE);
+            console.log("   ✅ Spatial Intelligence Injected.");
+
+            // 2. Transformer Block
             X = X.add(this.attention(X)); 
             X = this.layerNorm(X);
 
+            // 3. Output
             const logits = X.matmul(this.params.get("W_out"));
-            console.log("✅ [FORWARD]: Logits generated.");
-
-            // 2. Backward
-            console.log("🟨 [BACKWARD]: Initiating grad flow...");
+            
+            // 4. Learning
             logits.backward();
-            console.log("✅ [BACKWARD]: Gradients calculated.");
-
-            // 3. Update
             this.applyGradients();
 
-            return { text: `أكاشا: الخطوة ${this.stepCount} تمت. تم صد الـ NaN بنجاح ونظام المراقبة يعمل.` };
+            return { text: `أكاشا: الخطوة ${this.stepCount} تمت بنجاح. لقد قمت بحقن الوعي المكاني (Positional Encoding) وإعادة معايرة الـ Attention.` };
 
         } catch (e) {
-            console.error("🚨 [CRITICAL FAILURE]:", e);
+            console.error("🚨 [ERROR]:", e);
             throw e;
         }
     }
-                                                                }
+}
