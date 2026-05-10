@@ -1,7 +1,7 @@
 /**
- * 🌌 AKASHA-TENSOR: SOVEREIGN-GPT v22.0
- * المرحلة: موازنة توزيع الانتباه (Attention Temperature Stabilization)
- * الهدف: تحويل الانتباه من [1, 0, 0] إلى توزيع احتمالي مرن وسياقي.
+ * 🌌 AKASHA-TENSOR: SOVEREIGN-GPT v23.0
+ * المرحلة: مكافحة انهيار الانتباه (Attention Anti-Collapse)
+ * التقنيات: Clipping + Temperature + Mask-Aware Scaling
  */
 
 class AkashaTensor {
@@ -36,12 +36,12 @@ class AkashaTensor {
     }
 
     matmul(B) { 
-        console.log(`   [MATH]: MatMul -> A(${this.shape}) x B(${B.shape})`);
+        console.log(`   [MATH]: MatMul -> (${this.shape}) x (${B.shape})`);
         return new AkashaTensor(AkashaOps.matMul(this.data, B.data, this.rows, this.cols, B.cols), [this.rows, B.cols], [this, B], "matmul"); 
     }
     
     add(B) {
-        console.log(`   [MATH]: Add -> Merging flows (Size: ${this.data.length})`);
+        console.log(`   [MATH]: Add -> Residual Sum (${this.data.length})`);
         const res = new Float32Array(this.data.length);
         for(let i=0; i<res.length; i++) res[i] = this.data[i] + B.data[i];
         return new AkashaTensor(res, this.shape, [this, B], "add");
@@ -50,7 +50,7 @@ class AkashaTensor {
     transpose() { return new AkashaTensor(AkashaOps.transpose(this.data, this.rows, this.cols), [this.cols, this.rows], [this], "transpose"); }
     
     softmax() {
-        console.log(`   [MATH]: Softmax -> Row-wise Probability Normalization`);
+        console.log(`   [MATH]: Softmax -> Row-wise Probability Mapping`);
         const out = new Float32Array(this.data.length);
         for (let r = 0; r < this.rows; r++) {
             const start = r * this.cols;
@@ -93,40 +93,37 @@ export class AkashaBrain {
         this.vSize = vocabSize;
         this.params = new Map();
         
-        console.log("🛠️ [INIT]: Deep Brain Calibration Started...");
+        console.log("🛠️ [INIT]: Akasha Deep Initialization...");
         ["W_emb", "W_q", "W_k", "W_v", "W_out"].forEach(name => {
             const shape = name === "W_emb" ? [vocabSize, d_model] : (name === "W_out" ? [d_model, vocabSize] : [d_model, d_model]);
-            const size = shape[0] * shape[1];
-            const data = new Float32Array(size);
-            for (let i = 0; i < size; i++) {
+            const data = new Float32Array(shape[0] * shape[1]);
+            for (let i = 0; i < data.length; i++) {
                 data[i] = (Math.random() * 2 - 1) * Math.sqrt(2 / (shape[0] + shape[1]));
             }
             this.params.set(name, new AkashaTensor(data, shape, [], "param"));
-            console.log(`   └─ ✅ Matrix ${name} Loaded | Stats: Size ${size}`);
+            console.log(`   └─ ✅ Matrix ${name} Ready.`);
         });
     }
 
     async init() { 
-        console.log("⚡ [HANDSHAKE]: Neural Engine Online.");
+        console.log("⚡ [HANDSHAKE]: System Alive.");
         return true; 
     }
 
     layerNorm(X, eps = 1e-5) {
-        console.log("🧪 [LAYER-NORM]: Stabilizing Signal Distribution...");
+        console.log("🧪 [LAYER-NORM]: Equalizing distributions...");
         const out = new Float32Array(X.data.length);
         for (let r = 0; r < X.rows; r++) {
             const start = r * X.cols;
             let mean = 0;
             for (let i = 0; i < X.cols; i++) mean += X.data[start + i];
             mean /= X.cols;
-
             let variance = 0;
             for (let i = 0; i < X.cols; i++) {
                 const diff = X.data[start + i] - mean;
                 variance += diff * diff;
             }
             variance /= X.cols;
-
             const denom = Math.sqrt(variance + eps);
             for (let i = 0; i < X.cols; i++) out[start + i] = (X.data[start + i] - mean) / denom;
         }
@@ -134,7 +131,7 @@ export class AkashaBrain {
     }
 
     createPositionalEncoding(seqLen) {
-        console.log(`🧭 [PE]: Weaving space-time fabric for ${seqLen} tokens.`);
+        console.log(`🧭 [POS_ENC]: Injecting space coordinates for ${seqLen} positions.`);
         const data = new Float32Array(seqLen * this.d_model);
         for (let pos = 0; pos < seqLen; pos++) {
             for (let i = 0; i < this.d_model; i += 2) {
@@ -147,29 +144,41 @@ export class AkashaBrain {
     }
 
     attention(X) {
-        console.log("🔍 [ATTENTION]: Scanning context dependencies...");
+        console.log("🔍 [ATTENTION]: Starting Deep Context Analysis...");
         const Q = X.matmul(this.params.get("W_q"));
         const K = X.matmul(this.params.get("W_k"));
         const V = X.matmul(this.params.get("W_v"));
         
         let scores = Q.matmul(K.transpose());
 
-        // 1. Transformer Scaling
+        // 1. Scale by sqrt(d_model)
         const scale = Math.sqrt(this.d_model);
+        console.log(`   [DEBUG]: Scaling scores by ${scale.toFixed(4)}`);
         for (let i = 0; i < scores.data.length; i++) scores.data[i] /= scale;
 
-        // 🌡️ 2. Temperature Scaling (التعديل الجديد لموازنة الانتباه)
-        const temperature = 2.5;
-        console.log(`   [🌡️ TEMP]: Softening Attention with Factor: ${temperature}`);
-        for (let i = 0; i < scores.data.length; i++) scores.data[i] /= temperature;
+        // 2. Score Clipping (تحديد القيم لمنع الانفجار)
+        console.log("   [DEBUG]: Clipping scores to [-10, 10] range...");
+        for (let i = 0; i < scores.data.length; i++) {
+            if (scores.data[i] > 10) scores.data[i] = 10;
+            if (scores.data[i] < -10) scores.data[i] = -10;
+        }
 
-        // 3. Sharpening Logic
-        const mean = scores.data.reduce((a, b) => a + b, 0) / scores.data.length;
-        for (let i = 0; i < scores.data.length; i++) scores.data[i] -= mean * 0.1;
+        // 3. Apply Causal Mask
+        console.log("   [DEBUG]: Applying Causal Mask...");
+        for (let r = 0; r < scores.rows; r++) {
+            for (let c = r + 1; c < scores.cols; c++) {
+                scores.data[r * scores.cols + c] = -1e9;
+            }
+        }
 
-        // 4. Causal Masking
-        for(let r=0; r<scores.rows; r++) 
-            for(let c=r+1; c<scores.cols; c++) scores.data[r * scores.cols + c] = -1e9;
+        // 4. Temperature Scaling (توزيع الاهتمام)
+        const temperature = 5.0;
+        console.log(`   [🌡️ TEMP]: Softening scores with T=${temperature}`);
+        for (let i = 0; i < scores.data.length; i++) {
+            if (scores.data[i] > -1e8) {
+                scores.data[i] /= temperature;
+            }
+        }
 
         const weights = scores.softmax();
         console.log(`   [📊 LOG]: Weights Spread (Sample 5): [${weights.data.subarray(0, 5).map(n => n.toFixed(4)).join(', ')}]`);
@@ -178,9 +187,9 @@ export class AkashaBrain {
     }
 
     async process(message, userId) {
-        console.log(`\n🚀 [AKASHA-CORE]: Processing request from ${userId}`);
+        console.log(`\n🚀 [AKASHA-CORE]: Input detected from ${userId}`);
         const tokens = message.split('').map(c => c.charCodeAt(0) % this.vSize);
-        console.log(`🔢 [TOKEN-DECK]: Sequence length: ${tokens.length}`);
+        console.log(`🔢 [SEQ]: ${tokens.length} tokens.`);
         
         try {
             // STEP 1: Embedding
@@ -188,35 +197,36 @@ export class AkashaBrain {
             const embData = new Float32Array(tokens.length * this.d_model);
             tokens.forEach((id, i) => embData.set(W_emb.data.subarray(id * this.d_model, (id+1) * this.d_model), i * this.d_model));
             let X = new AkashaTensor(embData, [tokens.length, this.d_model], [W_emb], "embedding");
-            console.log("📍 [STEP 1/5]: Semantic Vectors Generated.");
+            console.log("✅ [STEP 1/5]: Embedding Layer: OK");
 
             // STEP 2: Positional Encoding
             const PE = this.createPositionalEncoding(tokens.length);
             X = X.add(PE);
-            console.log("📍 [STEP 2/5]: Positional Maps Injected.");
+            console.log("✅ [STEP 2/5]: Positional Encoding: OK");
 
-            // STEP 3: Attention Block + LayerNorm
+            // STEP 3: Transformer Block
+            console.log("🧠 [BLOCK]: Attention Processing...");
             const attnOut = this.attention(X);
             X = X.add(attnOut); 
             X = this.layerNorm(X);
-            console.log("📍 [STEP 3/5]: Attention stabilized by LayerNorm.");
+            console.log("✅ [STEP 3/5]: Attention Block + LayerNorm: OK");
 
-            // STEP 4: Logits Projection
+            // STEP 4: Output
             const logits = X.matmul(this.params.get("W_out"));
             const finalLogits = logits.data.subarray(logits.data.length - this.vSize);
             
             let maxVal = -Infinity;
             for(let i=0; i<finalLogits.length; i++) if(finalLogits[i] > maxVal) maxVal = finalLogits[i];
-            console.log(`📍 [STEP 4/5]: Prediction Logits Ready. Max Signal: ${maxVal.toFixed(6)}`);
+            console.log(`✅ [4/5]: Output Logits: OK (Signal: ${maxVal.toFixed(6)})`);
 
-            // STEP 5: Backward Pass
+            // STEP 5: Backprop
             logits.backward();
-            console.log("📍 [STEP 5/5]: Gradients successfully propagated.");
+            console.log("✅ [5/5]: Gradients distributed: OK");
 
-            return { text: "أكاشا: تم ضبط درجة حرارة الانتباه. الآن أستطيع موازنة اهتمامي بين جميع أجزاء النص." };
+            return { text: "أكاشا: تم ترويض انفعالات المصفوفات. الانتباه الآن يعمل بتوزيع احتمالي متزن." };
 
         } catch (e) {
-            console.error("🚨 [CRITICAL ERROR]:", e);
+            console.error("🚨 [CRASH]:", e);
             throw e;
         }
     }
