@@ -1,7 +1,7 @@
 /**
- * 🌌 AKASHA-TENSOR: SOVEREIGN-GPT v21.0
- * المرحلة الثانية (معمارياً): Layer Normalization
- * الهدف: تثبيت التوزيع الإحصائي ومنع الـ Gradient Collapse.
+ * 🌌 AKASHA-TENSOR: SOVEREIGN-GPT v22.0
+ * المرحلة: موازنة توزيع الانتباه (Attention Temperature Stabilization)
+ * الهدف: تحويل الانتباه من [1, 0, 0] إلى توزيع احتمالي مرن وسياقي.
  */
 
 class AkashaTensor {
@@ -36,12 +36,12 @@ class AkashaTensor {
     }
 
     matmul(B) { 
-        console.log(`   [MATH]: MatMul -> (${this.shape}) x (${B.shape})`);
+        console.log(`   [MATH]: MatMul -> A(${this.shape}) x B(${B.shape})`);
         return new AkashaTensor(AkashaOps.matMul(this.data, B.data, this.rows, this.cols, B.cols), [this.rows, B.cols], [this, B], "matmul"); 
     }
     
     add(B) {
-        console.log(`   [MATH]: Add -> Tensors of length ${this.data.length}`);
+        console.log(`   [MATH]: Add -> Merging flows (Size: ${this.data.length})`);
         const res = new Float32Array(this.data.length);
         for(let i=0; i<res.length; i++) res[i] = this.data[i] + B.data[i];
         return new AkashaTensor(res, this.shape, [this, B], "add");
@@ -50,7 +50,7 @@ class AkashaTensor {
     transpose() { return new AkashaTensor(AkashaOps.transpose(this.data, this.rows, this.cols), [this.cols, this.rows], [this], "transpose"); }
     
     softmax() {
-        console.log(`   [MATH]: Softmax -> Row-wise Probability Mapping`);
+        console.log(`   [MATH]: Softmax -> Row-wise Probability Normalization`);
         const out = new Float32Array(this.data.length);
         for (let r = 0; r < this.rows; r++) {
             const start = r * this.cols;
@@ -93,7 +93,7 @@ export class AkashaBrain {
         this.vSize = vocabSize;
         this.params = new Map();
         
-        console.log("🛠️ [INIT]: Calibrating Akasha Core...");
+        console.log("🛠️ [INIT]: Deep Brain Calibration Started...");
         ["W_emb", "W_q", "W_k", "W_v", "W_out"].forEach(name => {
             const shape = name === "W_emb" ? [vocabSize, d_model] : (name === "W_out" ? [d_model, vocabSize] : [d_model, d_model]);
             const size = shape[0] * shape[1];
@@ -102,18 +102,17 @@ export class AkashaBrain {
                 data[i] = (Math.random() * 2 - 1) * Math.sqrt(2 / (shape[0] + shape[1]));
             }
             this.params.set(name, new AkashaTensor(data, shape, [], "param"));
-            console.log(`   └─ ✅ Param: ${name} Ready.`);
+            console.log(`   └─ ✅ Matrix ${name} Loaded | Stats: Size ${size}`);
         });
     }
 
     async init() { 
-        console.log("⚡ [HANDSHAKE]: System Bridge Established.");
+        console.log("⚡ [HANDSHAKE]: Neural Engine Online.");
         return true; 
     }
 
-    // 🧪 المرحلة الثانية: Layer Normalization
     layerNorm(X, eps = 1e-5) {
-        console.log("🧪 [LAYER NORM]: Normalizing activations for stability...");
+        console.log("🧪 [LAYER-NORM]: Stabilizing Signal Distribution...");
         const out = new Float32Array(X.data.length);
         for (let r = 0; r < X.rows; r++) {
             const start = r * X.cols;
@@ -129,16 +128,13 @@ export class AkashaBrain {
             variance /= X.cols;
 
             const denom = Math.sqrt(variance + eps);
-            for (let i = 0; i < X.cols; i++) {
-                out[start + i] = (X.data[start + i] - mean) / denom;
-            }
-            if (r === 0) console.log(`   └─ [DEBUG]: Row 0 Stats -> Mean: ${mean.toFixed(6)}, Var: ${variance.toFixed(6)}`);
+            for (let i = 0; i < X.cols; i++) out[start + i] = (X.data[start + i] - mean) / denom;
         }
         return new AkashaTensor(out, X.shape, [X], "layernorm");
     }
 
     createPositionalEncoding(seqLen) {
-        console.log(`🧭 [POS_ENC]: Mapping ${seqLen} slots in space-time...`);
+        console.log(`🧭 [PE]: Weaving space-time fabric for ${seqLen} tokens.`);
         const data = new Float32Array(seqLen * this.d_model);
         for (let pos = 0; pos < seqLen; pos++) {
             for (let i = 0; i < this.d_model; i += 2) {
@@ -151,78 +147,76 @@ export class AkashaBrain {
     }
 
     attention(X) {
-        console.log("🔍 [ATTENTION]: Firing Neural Synapses...");
+        console.log("🔍 [ATTENTION]: Scanning context dependencies...");
         const Q = X.matmul(this.params.get("W_q"));
         const K = X.matmul(this.params.get("W_k"));
         const V = X.matmul(this.params.get("W_v"));
         
         let scores = Q.matmul(K.transpose());
+
+        // 1. Transformer Scaling
         const scale = Math.sqrt(this.d_model);
         for (let i = 0; i < scores.data.length; i++) scores.data[i] /= scale;
 
+        // 🌡️ 2. Temperature Scaling (التعديل الجديد لموازنة الانتباه)
+        const temperature = 2.5;
+        console.log(`   [🌡️ TEMP]: Softening Attention with Factor: ${temperature}`);
+        for (let i = 0; i < scores.data.length; i++) scores.data[i] /= temperature;
+
+        // 3. Sharpening Logic
         const mean = scores.data.reduce((a, b) => a + b, 0) / scores.data.length;
         for (let i = 0; i < scores.data.length; i++) scores.data[i] -= mean * 0.1;
 
+        // 4. Causal Masking
         for(let r=0; r<scores.rows; r++) 
             for(let c=r+1; c<scores.cols; c++) scores.data[r * scores.cols + c] = -1e9;
 
         const weights = scores.softmax();
-        console.log(`   [DEBUG]: Attention Weights (First 3): ${weights.data.subarray(0, 3).join(', ')}`);
+        console.log(`   [📊 LOG]: Weights Spread (Sample 5): [${weights.data.subarray(0, 5).map(n => n.toFixed(4)).join(', ')}]`);
+        
         return weights.matmul(V);
     }
 
     async process(message, userId) {
-        console.log(`\n🚀 [AKASHA-ENTRY]: User: ${userId} | Message: "${message}"`);
+        console.log(`\n🚀 [AKASHA-CORE]: Processing request from ${userId}`);
         const tokens = message.split('').map(c => c.charCodeAt(0) % this.vSize);
-        console.log(`🔢 [TOKENS]: Sequence length: ${tokens.length}`);
+        console.log(`🔢 [TOKEN-DECK]: Sequence length: ${tokens.length}`);
         
         try {
-            // 1. Embedding
+            // STEP 1: Embedding
             const W_emb = this.params.get("W_emb");
             const embData = new Float32Array(tokens.length * this.d_model);
-            tokens.forEach((id, i) => {
-                embData.set(W_emb.data.subarray(id * this.d_model, (id+1) * this.d_model), i * this.d_model);
-            });
+            tokens.forEach((id, i) => embData.set(W_emb.data.subarray(id * this.d_model, (id+1) * this.d_model), i * this.d_model));
             let X = new AkashaTensor(embData, [tokens.length, this.d_model], [W_emb], "embedding");
-            console.log("✅ [1/5] Embedding Layer: DONE");
+            console.log("📍 [STEP 1/5]: Semantic Vectors Generated.");
 
-            // 2. Positional Encoding
+            // STEP 2: Positional Encoding
             const PE = this.createPositionalEncoding(tokens.length);
             X = X.add(PE);
-            console.log("✅ [2/5] Positional Encoding: DONE");
+            console.log("📍 [STEP 2/5]: Positional Maps Injected.");
 
-            // 3. Transformer Block (Attention + LayerNorm)
-            console.log("🧠 [TRANSFORMER BLOCK]: Processing...");
+            // STEP 3: Attention Block + LayerNorm
             const attnOut = this.attention(X);
-            X = X.add(attnOut); // Residual connection
-            
-            // تطبيق الـ LayerNorm بعد الـ Attention
+            X = X.add(attnOut); 
             X = this.layerNorm(X);
-            console.log("✅ [3/5] Attention & LayerNorm: DONE");
+            console.log("📍 [STEP 3/5]: Attention stabilized by LayerNorm.");
 
-            // 4. Projection (Logits)
-            console.log("🏁 [PROJECTION]: Finalizing output...");
+            // STEP 4: Logits Projection
             const logits = X.matmul(this.params.get("W_out"));
             const finalLogits = logits.data.subarray(logits.data.length - this.vSize);
             
             let maxVal = -Infinity;
-            let predToken = 0;
-            for(let i=0; i<finalLogits.length; i++) {
-                if(finalLogits[i] > maxVal) {
-                    maxVal = finalLogits[i];
-                    predToken = i;
-                }
-            }
-            console.log(`✅ [4/5] Logits calculated. Max Signal: ${maxVal.toFixed(6)}`);
+            for(let i=0; i<finalLogits.length; i++) if(finalLogits[i] > maxVal) maxVal = finalLogits[i];
+            console.log(`📍 [STEP 4/5]: Prediction Logits Ready. Max Signal: ${maxVal.toFixed(6)}`);
 
-            // 5. Backprop
+            // STEP 5: Backward Pass
             logits.backward();
-            console.log("✅ [5/5] Gradient Update: DONE");
+            console.log("📍 [STEP 5/5]: Gradients successfully propagated.");
 
-            return { text: "أكاشا: تم تفعيل Layer Normalization. الإحصائيات الآن تحت السيطرة الكاملة." };
+            return { text: "أكاشا: تم ضبط درجة حرارة الانتباه. الآن أستطيع موازنة اهتمامي بين جميع أجزاء النص." };
 
         } catch (e) {
-            console.error("🚨 [CRASH REPORT]:", e);
+            console.error("🚨 [CRITICAL ERROR]:", e);
             throw e;
         }
     }
