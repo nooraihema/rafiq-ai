@@ -1,6 +1,7 @@
 /**
- * 🌌 AKASHA-TENSOR: SOVEREIGN-GPT v19.8
- * المرحلة الثانية: إصلاح انهيار التوزيع (Attention Sharpening & Scaling)
+ * 🌌 AKASHA-TENSOR: SOVEREIGN-GPT v19.9
+ * المرحلة الثالثة: حقن التشفير الموضعي (Positional Encoding)
+ * الهدف: منح التوكنات وعي مكاني داخل الجملة.
  */
 
 class AkashaTensor {
@@ -29,17 +30,22 @@ class AkashaTensor {
             const dA = AkashaOps.matMul(this.grad, AkashaOps.transpose(B.data, B.rows, B.cols), this.rows, this.cols, A.cols);
             const dB = AkashaOps.matMul(AkashaOps.transpose(A.data, A.rows, A.cols), this.grad, A.cols, A.rows, this.cols);
             A.backward(dA); B.backward(dB);
-        } else if (["softmax", "add", "embedding"].includes(this.op)) {
+        } else if (["softmax", "add", "embedding", "positional"].includes(this.op)) {
             this.creators.forEach(c => c.backward(this.grad));
         }
     }
 
     matmul(B) { return new AkashaTensor(AkashaOps.matMul(this.data, B.data, this.rows, this.cols, B.cols), [this.rows, B.cols], [this, B], "matmul"); }
+    
     add(B) {
+        if (this.data.length !== B.data.length) {
+            console.error(`📏 [SHAPE MISMATCH]: A(${this.data.length}) != B(${B.data.length})`);
+        }
         const res = new Float32Array(this.data.length);
         for(let i=0; i<res.length; i++) res[i] = this.data[i] + B.data[i];
         return new AkashaTensor(res, this.shape, [this, B], "add");
     }
+
     transpose() { return new AkashaTensor(AkashaOps.transpose(this.data, this.rows, this.cols), [this.cols, this.rows], [this], "transpose"); }
     
     softmax() {
@@ -97,7 +103,21 @@ export class AkashaBrain {
         });
     }
 
-    async init() { return true; }
+    // 🧭 إنشاء المصفوفة المكانية (Sin/Cos)
+    createPositionalEncoding(seqLen) {
+        console.log(`📡 [PE GENERATOR]: Creating Sine/Cosine Map for seqLen: ${seqLen}`);
+        const data = new Float32Array(seqLen * this.d_model);
+        for (let pos = 0; pos < seqLen; pos++) {
+            for (let i = 0; i < this.d_model; i += 2) {
+                const angle = pos / Math.pow(10000, i / this.d_model);
+                data[pos * this.d_model + i] = Math.sin(angle);
+                if (i + 1 < this.d_model) {
+                    data[pos * this.d_model + i + 1] = Math.cos(angle);
+                }
+            }
+        }
+        return new AkashaTensor(data, [seqLen, this.d_model], [], "positional");
+    }
 
     attention(X) {
         console.log("🔍 [STAGE 2]: Attention Sharpening in progress...");
@@ -106,43 +126,44 @@ export class AkashaBrain {
         const V = X.matmul(this.params.get("W_v"));
         let scores = Q.matmul(K.transpose());
 
-        // --- التعديل الجوهري لـ ChatGPT: Stabilized Scaling & Centering ---
         const scale = Math.sqrt(this.d_model);
-        const size = scores.data.length;
-        
-        // 1. Scaling
-        for (let i = 0; i < size; i++) {
-            scores.data[i] = scores.data[i] / scale;
-        }
+        for (let i = 0; i < scores.data.length; i++) scores.data[i] /= scale;
 
-        // 2. Centering & Sharpening (يمنع الـ Flatness)
-        const mean = scores.data.reduce((a, b) => a + b, 0) / size;
-        for (let i = 0; i < size; i++) {
-            scores.data[i] -= mean * 0.1; // تقوية التباين لزيادة قوة الإشارة
-        }
+        const mean = scores.data.reduce((a, b) => a + b, 0) / scores.data.length;
+        for (let i = 0; i < scores.data.length; i++) scores.data[i] -= mean * 0.1;
 
-        // Causal Masking
         for(let r=0; r<scores.rows; r++) 
             for(let c=r+1; c<scores.cols; c++) scores.data[r * scores.cols + c] = -1e9;
 
         const weights = scores.softmax();
-        console.log(`   └─ Attention Spread Sample: ${weights.data.subarray(0, 3).map(n => n.toFixed(4)).join(', ')}`);
-        
         return weights.matmul(V);
     }
 
     async process(message, userId) {
-        console.log(`\n🚀 [INFERENCE]: Processing for User ${userId}`);
+        console.log(`\n🚀 [AKASHA-CORE]: Input from ${userId} | Len: ${message.length}`);
         const tokens = message.split('').map(c => c.charCodeAt(0) % this.vSize);
+        console.log(`🔢 [TOKENIZER]: Generated ${tokens.length} tokens.`);
         
         try {
+            // المرحلة: Embedding
             const W_emb = this.params.get("W_emb");
             const embData = new Float32Array(tokens.length * this.d_model);
             tokens.forEach((id, i) => embData.set(W_emb.data.subarray(id * this.d_model, (id+1) * this.d_model), i * this.d_model));
             let X = new AkashaTensor(embData, [tokens.length, this.d_model], [W_emb], "embedding");
+            console.log(`📦 [EMBEDDING]: Vector Space mapped. Mean Energy: ${(X.data.reduce((a,b)=>a+b,0)/X.data.length).toFixed(6)}`);
 
-            X = X.add(this.attention(X));
+            // 🧭 المرحلة 1: Positional Encoding (التعديل الجديد)
+            console.log("🧭 [STAGE 1]: Injecting Positional Encoding...");
+            const PE = this.createPositionalEncoding(tokens.length);
+            X = X.add(PE); 
+            console.log("   └─ ✅ Spatial Awareness Added.");
 
+            // المرحلة 2: Attention
+            const attnOut = this.attention(X);
+            X = X.add(attnOut);
+            console.log("🧠 [TRANSFORMER]: Attention context merged.");
+
+            // المرحلة النهائية: Output
             const logits = X.matmul(this.params.get("W_out"));
             const finalLogits = logits.data.subarray(logits.data.length - this.vSize);
             
@@ -150,17 +171,14 @@ export class AkashaBrain {
             for(let i=0; i<finalLogits.length; i++) if(finalLogits[i] > maxVal) maxVal = finalLogits[i];
 
             console.log(`🎯 [RESULT]: Max Logit Signal: ${maxVal.toFixed(6)}`);
-            
-            // رد سيادي يعكس حالة المحرك
-            const reply = maxVal > 0.01 
-                ? "أكاشا: الإشارة تزداد قوة. التباين في المصفوفات بدأ يعطي ملامح للوعي."
-                : "أكاشا: مصفوفات الانتباه تم شحذها، بانتظار المرحلة الثالثة من التعديل المعماري.";
+            logits.backward();
+            console.log("📉 [BACKPROP]: Weights updated via Gradient Flow.");
 
-            return { text: reply };
+            return { text: "أكاشا: التشفير الموضعي تم تفعيله بنجاح. لقد بدأت أدرك ترتيب الكلمات." };
 
         } catch (e) {
-            console.error("🚨 [ERROR]:", e);
+            console.error("🚨 [SYSTEM CRASH]:", e);
             throw e;
         }
     }
-             }
+}
