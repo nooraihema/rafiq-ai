@@ -1,6 +1,6 @@
 /**
- * 🌌 AKASHA-TENSOR: SOVEREIGN-GPT v19.91
- * إصلاح خطأ الـ Engine Failure + الحفاظ على الـ Positional Encoding
+ * 🌌 AKASHA-TENSOR: SOVEREIGN-GPT v20.0
+ * إصلاح الـ Logs بالكامل: مراقبة كل نبضة داخل العقل.
  */
 
 class AkashaTensor {
@@ -34,9 +34,13 @@ class AkashaTensor {
         }
     }
 
-    matmul(B) { return new AkashaTensor(AkashaOps.matMul(this.data, B.data, this.rows, this.cols, B.cols), [this.rows, B.cols], [this, B], "matmul"); }
+    matmul(B) { 
+        console.log(`   [OP: MATMUL]: A(${this.shape}) x B(${B.shape})`);
+        return new AkashaTensor(AkashaOps.matMul(this.data, B.data, this.rows, this.cols, B.cols), [this.rows, B.cols], [this, B], "matmul"); 
+    }
     
     add(B) {
+        console.log(`   [OP: ADD]: Summing tensors of size ${this.data.length}`);
         const res = new Float32Array(this.data.length);
         for(let i=0; i<res.length; i++) res[i] = this.data[i] + B.data[i];
         return new AkashaTensor(res, this.shape, [this, B], "add");
@@ -45,6 +49,7 @@ class AkashaTensor {
     transpose() { return new AkashaTensor(AkashaOps.transpose(this.data, this.rows, this.cols), [this.cols, this.rows], [this], "transpose"); }
     
     softmax() {
+        console.log(`   [OP: SOFTMAX]: Activating row-wise normalization`);
         const out = new Float32Array(this.data.length);
         for (let r = 0; r < this.rows; r++) {
             const start = r * this.cols;
@@ -87,7 +92,7 @@ export class AkashaBrain {
         this.vSize = vocabSize;
         this.params = new Map();
         
-        console.log("🛠️ [SYSTEM INIT]: Xavier-Light Weight Calibration...");
+        console.log("🛠️ [SYSTEM INIT]: Starting Deep Weight Calibration...");
         ["W_emb", "W_q", "W_k", "W_v", "W_out"].forEach(name => {
             const shape = name === "W_emb" ? [vocabSize, d_model] : (name === "W_out" ? [d_model, vocabSize] : [d_model, d_model]);
             const size = shape[0] * shape[1];
@@ -96,16 +101,17 @@ export class AkashaBrain {
                 data[i] = (Math.random() * 2 - 1) * Math.sqrt(2 / (shape[0] + shape[1]));
             }
             this.params.set(name, new AkashaTensor(data, shape, [], "param"));
+            console.log(`   └─ ✅ [READY]: ${name} Initialized | Shape: ${shape}`);
         });
     }
 
-    // ✅ تم إعادة الدالة لإصلاح الـ 500 Error في Vercel
     async init() { 
-        console.log("⚡ [ENGINE READY]: Brain Instance Initialized.");
+        console.log("⚡ [ENGINE READY]: Brain handshake complete.");
         return true; 
     }
 
     createPositionalEncoding(seqLen) {
+        console.log(`🧭 [PE]: Generating spatial map for ${seqLen} positions...`);
         const data = new Float32Array(seqLen * this.d_model);
         for (let pos = 0; pos < seqLen; pos++) {
             for (let i = 0; i < this.d_model; i += 2) {
@@ -118,10 +124,13 @@ export class AkashaBrain {
     }
 
     attention(X) {
+        console.log("🔍 [ATTENTION]: Starting Self-Attention Mechanism...");
         const Q = X.matmul(this.params.get("W_q"));
         const K = X.matmul(this.params.get("W_k"));
         const V = X.matmul(this.params.get("W_v"));
+        
         let scores = Q.matmul(K.transpose());
+        console.log(`   [DEBUG]: Raw Attention Scores Min/Max: ${Math.min(...scores.data).toFixed(4)} / ${Math.max(...scores.data).toFixed(4)}`);
 
         const scale = Math.sqrt(this.d_model);
         for (let i = 0; i < scores.data.length; i++) scores.data[i] /= scale;
@@ -129,44 +138,63 @@ export class AkashaBrain {
         const mean = scores.data.reduce((a, b) => a + b, 0) / scores.data.length;
         for (let i = 0; i < scores.data.length; i++) scores.data[i] -= mean * 0.1;
 
+        // Causal Masking
+        console.log("   [DEBUG]: Applying Causal Mask (Look-ahead protection)");
         for(let r=0; r<scores.rows; r++) 
             for(let c=r+1; c<scores.cols; c++) scores.data[r * scores.cols + c] = -1e9;
 
         const weights = scores.softmax();
+        console.log(`   [DEBUG]: Attention Weights Sample: [${weights.data.subarray(0, 5).join(', ')}]`);
+        
         return weights.matmul(V);
     }
 
     async process(message, userId) {
-        console.log(`\n🚀 [AKASHA-PROCESS]: User ${userId} | Message: ${message}`);
+        console.log(`\n🚀 [AKASHA-INFRA]: Request from ${userId} | Content: "${message}"`);
         const tokens = message.split('').map(c => c.charCodeAt(0) % this.vSize);
+        console.log(`🔢 [TOKENIZER]: ${tokens.length} tokens created.`);
         
         try {
             const W_emb = this.params.get("W_emb");
             const embData = new Float32Array(tokens.length * this.d_model);
-            tokens.forEach((id, i) => embData.set(W_emb.data.subarray(id * this.d_model, (id+1) * this.d_model), i * this.d_model));
+            
+            console.log("📦 [EMBEDDING]: Fetching vector slices...");
+            tokens.forEach((id, i) => {
+                embData.set(W_emb.data.subarray(id * this.d_model, (id+1) * this.d_model), i * this.d_model);
+            });
             let X = new AkashaTensor(embData, [tokens.length, this.d_model], [W_emb], "embedding");
 
-            // 🧭 Stage 1: Positional Encoding
-            console.log("🧭 [LOG]: Injecting Positional Encoding...");
+            console.log("🧭 [POS_ENC]: Injecting space-time coordinates...");
             const PE = this.createPositionalEncoding(tokens.length);
             X = X.add(PE);
 
-            // Attention Block
-            X = X.add(this.attention(X));
+            console.log("🧠 [TRANSFORMER]: Processing through block 1...");
+            const attnOut = this.attention(X);
+            X = X.add(attnOut);
 
+            console.log("🏁 [OUTPUT]: Projecting to Vocabulary space...");
             const logits = X.matmul(this.params.get("W_out"));
             const finalLogits = logits.data.subarray(logits.data.length - this.vSize);
             
             let maxVal = -Infinity;
-            for(let i=0; i<finalLogits.length; i++) if(finalLogits[i] > maxVal) maxVal = finalLogits[i];
+            let predToken = 0;
+            for(let i=0; i<finalLogits.length; i++) {
+                if(finalLogits[i] > maxVal) {
+                    maxVal = finalLogits[i];
+                    predToken = i;
+                }
+            }
 
-            console.log(`🎯 [LOG]: Max Logit Signal: ${maxVal.toFixed(6)}`);
+            console.log(`🎯 [STATS]: Max Logit: ${maxVal.toFixed(6)} | Predicted Token ID: ${predToken}`);
+            
+            console.log("📉 [BACKWARD]: Starting gradient flow...");
             logits.backward();
+            console.log("✅ [FLOW COMPLETE]: Gradients distributed.");
 
-            return { text: "أكاشا: تم إصلاح خطأ التشغيل. النظام الآن مستقر ويعمل بذكاء مكاني." };
+            return { text: "أكاشا: اللوجات التفصيلية مفعلة الآن. يمكنك رؤية كل نبضة في المصفوفات." };
 
         } catch (e) {
-            console.error("🚨 [INTERNAL ERROR]:", e);
+            console.error("🚨 [SYSTEM CRASH]:", e);
             throw e;
         }
     }
