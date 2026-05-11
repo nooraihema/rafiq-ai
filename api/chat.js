@@ -15,15 +15,13 @@ export default async function handler(req, res) {
             return res.status(400).json({ error: "No message provided" });
         }
 
-        // 1. تشغيل المحرك (Initialization)
+        // 1. تشغيل المحرك فوراً (بدون استدعاء init الخارجى)
         if (!brainInstance) {
             brainInstance = new AkashaBrain();
-            // هنا يمكنك إضافة أي عمليات تحميل ضرورية للنواة
-            await brainInstance.init(); 
+            console.log("🌌 [SYSTEM]: Akasha Core Sparked - Version 35.0");
         }
 
         // 2. المعالجة المباشرة (Direct Processing)
-        // نرسل الرسالة للنواة وننتظر الرد السيادي
         const result = await brainInstance.process(rawMessage, userId);
 
         // 3. الرد النهائي للواجهة
