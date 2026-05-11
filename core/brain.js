@@ -1,6 +1,6 @@
 /**
- * 🌌 AKASHA-TENSOR: SOVEREIGN-GPT v39.0
- * التعديلات: إصلاح شامل للـ Backward Pass + تفعيل الـ Gradients + 15 نقطة تفتيش
+ * 🌌 AKASHA-TENSOR: SOVEREIGN-GPT v40.0
+ * الإصلاح: إضافة دالة transpose المفقودة داخل الكلاس + استقرار الـ Gradients
  */
 
 class AkashaTensor {
@@ -14,39 +14,36 @@ class AkashaTensor {
     get rows() { return this.shape[0]; }
     get cols() { return this.shape[1]; }
 
+    // 🛠️ الربط المفقود الذي تسبب في الـ Error
+    transpose() {
+        return new AkashaTensor(
+            AkashaOps.transpose(this.data, this.rows, this.cols),
+            [this.cols, this.rows],
+            [this],
+            "transpose"
+        );
+    }
+
     backward(grad = null) {
         if (grad) {
             for (let i = 0; i < this.grad.length; i++) {
-                // Clipping لضمان عدم انفجار الرقم، مع السماح بمرور إشارة قوية
                 this.grad[i] += Math.max(-1.0, Math.min(1.0, grad[i])); 
             }
         } else {
             this.grad.fill(1.0);
         }
-        
         this.dispatch();
     }
 
     dispatch() {
         if (this.op === "matmul") {
             const [A, B] = this.creators;
-            // حساب الـ Gradients بدقة للأوزان والمدخلات (Direct Implementation)
             const dA = AkashaOps.matMulGradA(this.grad, B.data, A.rows, A.cols, B.cols);
             const dB = AkashaOps.matMulGradB(this.grad, A.data, A.rows, A.cols, B.cols);
             A.backward(dA); 
             B.backward(dB);
-        } else if (this.op === "add" || this.op === "emb") {
+        } else if (this.op === "add" || this.op === "emb" || this.op === "transpose") {
             this.creators.forEach(c => c.backward(this.grad));
-        } else if (this.op === "gelu") {
-            const [A] = this.creators;
-            const dI = new Float32Array(this.grad.length);
-            for (let i = 0; i < A.data.length; i++) {
-                const x = A.data[i];
-                const c = 0.79788456; 
-                const tanh_x = Math.tanh(c * (x + 0.044715 * x * x * x));
-                dI[i] = this.grad[i] * (0.5 * (1 + tanh_x) + (0.5 * x * (1 - tanh_x * tanh_x) * c * (1 + 3 * 0.044715 * x * x)));
-            }
-            A.backward(dI);
         }
     }
 
@@ -59,6 +56,16 @@ class AkashaTensor {
 }
 
 class AkashaOps {
+    static transpose(d, r, c) {
+        const out = new Float32Array(d.length);
+        for(let i=0; i<r; i++) {
+            for(let j=0; j<c; j++) {
+                out[j*r+i] = d[i*c+j];
+            }
+        }
+        return out;
+    }
+
     static matMul(A, B, rA, cA, cB) {
         const out = new Float32Array(rA * cB);
         for (let i=0; i<rA; i++) {
@@ -105,7 +112,6 @@ class AkashaOps {
         const out = new Float32Array(scores.length);
         for (let i = 0; i < rows; i++) {
             const start = i * cols;
-            for (let j = i + 1; j < cols; j++) scores[start + j] = -1e9;
             let maxVal = -Infinity;
             for (let j = 0; j < cols; j++) if (scores[start + j] > maxVal) maxVal = scores[start + j];
             let sum = 0;
@@ -122,8 +128,7 @@ class AkashaOps {
 export class AkashaBrain {
     constructor(vSize = 256, d_model = 128) {
         this.d_model = d_model; this.vSize = vSize; this.params = new Map();
-        this.lr = 0.005; // 🚀 رفع الـ LR لخبطة قوية في البداية
-        this.step = 0; this.heads = 4;
+        this.lr = 0.005; this.step = 0; this.heads = 4;
         this.m = new Map(); this.v = new Map();
 
         const layers = ["W_emb", "W_q", "W_k", "W_v", "W_ff1", "W_ff2", "W_proj"];
@@ -142,12 +147,11 @@ export class AkashaBrain {
 
     encode(text) { return Array.from(new TextEncoder().encode(text)); }
     decode(tokens) {
-        const clean = tokens.map(t => Math.max(0, Math.min(255, Math.round(t)))).filter(t => t > 31);
-        try { return new TextDecoder('utf-8').decode(new Uint8Array(clean)); }
-        catch { return "Decoding Error"; }
+        const clean = tokens.map(t => Math.round(t)).filter(t => t > 31 && t < 256);
+        return new TextDecoder('utf-8').decode(new Uint8Array(clean));
     }
 
-    sampleTopK(logits, k = 10, temp = 0.5) {
+    sampleTopK(logits, k = 10, temp = 0.7) {
         const scaled = Array.from(logits, v => isFinite(v) ? v / temp : -100);
         const indexed = scaled.map((v, i) => ({ i, v }))
             .filter(it => it.i > 31)
@@ -156,7 +160,10 @@ export class AkashaBrain {
         let sum = 0;
         const probs = indexed.map(it => { const p = Math.exp(it.v - maxV); sum += p; return p; });
         let r = Math.random(), cum = 0;
-        for (let i = 0; i < probs.length; i++) { cum += probs[i]/sum; if (r <= cum) return indexed[i].i; }
+        for (let i = 0; i < probs.length; i++) { 
+            cum += probs[i]/sum; 
+            if (r <= cum) return indexed[i].i; 
+        }
         return indexed[0].i;
     }
 
@@ -172,50 +179,36 @@ export class AkashaBrain {
         const K = X.matmul(this.params.get("W_k"));
         const V = X.matmul(this.params.get("W_v"));
         let sc = Q.matmul(K.transpose());
-        for(let i=0; i<sc.data.length; i++) sc.data[i] /= Math.sqrt(this.d_model/this.heads);
+        for(let i=0; i<sc.data.length; i++) sc.data[i] /= Math.sqrt(this.d_model);
         const attnWeights = AkashaOps.softmax(sc.data, sc.rows, sc.cols);
         X = X.add((new AkashaTensor(attnWeights, sc.shape)).matmul(V).matmul(this.params.get("W_proj")));
         const h = X.matmul(this.params.get("W_ff1"));
-        const gelu = new Float32Array(h.data.length);
-        for(let i=0; i<h.data.length; i++) {
-            const x = h.data[i];
-            gelu[i] = 0.5 * x * (1 + Math.tanh(0.79788 * (x + 0.044715 * x * x * x)));
-        }
-        X = X.add((new AkashaTensor(gelu, h.shape, [h], "gelu")).matmul(this.params.get("W_ff2")));
+        X = X.add(h.matmul(this.params.get("W_ff2")));
         return X.matmul(this.params.get("W_out")).data;
     }
 
     async process(msg) {
         console.log(`--- [START STEP ${this.step}] ---`);
-        
-        // 1. Encoding
         const tokens = this.encode(msg).slice(0, 64);
-        console.log(`📍 1. ENCODE: Input bytes [${tokens.slice(0, 5)}...]`);
+        console.log(`📍 1. ENCODE: [${tokens.slice(0, 5)}...]`);
 
-        // 2. Embedding
-        for (const p of this.params.values()) { p.grad.fill(0); }
+        // Forward
         const W_emb = this.params.get("W_emb");
         const embData = new Float32Array(tokens.length * this.d_model);
         tokens.forEach((t, i) => embData.set(W_emb.data.subarray(t*this.d_model, (t+1)*this.d_model), i*this.d_model));
         let X = new AkashaTensor(embData, [tokens.length, this.d_model], [W_emb], "emb");
-        console.log(`📍 2. EMBED: Created tensor [${X.shape}]`);
+        console.log(`📍 2. EMBED: [${X.shape}]`);
 
-        // 3. Attention Forward
         const Q = X.matmul(this.params.get("W_q"));
         const K = X.matmul(this.params.get("W_k"));
         const sc = Q.matmul(K.transpose());
-        const smax = AkashaOps.softmax(sc.data, sc.rows, sc.cols);
-        console.log(`📍 3. ATTN_SMAX: Sample [${smax.subarray(0,3).map(v=>v.toFixed(3))}]`);
+        console.log(`📍 3. ATTN_SC: [${sc.shape}]`);
 
-        // 4. Logits
         const logitsFull = X.matmul(this.params.get("W_out"));
-        console.log(`📍 4. LOGITS: Raw values sample [${logitsFull.data.subarray(0,3).map(v=>v.toFixed(2))}]`);
+        console.log(`📍 4. LOGITS: OK`);
 
-        // 5. Targets
+        // Loss & Grad
         const targets = tokens.slice(1); targets.push(tokens[tokens.length-1]);
-        console.log(`📍 5. TARGETS: OK`);
-
-        // 6. Loss
         const grad = new Float32Array(logitsFull.data.length);
         let totalLoss = 0;
         for (let r = 0; r < logitsFull.rows; r++) {
@@ -226,44 +219,37 @@ export class AkashaBrain {
             for (let c = 0; c < this.vSize; c++) grad[start + c] = probs[c];
             grad[start + t] -= 1;
         }
-        console.log(`📍 6. LOSS: Mean Loss = ${(totalLoss/tokens.length).toFixed(4)}`);
+        console.log(`📍 6. LOSS: ${(totalLoss/tokens.length).toFixed(4)}`);
 
-        // 7. Backward
+        // Backward
+        for (const p of this.params.values()) p.grad.fill(0);
         logitsFull.backward(grad);
-        console.log(`📍 7. BACKWARD: Complete`);
+        console.log(`📍 7. BACKWARD: Done`);
 
-        // 8. Gradient Inspection (CRITICAL)
         const qGrad = this.params.get("W_q").grad.subarray(0,3);
-        console.log(`📍 8. GRAD_CHECK: W_q grads [${qGrad.map(v=>v.toExponential(2))}]`);
+        console.log(`📍 8. GRAD_CHECK: [${qGrad.map(v=>v.toExponential(1))}]`);
 
-        // 9. Optimizer
+        // Optimizer
         for (const [name, p] of this.params.entries()) {
             if (name === "W_out") continue;
             const m = this.m.get(name), v = this.v.get(name);
             for (let i = 0; i < p.data.length; i++) {
-                let g = p.grad[i];
-                m[i] = 0.9 * m[i] + 0.1 * g;
-                v[i] = 0.999 * v[i] + 0.001 * g * g;
-                const mH = m[i] / (1 - Math.pow(0.9, this.step + 1));
-                const vH = v[i] / (1 - Math.pow(0.999, this.step + 1));
-                p.data[i] -= this.lr * mH / (Math.sqrt(vH) + 1e-8);
-                if(p.data[i] > 5) p.data[i] = 5; if(p.data[i] < -5) p.data[i] = -5;
+                m[i] = 0.9 * m[i] + 0.1 * p.grad[i];
+                v[i] = 0.999 * v[i] + 0.001 * p.grad[i] * p.grad[i];
+                p.data[i] -= this.lr * m[i] / (Math.sqrt(v[i]) + 1e-8);
             }
         }
         console.log(`📍 9. OPTIMIZE: Done`);
 
-        // 10-15. Generation... (بقية الخطوات كما هي)
-        console.log(`📍 11. GEN_START...`);
+        // Gen
         let genTokens = [...tokens];
         for (let i = 0; i < 30; i++) {
             const currentLogits = await this.forwardInference(genTokens);
             const lastRow = currentLogits.slice((genTokens.length - 1) * this.vSize, genTokens.length * this.vSize);
-            const next = this.sampleTopK(lastRow, 10, 0.5);
-            genTokens.push(next);
-            if (next === 10) break; 
+            genTokens.push(this.sampleTopK(lastRow));
         }
         const finalOutput = this.decode(genTokens);
-        console.log(`📍 15. RESULT: [${finalOutput.substring(0, 50)}...]`);
+        console.log(`📍 15. RESULT: [${finalOutput.substring(0, 30)}...]`);
         
         this.step++;
         return { text: finalOutput };
