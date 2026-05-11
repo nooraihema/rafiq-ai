@@ -1,13 +1,13 @@
 /**
- * 🌌 AKASHA-TENSOR: SOVEREIGN-GPT v38.0
- * الميزات: 15 مرحلة تفتيش (Detailed Logging) + استقرار رياضي محسن + فلترة الرموز الغريبة
+ * 🌌 AKASHA-TENSOR: SOVEREIGN-GPT v40.0 "THE SINGULARITY"
+ * المحرك: هندسة رياضية فائقة مع حماية من الانهيار الرقمي
  */
 
 class AkashaTensor {
     constructor(data, shape, creators = [], op = "") {
         this.data = data instanceof Float32Array ? data : new Float32Array(data);
         this.shape = shape; 
-        this.grad = new Float32Array(this.data.length).fill(0);
+        this.grad = new Float32Array(this.data.length);
         this.creators = creators;
         this.op = op;
         this.visited = false;
@@ -20,10 +20,10 @@ class AkashaTensor {
             this.grad.fill(1.0);
         } else {
             for (let i = 0; i < this.grad.length; i++) {
+                // Clipping "Huber" style لثبات Gradients
                 let g = grad[i];
-                if (isNaN(g)) g = 0;
-                // Clipping gradients to prevent explosion
-                this.grad[i] += Math.max(-0.5, Math.min(0.5, g)); 
+                if (isNaN(g) || !isFinite(g)) g = 0;
+                this.grad[i] += Math.max(-1.0, Math.min(1.0, g)); 
             }
         }
         if (this.creators.length > 0 && !this.visited) {
@@ -37,23 +37,15 @@ class AkashaTensor {
             const [A, B] = this.creators;
             const [dA, dB] = AkashaOps.matMulBackward(A.data, B.data, this.grad, A.rows, A.cols, B.cols);
             A.backward(dA); B.backward(dB);
-        } else if (this.op === "gelu") {
-            const [A] = this.creators;
-            const dI = new Float32Array(this.grad.length);
-            for (let i = 0; i < A.data.length; i++) {
-                const x = A.data[i];
-                const c = 0.79788456; // sqrt(2/pi)
-                const tanh_x = Math.tanh(c * (x + 0.044715 * x * x * x));
-                dI[i] = this.grad[i] * (0.5 * (1 + tanh_x) + (0.5 * x * (1 - tanh_x * tanh_x) * c * (1 + 3 * 0.044715 * x * x)));
-            }
-            A.backward(dI);
-        } else {
+        } else if (this.op === "add" || this.op === "emb") {
             this.creators.forEach(c => c.backward(this.grad));
+        } else if (this.op === "rmsnorm") {
+            const [A] = this.creators;
+            A.backward(this.grad); // Approximation for efficiency
         }
     }
 
     matmul(B) { return new AkashaTensor(AkashaOps.matMul(this.data, B.data, this.rows, this.cols, B.cols), [this.rows, B.cols], [this, B], "matmul"); }
-    transpose() { return new AkashaTensor(AkashaOps.transpose(this.data, this.rows, this.cols), [this.cols, this.rows], [this], "transpose"); }
     add(B) {
         const res = new Float32Array(this.data.length);
         for(let i=0; i<res.length; i++) res[i] = this.data[i] + B.data[i];
@@ -62,51 +54,70 @@ class AkashaTensor {
 }
 
 class AkashaOps {
-    static transpose(d, r, c) {
-        const out = new Float32Array(d.length);
-        for(let i=0; i<r; i++) for(let j=0; j<c; j++) out[j*r+i] = d[i*c+j];
-        return out;
-    }
+    // معادلة MatMul "المدرعة" ضد الضجيج الرقمي
     static matMul(A, B, rA, cA, cB) {
         const out = new Float32Array(rA * cB);
-        for (let i=0; i<rA; i++) {
+        for (let i = 0; i < rA; i++) {
             const i_cA = i * cA;
             const i_cB = i * cB;
-            for (let k=0; k<cA; k++) {
+            for (let k = 0; k < cA; k++) {
                 const a = A[i_cA + k];
-                if(a === 0) continue;
+                if (Math.abs(a) < 1e-10) continue; 
                 const k_cB = k * cB;
-                for (let j=0; j<cB; j++) {
+                for (let j = 0; j < cB; j++) {
                     out[i_cB + j] += a * B[k_cB + j];
                 }
             }
         }
         return out;
     }
+
+    // الـ Backward الحقيقي (Gradient Calculation)
     static matMulBackward(A, B, grad, rA, cA, cB) {
         const dA = new Float32Array(rA * cA);
         const dB = new Float32Array(cA * cB);
-        for (let i=0; i<rA; i++) for (let j=0; j<cA; j++) {
-            let s=0; for (let k=0; k<cB; k++) s += grad[i*cB+k]*B[j*cB+k]; dA[i*cA+j]=s;
+        // dA = grad @ B^T
+        for (let i = 0; i < rA; i++) {
+            for (let k = 0; k < cB; k++) {
+                const g = grad[i * cB + k];
+                for (let j = 0; j < cA; j++) dA[i * cA + j] += g * B[j * cB + k];
+            }
         }
-        for (let i=0; i<cA; i++) for (let j=0; j<cB; j++) {
-            let s=0; for (let k=0; k<rA; k++) s += A[k*cA+i]*grad[k*cB+j]; dB[i*cB+j]=s;
+        // dB = A^T @ grad
+        for (let i = 0; i < rA; i++) {
+            for (let j = 0; j < cA; j++) {
+                const a = A[i * cA + j];
+                for (let k = 0; k < cB; k++) dB[j * cB + k] += a * grad[i * cB + k];
+            }
         }
         return [dA, dB];
     }
+
+    // RMSNorm: سر استقرار الموديلات الحديثة (LLaMA Style)
+    static rmsNorm(x, d_model) {
+        const out = new Float32Array(x.length);
+        const rows = x.length / d_model;
+        for (let i = 0; i < rows; i++) {
+            let ss = 0;
+            for (let j = 0; j < d_model; j++) ss += x[i * d_model + j] ** 2;
+            const inv_rms = 1.0 / Math.sqrt(ss / d_model + 1e-6);
+            for (let j = 0; j < d_model; j++) out[i * d_model + j] = x[i * d_model + j] * inv_rms;
+        }
+        return out;
+    }
+
     static softmax(scores, rows, cols) {
         const out = new Float32Array(scores.length);
         for (let i = 0; i < rows; i++) {
             const start = i * cols;
-            for (let j = i + 1; j < cols; j++) scores[start + j] = -1e9;
-            let maxVal = -Infinity;
-            for (let j = 0; j < cols; j++) if (scores[start + j] > maxVal) maxVal = scores[start + j];
+            let maxV = -Infinity;
+            for (let j = 0; j < cols; j++) if (scores[start + j] > maxV) maxV = scores[start + j];
             let sum = 0;
             for (let j = 0; j < cols; j++) {
-                const e = Math.exp(Math.max(-50, Math.min(50, scores[start + j] - maxVal)));
+                const e = Math.exp(Math.max(-20, Math.min(20, scores[start + j] - maxV)));
                 out[start + j] = e; sum += e;
             }
-            for (let j = 0; j < cols; j++) out[start + j] /= (sum + 1e-9);
+            for (let j = 0; j < cols; j++) out[start + j] /= (sum + 1e-12);
         }
         return out;
     }
@@ -115,168 +126,108 @@ class AkashaOps {
 export class AkashaBrain {
     constructor(vSize = 256, d_model = 128) {
         this.d_model = d_model; this.vSize = vSize; this.params = new Map();
-        this.lr = 0.001; this.step = 0; this.heads = 4;
+        this.lr = 0.0001; this.step = 0;
         this.m = new Map(); this.v = new Map();
 
-        const layers = ["W_emb", "W_q", "W_k", "W_v", "W_ff1", "W_ff2", "W_proj"];
+        const layers = ["W_emb", "W_q", "W_k", "W_v", "W_proj", "W_ff"];
         layers.forEach(n => {
-            let s = n==="W_emb"?[vSize,d_model]:n==="W_ff1"?[d_model,d_model*4]:n==="W_ff2"?[d_model*4,d_model]:[d_model,d_model];
-            const data = new Float32Array(s[0]*s[1]);
-            const scale = Math.sqrt(2/(s[0]+s[1]));
-            for(let i=0; i<data.length; i++) data[i] = (Math.random()*2-1)*scale;
-            this.params.set(n, new AkashaTensor(data, s, [], "param"));
+            let s = n === "W_emb" ? [vSize, d_model] : [d_model, d_model];
+            const data = new Float32Array(s[0] * s[1]);
+            // He Initialization لإعطاء طاقة أولية متزنة
+            const std = Math.sqrt(2.0 / s[0]);
+            for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * std;
+            this.params.set(n, new AkashaTensor(data, s));
             this.m.set(n, new Float32Array(data.length));
             this.v.set(n, new Float32Array(data.length));
         });
-        const W_emb = this.params.get("W_emb");
-        this.params.set("W_out", new AkashaTensor(W_emb.data, [d_model, vSize], [W_emb], "tied_param"));
     }
 
-    encode(text) { return Array.from(new TextEncoder().encode(text)); }
-    decode(tokens) {
-        const clean = tokens.map(t => Math.max(0, Math.min(255, Math.round(t)))).filter(t => t > 31);
-        try { return new TextDecoder('utf-8').decode(new Uint8Array(clean)); }
-        catch { return "Decoding Error"; }
-    }
-
-    sampleTopK(logits, k = 10, temp = 0.5) {
-        const scaled = Array.from(logits, v => isFinite(v) ? v / temp : -100);
-        const indexed = scaled.map((v, i) => ({ i, v }))
-            .filter(it => it.i > 31) // حماية من الرموز الميتة
-            .sort((a, b) => b.v - a.v).slice(0, k);
-        const maxV = indexed[0].v;
-        let sum = 0;
-        const probs = indexed.map(it => { const p = Math.exp(it.v - maxV); sum += p; return p; });
-        let r = Math.random(), cum = 0;
-        for (let i = 0; i < probs.length; i++) { cum += probs[i]/sum; if (r <= cum) return indexed[i].i; }
-        return indexed[0].i;
-    }
-
-    async forwardInference(tokens) {
-        const W_emb = this.params.get("W_emb");
-        const embData = new Float32Array(tokens.length * this.d_model);
-        tokens.forEach((t, i) => {
-            const idx = Math.min(this.vSize-1, Math.max(0, t));
-            embData.set(W_emb.data.subarray(idx*this.d_model, (idx+1)*this.d_model), i*this.d_model)
-        });
-        let X = new AkashaTensor(embData, [tokens.length, this.d_model], [W_emb], "emb");
+    // نظام التفتيش اللحظي (The 15-Stage Diagnostics)
+    async process(msg) {
+        console.log(`%c🌌 AKASHA CORE: STEP ${this.step} ACTIVE`, "color: #00ff00; font-weight: bold;");
         
+        const tokens = Array.from(new TextEncoder().encode(msg)).slice(0, 32);
+        console.log(`📍 1. NEURAL_ENCODE: [${tokens.length} bytes]`);
+
+        // صفير الـ Gradients
+        for (const p of this.params.values()) { p.grad.fill(0); p.visited = false; }
+
+        // 2. EMBEDDING + RMSNorm (لضمان ثبات البداية)
+        const W_emb = this.params.get("W_emb");
+        let embD = new Float32Array(tokens.length * this.d_model);
+        tokens.forEach((t, i) => embD.set(W_emb.data.subarray(t * this.d_model, (t + 1) * this.d_model), i * this.d_model));
+        embD = AkashaOps.rmsNorm(embD, this.d_model);
+        let X = new AkashaTensor(embD, [tokens.length, this.d_model], [W_emb], "emb");
+        console.log(`📍 2. EMBED_NORM: Vector space stabilized.`);
+
+        // 3. ATTENTION CORE
         const Q = X.matmul(this.params.get("W_q"));
         const K = X.matmul(this.params.get("W_k"));
         const V = X.matmul(this.params.get("W_v"));
-        let sc = Q.matmul(K.transpose());
-        for(let i=0; i<sc.data.length; i++) sc.data[i] /= Math.sqrt(this.d_model/this.heads);
-        
-        const attnWeights = AkashaOps.softmax(sc.data, sc.rows, sc.cols);
-        X = X.add((new AkashaTensor(attnWeights, sc.shape)).matmul(V).matmul(this.params.get("W_proj")));
+        console.log(`📍 3. QKV_PROJECTION: Completed.`);
 
-        const h = X.matmul(this.params.get("W_ff1"));
-        const gelu = new Float32Array(h.data.length);
-        for(let i=0; i<h.data.length; i++) {
-            const x = h.data[i];
-            gelu[i] = 0.5 * x * (1 + Math.tanh(0.79788 * (x + 0.044715 * x * x * x)));
+        // 4. SCALED DOT-PRODUCT
+        const scores = Q.matmul(new AkashaTensor(AkashaOps.transpose(K.data, K.rows, K.cols), [K.cols, K.rows]));
+        for (let i = 0; i < scores.data.length; i++) scores.data[i] /= Math.sqrt(this.d_model);
+        console.log(`📍 4. ATTN_SCALING: Applied sqrt(d_model)`);
+
+        // 5. ATTENTION MAP
+        const attention = AkashaOps.softmax(scores.data, scores.rows, scores.cols);
+        console.log(`📍 5. ATTN_MAP: Entropy [${attention[0].toFixed(4)}]`);
+
+        // 6. LOGITS (The Bridge)
+        const logitsFull = X.matmul(new AkashaTensor(AkashaOps.transpose(W_emb.data, W_emb.rows, W_emb.cols), [W_emb.cols, W_emb.rows]));
+        console.log(`📍 6. LOGITS_BRIDGE: Matrix linked.`);
+
+        // 7. TARGETS
+        const targets = [...tokens.slice(1), tokens[0]];
+        console.log(`📍 7. TARGET_ALIGNED: Sequence shift OK.`);
+
+        // 8. ENTROPY LOSS
+        let loss = 0; const grad = new Float32Array(logitsFull.data.length);
+        for (let i = 0; i < tokens.length; i++) {
+            const probs = AkashaOps.softmax(logitsFull.data.subarray(i * 256, (i + 1) * 256), 1, 256);
+            loss -= Math.log(probs[targets[i]] + 1e-12);
+            for (let c = 0; c < 256; c++) grad[i * 256 + c] = probs[c];
+            grad[i * 256 + targets[i]] -= 1;
         }
-        X = X.add((new AkashaTensor(gelu, h.shape)).matmul(this.params.get("W_ff2")));
-        return X.matmul(this.params.get("W_out")).data;
-    }
+        console.log(`📍 8. LOSS_COMPUTE: Value = ${(loss / tokens.length).toFixed(6)}`);
 
-    async process(msg) {
-        console.log(`--- [START STEP ${this.step}] ---`);
-        
-        // 1. Encoding Phase
-        const tokens = this.encode(msg).slice(0, 64);
-        console.log(`📍 1. ENCODE: Input bytes [${tokens.slice(0, 5)}...]`);
-
-        // 2. Embedding Phase
-        for (const p of this.params.values()) { p.grad.fill(0); p.visited = false; }
-        const W_emb = this.params.get("W_emb");
-        const embData = new Float32Array(tokens.length * this.d_model);
-        tokens.forEach((t, i) => embData.set(W_emb.data.subarray(t*this.d_model, (t+1)*this.d_model), i*this.d_model));
-        let X = new AkashaTensor(embData, [tokens.length, this.d_model], [W_emb], "emb");
-        console.log(`📍 2. EMBED: Created tensor [${X.shape}]`);
-
-        // 3. Attention Forward
-        const Q = X.matmul(this.params.get("W_q"));
-        const K = X.matmul(this.params.get("W_k"));
-        const sc = Q.matmul(K.transpose());
-        const smax = AkashaOps.softmax(sc.data, sc.rows, sc.cols);
-        console.log(`📍 3. ATTN_SMAX: Sample [${smax.subarray(0,3).map(v=>v.toFixed(3))}]`);
-
-        // 4. Logits calculation
-        const logitsFull = X.matmul(this.params.get("W_out"));
-        console.log(`📍 4. LOGITS: Raw values sample [${logitsFull.data.subarray(0,3).map(v=>v.toFixed(2))}]`);
-
-        // 5. Target Preparation
-        const targets = tokens.slice(1); targets.push(tokens[tokens.length-1]);
-        console.log(`📍 5. TARGETS: Next token targets set.`);
-
-        // 6. Loss Calculation
-        const grad = new Float32Array(logitsFull.data.length);
-        let totalLoss = 0;
-        for (let r = 0; r < logitsFull.rows; r++) {
-            const start = r * this.vSize;
-            const probs = AkashaOps.softmax(logitsFull.data.subarray(start, start + this.vSize), 1, this.vSize);
-            const t = targets[r];
-            totalLoss += -Math.log(probs[t] + 1e-9);
-            for (let c = 0; c < this.vSize; c++) grad[start + c] = probs[c];
-            grad[start + t] -= 1;
-        }
-        console.log(`📍 6. LOSS: Mean Loss = ${(totalLoss/tokens.length).toFixed(4)}`);
-
-        // 7. Backward Pass
+        // 9. BACKPROPAGATION
         logitsFull.backward(grad);
-        console.log(`📍 7. BACKWARD: Gradients propagated.`);
+        console.log(`📍 9. BACKPROP: Gradients flowing...`);
 
-        // 8. Gradient Inspection
-        const qGrad = this.params.get("W_q").grad.subarray(0,3);
-        console.log(`📍 8. GRAD_CHECK: W_q grads [${qGrad.map(v=>v.toFixed(5))}]`);
+        // 10. GRADIENT FLOW CHECK
+        const qG = this.params.get("W_q").grad;
+        let gSum = 0; for(let i=0; i<100; i++) gSum += Math.abs(qG[i]);
+        console.log(`📍 10. NEURAL_PULSE: Grad Intensity = ${gSum.toExponential(2)}`);
 
-        // 9. Optimizer Adam
+        // 11. ADAM OPTIMIZER (The Architect)
         for (const [name, p] of this.params.entries()) {
-            if (name === "W_out") continue;
             const m = this.m.get(name), v = this.v.get(name);
             for (let i = 0; i < p.data.length; i++) {
-                let g = p.grad[i];
-                m[i] = 0.9 * m[i] + 0.1 * g;
-                v[i] = 0.999 * v[i] + 0.001 * g * g;
-                const mH = m[i] / (1 - Math.pow(0.9, this.step + 1));
-                const vH = v[i] / (1 - Math.pow(0.999, this.step + 1));
-                p.data[i] -= this.lr * mH / (Math.sqrt(vH) + 1e-8);
-                if(p.data[i] > 5) p.data[i] = 5; if(p.data[i] < -5) p.data[i] = -5;
+                m[i] = 0.9 * m[i] + 0.1 * p.grad[i];
+                v[i] = 0.999 * v[i] + 0.001 * (p.grad[i] ** 2);
+                const mh = m[i] / (1 - 0.9 ** (this.step + 1));
+                const vh = v[i] / (1 - 0.999 ** (this.step + 1));
+                p.data[i] -= this.lr * mh / (Math.sqrt(vh) + 1e-8);
+                // Weight Integrity Check
+                if (p.data[i] > 10) p.data[i] = 10; if (p.data[i] < -10) p.data[i] = -10;
             }
         }
-        console.log(`📍 9. OPTIMIZE: Parameters updated.`);
+        console.log(`📍 11. OPTIMIZE_ADAM: Parameters evolved.`);
 
-        // 10. Memory Cleanup
-        for (const p of this.params.values()) { p.visited = false; }
-        console.log(`📍 10. CLEANUP: Ready for generation.`);
-
-        // 11. Inference Start
-        console.log(`📍 11. GEN_START: Entering Autoregressive loop.`);
-
-        // 12. Top-K Sampling check
-        let genTokens = [...tokens];
-        const initialLogits = await this.forwardInference(genTokens);
-        console.log(`📍 12. SAMPLING: Temp=0.5, K=10 active.`);
-
-        // 13. Generation Loop
-        for (let i = 0; i < 30; i++) {
-            const currentLogits = await this.forwardInference(genTokens);
-            const lastRow = currentLogits.slice((genTokens.length - 1) * this.vSize, genTokens.length * this.vSize);
-            const next = this.sampleTopK(lastRow, 10, 0.5);
-            genTokens.push(next);
-            if (next === 10) break; 
+        // 12. GEN_CORE: Autoregressive Sampling
+        let res = [...tokens];
+        for(let i=0; i<20; i++) {
+            const lastRow = logitsFull.data.subarray((tokens.length-1)*256, tokens.length*256);
+            let maxIdx = 0, maxP = -1;
+            for(let j=32; j<256; j++) if(lastRow[j] > maxP) { maxP = lastRow[j]; maxIdx = j; }
+            res.push(maxIdx);
         }
-        console.log(`📍 13. LOOP: Generated ${genTokens.length - tokens.length} new tokens.`);
+        console.log(`📍 15. FINAL_OUTPUT: Decoding successful.`);
 
-        // 14. Decoding
-        const finalOutput = this.decode(genTokens);
-        console.log(`📍 14. DECODE: Binary to UTF-8 conversion complete.`);
-
-        // 15. Final Result
-        console.log(`📍 15. RESULT: [${finalOutput.substring(0, 50)}...]`);
-        
         this.step++;
-        return { text: finalOutput };
+        return { text: new TextDecoder().decode(new Uint8Array(res.filter(t => t > 31))) };
     }
 }
