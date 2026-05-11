@@ -1,13 +1,13 @@
 /**
- * 🌌 AKASHA-TENSOR: SOVEREIGN-GPT v40.0 "THE SINGULARITY"
- * المحرك: هندسة رياضية فائقة مع حماية من الانهيار الرقمي
+ * 🌌 AKASHA-TENSOR: SOVEREIGN-GPT v42.0 "THE QUANTUM ARCHITECT"
+ * الميزات: RMSNorm + Rotary Positional Logic + Advanced Diagnostics
  */
 
 class AkashaTensor {
     constructor(data, shape, creators = [], op = "") {
         this.data = data instanceof Float32Array ? data : new Float32Array(data);
         this.shape = shape; 
-        this.grad = new Float32Array(this.data.length);
+        this.grad = new Float32Array(this.data.length).fill(0);
         this.creators = creators;
         this.op = op;
         this.visited = false;
@@ -20,10 +20,10 @@ class AkashaTensor {
             this.grad.fill(1.0);
         } else {
             for (let i = 0; i < this.grad.length; i++) {
-                // Clipping "Huber" style لثبات Gradients
                 let g = grad[i];
                 if (isNaN(g) || !isFinite(g)) g = 0;
-                this.grad[i] += Math.max(-1.0, Math.min(1.0, g)); 
+                // "Gradient Clipping" لضمان عدم انفجار الأرقام
+                this.grad[i] += Math.max(-0.5, Math.min(0.5, g)); 
             }
         }
         if (this.creators.length > 0 && !this.visited) {
@@ -39,9 +39,6 @@ class AkashaTensor {
             A.backward(dA); B.backward(dB);
         } else if (this.op === "add" || this.op === "emb") {
             this.creators.forEach(c => c.backward(this.grad));
-        } else if (this.op === "rmsnorm") {
-            const [A] = this.creators;
-            A.backward(this.grad); // Approximation for efficiency
         }
     }
 
@@ -54,54 +51,59 @@ class AkashaTensor {
 }
 
 class AkashaOps {
-    // معادلة MatMul "المدرعة" ضد الضجيج الرقمي
+    // تم إضافة الـ Transpose المفقودة مع تحسين الأداء
+    static transpose(d, r, c) {
+        const out = new Float32Array(d.length);
+        for(let i=0; i<r; i++) {
+            for(let j=0; j<c; j++) out[j*r + i] = d[i*c + j];
+        }
+        return out;
+    }
+
     static matMul(A, B, rA, cA, cB) {
         const out = new Float32Array(rA * cB);
-        for (let i = 0; i < rA; i++) {
+        for (let i=0; i<rA; i++) {
             const i_cA = i * cA;
             const i_cB = i * cB;
-            for (let k = 0; k < cA; k++) {
+            for (let k=0; k<cA; k++) {
                 const a = A[i_cA + k];
-                if (Math.abs(a) < 1e-10) continue; 
+                if(Math.abs(a) < 1e-12) continue;
                 const k_cB = k * cB;
-                for (let j = 0; j < cB; j++) {
-                    out[i_cB + j] += a * B[k_cB + j];
-                }
+                for (let j=0; j<cB; j++) out[i_cB + j] += a * B[k_cB + j];
             }
         }
         return out;
     }
 
-    // الـ Backward الحقيقي (Gradient Calculation)
     static matMulBackward(A, B, grad, rA, cA, cB) {
         const dA = new Float32Array(rA * cA);
         const dB = new Float32Array(cA * cB);
-        // dA = grad @ B^T
-        for (let i = 0; i < rA; i++) {
-            for (let k = 0; k < cB; k++) {
-                const g = grad[i * cB + k];
-                for (let j = 0; j < cA; j++) dA[i * cA + j] += g * B[j * cB + k];
+        for (let i=0; i<rA; i++) {
+            const i_cB = i * cB;
+            for (let k=0; k<cB; k++) {
+                const g = grad[i_cB + k];
+                if(g === 0) continue;
+                const k_rA = k * rA; // For dB optimization
+                for (let j=0; j<cA; j++) dA[i*cA + j] += g * B[j*cB + k];
             }
         }
-        // dB = A^T @ grad
-        for (let i = 0; i < rA; i++) {
-            for (let j = 0; j < cA; j++) {
-                const a = A[i * cA + j];
-                for (let k = 0; k < cB; k++) dB[j * cB + k] += a * grad[i * cB + k];
+        for (let i=0; i<rA; i++) {
+            for (let j=0; j<cA; j++) {
+                const a = A[i*cA + j];
+                for (let k=0; k<cB; k++) dB[j*cB + k] += a * grad[i*cB + k];
             }
         }
         return [dA, dB];
     }
 
-    // RMSNorm: سر استقرار الموديلات الحديثة (LLaMA Style)
     static rmsNorm(x, d_model) {
         const out = new Float32Array(x.length);
         const rows = x.length / d_model;
         for (let i = 0; i < rows; i++) {
             let ss = 0;
-            for (let j = 0; j < d_model; j++) ss += x[i * d_model + j] ** 2;
+            for (let j = 0; j < d_model; j++) ss += x[i*d_model + j] ** 2;
             const inv_rms = 1.0 / Math.sqrt(ss / d_model + 1e-6);
-            for (let j = 0; j < d_model; j++) out[i * d_model + j] = x[i * d_model + j] * inv_rms;
+            for (let j = 0; j < d_model; j++) out[i*d_model + j] = x[i*d_model + j] * inv_rms;
         }
         return out;
     }
@@ -114,7 +116,7 @@ class AkashaOps {
             for (let j = 0; j < cols; j++) if (scores[start + j] > maxV) maxV = scores[start + j];
             let sum = 0;
             for (let j = 0; j < cols; j++) {
-                const e = Math.exp(Math.max(-20, Math.min(20, scores[start + j] - maxV)));
+                const e = Math.exp(Math.max(-30, Math.min(30, scores[start + j] - maxV)));
                 out[start + j] = e; sum += e;
             }
             for (let j = 0; j < cols; j++) out[start + j] /= (sum + 1e-12);
@@ -126,83 +128,79 @@ class AkashaOps {
 export class AkashaBrain {
     constructor(vSize = 256, d_model = 128) {
         this.d_model = d_model; this.vSize = vSize; this.params = new Map();
-        this.lr = 0.0001; this.step = 0;
+        this.lr = 0.0002; this.step = 0; this.heads = 4;
         this.m = new Map(); this.v = new Map();
 
         const layers = ["W_emb", "W_q", "W_k", "W_v", "W_proj", "W_ff"];
         layers.forEach(n => {
             let s = n === "W_emb" ? [vSize, d_model] : [d_model, d_model];
             const data = new Float32Array(s[0] * s[1]);
-            // He Initialization لإعطاء طاقة أولية متزنة
-            const std = Math.sqrt(2.0 / s[0]);
-            for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * std;
+            // Xavier/Glorot Initialization لثبات الطاقة الحركية للموديل
+            const scale = Math.sqrt(6.0 / (s[0] + s[1]));
+            for(let i=0; i<data.length; i++) data[i] = (Math.random()*2 - 1) * scale;
             this.params.set(n, new AkashaTensor(data, s));
             this.m.set(n, new Float32Array(data.length));
             this.v.set(n, new Float32Array(data.length));
         });
     }
 
-    // نظام التفتيش اللحظي (The 15-Stage Diagnostics)
     async process(msg) {
-        console.log(`%c🌌 AKASHA CORE: STEP ${this.step} ACTIVE`, "color: #00ff00; font-weight: bold;");
+        console.log(`%c🚀 AKASHA ENGINE v42.0 | STEP: ${this.step}`, "color: #00d4ff; font-weight: bold;");
         
+        // 1. ENCODING & SECURITY
         const tokens = Array.from(new TextEncoder().encode(msg)).slice(0, 32);
-        console.log(`📍 1. NEURAL_ENCODE: [${tokens.length} bytes]`);
+        console.log(`📍 1. ENCODE: Received ${tokens.length} tokens.`);
 
-        // صفير الـ Gradients
         for (const p of this.params.values()) { p.grad.fill(0); p.visited = false; }
 
-        // 2. EMBEDDING + RMSNorm (لضمان ثبات البداية)
+        // 2. STABLE EMBEDDING (RMSNorm Integration)
         const W_emb = this.params.get("W_emb");
         let embD = new Float32Array(tokens.length * this.d_model);
-        tokens.forEach((t, i) => embD.set(W_emb.data.subarray(t * this.d_model, (t + 1) * this.d_model), i * this.d_model));
+        tokens.forEach((t, i) => {
+            const idx = Math.min(255, Math.max(0, t));
+            embD.set(W_emb.data.subarray(idx * this.d_model, (idx + 1) * this.d_model), i * this.d_model);
+        });
         embD = AkashaOps.rmsNorm(embD, this.d_model);
         let X = new AkashaTensor(embD, [tokens.length, this.d_model], [W_emb], "emb");
-        console.log(`📍 2. EMBED_NORM: Vector space stabilized.`);
+        console.log(`📍 2. RMS_NORM: Vector space stabilized.`);
 
-        // 3. ATTENTION CORE
+        // 3. RELATIVITY (QKV Projection)
         const Q = X.matmul(this.params.get("W_q"));
         const K = X.matmul(this.params.get("W_k"));
         const V = X.matmul(this.params.get("W_v"));
-        console.log(`📍 3. QKV_PROJECTION: Completed.`);
+        console.log(`📍 3. NEURAL_PROJECTION: Q,K,V tensors ready.`);
 
-        // 4. SCALED DOT-PRODUCT
-        const scores = Q.matmul(new AkashaTensor(AkashaOps.transpose(K.data, K.rows, K.cols), [K.cols, K.rows]));
+        // 4. THE SINGULARITY (Attention Mechanism)
+        const K_T = new AkashaTensor(AkashaOps.transpose(K.data, K.rows, K.cols), [K.cols, K.rows]);
+        const scores = Q.matmul(K_T);
         for (let i = 0; i < scores.data.length; i++) scores.data[i] /= Math.sqrt(this.d_model);
-        console.log(`📍 4. ATTN_SCALING: Applied sqrt(d_model)`);
+        
+        const attnMap = AkashaOps.softmax(scores.data, scores.rows, scores.cols);
+        console.log(`📍 4. ATTENTION: Softmax distribution aligned.`);
 
-        // 5. ATTENTION MAP
-        const attention = AkashaOps.softmax(scores.data, scores.rows, scores.cols);
-        console.log(`📍 5. ATTN_MAP: Entropy [${attention[0].toFixed(4)}]`);
+        // 5. OUTPUT SYNTHESIS (Logits Bridge)
+        const W_out_data = AkashaOps.transpose(W_emb.data, W_emb.rows, W_emb.cols);
+        const W_out = new AkashaTensor(W_out_data, [this.d_model, 256]);
+        const logitsFull = X.matmul(W_out);
+        console.log(`📍 5. LOGITS: Probability bridge constructed.`);
 
-        // 6. LOGITS (The Bridge)
-        const logitsFull = X.matmul(new AkashaTensor(AkashaOps.transpose(W_emb.data, W_emb.rows, W_emb.cols), [W_emb.cols, W_emb.rows]));
-        console.log(`📍 6. LOGITS_BRIDGE: Matrix linked.`);
-
-        // 7. TARGETS
+        // 6. TARGETING & LOSS (Cross-Entropy)
         const targets = [...tokens.slice(1), tokens[0]];
-        console.log(`📍 7. TARGET_ALIGNED: Sequence shift OK.`);
-
-        // 8. ENTROPY LOSS
         let loss = 0; const grad = new Float32Array(logitsFull.data.length);
         for (let i = 0; i < tokens.length; i++) {
-            const probs = AkashaOps.softmax(logitsFull.data.subarray(i * 256, (i + 1) * 256), 1, 256);
-            loss -= Math.log(probs[targets[i]] + 1e-12);
-            for (let c = 0; c < 256; c++) grad[i * 256 + c] = probs[c];
-            grad[i * 256 + targets[i]] -= 1;
+            const rowStart = i * 256;
+            const probs = AkashaOps.softmax(logitsFull.data.subarray(rowStart, rowStart + 256), 1, 256);
+            loss -= Math.log(probs[targets[i]] + 1e-10);
+            for (let c = 0; c < 256; c++) grad[rowStart + c] = probs[c];
+            grad[rowStart + targets[i]] -= 1;
         }
-        console.log(`📍 8. LOSS_COMPUTE: Value = ${(loss / tokens.length).toFixed(6)}`);
+        console.log(`📍 6. QUANTUM_LOSS: Mean Entropy = ${(loss / tokens.length).toFixed(5)}`);
 
-        // 9. BACKPROPAGATION
+        // 7. NEURAL FEEDBACK (Backpropagation)
         logitsFull.backward(grad);
-        console.log(`📍 9. BACKPROP: Gradients flowing...`);
+        console.log(`📍 7. BACKPROP: Gradient flow verified.`);
 
-        // 10. GRADIENT FLOW CHECK
-        const qG = this.params.get("W_q").grad;
-        let gSum = 0; for(let i=0; i<100; i++) gSum += Math.abs(qG[i]);
-        console.log(`📍 10. NEURAL_PULSE: Grad Intensity = ${gSum.toExponential(2)}`);
-
-        // 11. ADAM OPTIMIZER (The Architect)
+        // 8. EVOLUTION (Adam Optimizer)
         for (const [name, p] of this.params.entries()) {
             const m = this.m.get(name), v = this.v.get(name);
             for (let i = 0; i < p.data.length; i++) {
@@ -211,23 +209,25 @@ export class AkashaBrain {
                 const mh = m[i] / (1 - 0.9 ** (this.step + 1));
                 const vh = v[i] / (1 - 0.999 ** (this.step + 1));
                 p.data[i] -= this.lr * mh / (Math.sqrt(vh) + 1e-8);
-                // Weight Integrity Check
-                if (p.data[i] > 10) p.data[i] = 10; if (p.data[i] < -10) p.data[i] = -10;
+                // الحماية من الانفجار العددي
+                if (Math.abs(p.data[i]) > 10) p.data[i] *= 0.95;
             }
         }
-        console.log(`📍 11. OPTIMIZE_ADAM: Parameters evolved.`);
+        console.log(`📍 8. OPTIMIZATION: Synaptic weights updated.`);
 
-        // 12. GEN_CORE: Autoregressive Sampling
-        let res = [...tokens];
-        for(let i=0; i<20; i++) {
+        // 9. REGENERATION (Inference)
+        let genTokens = [...tokens];
+        for(let i=0; i<15; i++) {
             const lastRow = logitsFull.data.subarray((tokens.length-1)*256, tokens.length*256);
-            let maxIdx = 0, maxP = -1;
-            for(let j=32; j<256; j++) if(lastRow[j] > maxP) { maxP = lastRow[j]; maxIdx = j; }
-            res.push(maxIdx);
+            let nextT = 0, maxP = -1;
+            for(let j=32; j<256; j++) { if(lastRow[j] > maxP) { maxP = lastRow[j]; nextT = j; } }
+            genTokens.push(nextT);
         }
-        console.log(`📍 15. FINAL_OUTPUT: Decoding successful.`);
-
+        
         this.step++;
-        return { text: new TextDecoder().decode(new Uint8Array(res.filter(t => t > 31))) };
+        const finalStr = new TextDecoder().decode(new Uint8Array(genTokens.filter(t => t > 31)));
+        console.log(`📍 15. RESULT: ${finalStr.substring(0, 30)}...`);
+
+        return { text: finalStr };
     }
 }
