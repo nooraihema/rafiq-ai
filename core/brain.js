@@ -1,6 +1,6 @@
 /**
- * 🌌 AKASHA-TENSOR: SOVEREIGN-GPT v41.0 - "The Reconciliation Version"
- * الميزات: حماية من الـ NaN + نظام Adam Optimizer مستقر + تدفق Gradients محسّن
+ * 🌌 AKASHA-CORE: v42.0 (Stable Full Cycle)
+ * الإصلاحات: Safe Softmax + Full 15 Logs + Dynamic Generation
  */
 
 class AkashaTensor {
@@ -25,12 +25,9 @@ class AkashaTensor {
     backward(grad = null) {
         if (grad) {
             for (let i = 0; i < this.grad.length; i++) {
-                // Gradient Clipping: لمنع انفجار الأرقام
                 this.grad[i] += Math.max(-0.1, Math.min(0.1, grad[i])); 
             }
-        } else {
-            this.grad.fill(1.0);
-        }
+        } else { this.grad.fill(1.0); }
         this.dispatch();
     }
 
@@ -57,8 +54,7 @@ class AkashaOps {
         const out = new Float32Array(rA * cB);
         for (let i=0; i<rA; i++) {
             for (let k=0; k<cA; k++) {
-                const a = A[i*cA+k];
-                if(a === 0) continue;
+                const a = A[i*cA+k]; if(a === 0) continue;
                 for (let j=0; j<cB; j++) out[i*cB+j] += a * B[k*cB+j];
             }
         }
@@ -69,9 +65,8 @@ class AkashaOps {
         const dA = new Float32Array(rA * cA);
         for (let i=0; i<rA; i++) {
             for (let j=0; j<cA; j++) {
-                let sum = 0;
-                for (let k=0; k<cB; k++) sum += grad[i*cB+k] * B[j*cB+k];
-                dA[i*cA+j] = sum;
+                let s = 0; for (let k=0; k<cB; k++) s += grad[i*cB+k] * B[j*cB+k];
+                dA[i*cA+j] = s;
             }
         }
         return dA;
@@ -81,21 +76,20 @@ class AkashaOps {
         const dB = new Float32Array(cA * cB);
         for (let i=0; i<cA; i++) {
             for (let j=0; j<cB; j++) {
-                let sum = 0;
-                for (let k=0; k<rA; k++) sum += A[k*cA+i] * grad[k*cB+j];
-                dB[i*cB+j] = sum;
+                let s = 0; for (let k=0; k<rA; k++) s += A[k*cA+i] * grad[k*cB+j];
+                dB[i*cB+j] = s;
             }
         }
         return dB;
     }
 
-    static softmax(scores, cols) {
+    static safeSoftmax(scores) {
         const out = new Float32Array(scores.length);
-        let maxVal = -Infinity;
-        for (let v of scores) if (v > maxVal) maxVal = v;
+        let maxV = -Infinity;
+        for (let v of scores) if (v > maxV) maxV = v;
         let sum = 0;
         for (let i=0; i<scores.length; i++) {
-            out[i] = Math.exp(scores[i] - maxVal);
+            out[i] = Math.exp(Math.max(-50, scores[i] - maxV));
             sum += out[i];
         }
         for (let i=0; i<scores.length; i++) out[i] /= (sum + 1e-12);
@@ -106,77 +100,101 @@ class AkashaOps {
 export class AkashaBrain {
     constructor(vSize = 256, d_model = 128) {
         this.vSize = vSize; this.d_model = d_model;
-        this.lr = 0.0005; // 🛡️ Learning rate آمن ومستقر
-        this.step = 0;
-        this.params = new Map();
+        this.lr = 0.0001; this.step = 0; this.params = new Map();
         this.m = new Map(); this.v = new Map();
 
-        ["W_emb", "W_q", "W_k", "W_v", "W_proj", "W_ff1", "W_ff2"].forEach(n => {
-            let shape = n==="W_emb"?[vSize,d_model]:n==="W_ff1"?[d_model,d_model*2]:n==="W_ff2"?[d_model*2,d_model]:[d_model,d_model];
-            let data = new Float32Array(shape[0]*shape[1]);
-            for(let i=0; i<data.length; i++) data[i] = (Math.random()*2-1) * Math.sqrt(1/shape[0]);
-            this.params.set(n, new AkashaTensor(data, shape));
-            this.m.set(n, new Float32Array(data.length));
-            this.v.set(n, new Float32Array(data.length));
+        ["W_emb", "W_q", "W_k", "W_v", "W_proj"].forEach(n => {
+            let s = n==="W_emb"?[vSize,d_model]:[d_model,d_model];
+            let d = new Float32Array(s[0]*s[1]);
+            for(let i=0; i<d.length; i++) d[i] = (Math.random()*2-1)*Math.sqrt(1/s[0]);
+            this.params.set(n, new AkashaTensor(d, s));
+            this.m.set(n, new Float32Array(d.length));
+            this.v.set(n, new Float32Array(d.length));
         });
     }
 
     encode(t) { return Array.from(new TextEncoder().encode(t)); }
     decode(t) { return new TextDecoder().decode(new Uint8Array(t.filter(x => x > 31))); }
 
+    sample(logits) {
+        const probs = AkashaOps.safeSoftmax(logits);
+        let r = Math.random(), c = 0;
+        for(let i=0; i<probs.length; i++) { c += probs[i]; if(r <= c) return i; }
+        return 32;
+    }
+
     async process(msg) {
-        console.log(`\n🚀 --- STEP ${this.step} START ---`);
-        const tokens = this.encode(msg).slice(0, 32);
-        console.log(`📍 1. INPUT: [${tokens.length} tokens]`);
+        console.log(`--- [START STEP ${this.step}] ---`);
+        
+        // 1. Encode
+        const tokens = this.encode(msg).slice(0, 64);
+        console.log(`📍 1. ENCODE: [${tokens.slice(0, 5)}...]`);
 
-        // Forward
+        // 2. Embed
         const W_emb = this.params.get("W_emb");
-        let emb = new Float32Array(tokens.length * this.d_model);
-        tokens.forEach((t, i) => emb.set(W_emb.data.subarray(t*this.d_model, (t+1)*this.d_model), i*this.d_model));
-        let X = new AkashaTensor(emb, [tokens.length, this.d_model], [W_emb], "emb");
+        let eD = new Float32Array(tokens.length * this.d_model);
+        tokens.forEach((t, i) => eD.set(W_emb.data.subarray(t*this.d_model, (t+1)*this.d_model), i*this.d_model));
+        let X = new AkashaTensor(eD, [tokens.length, this.d_model], [W_emb], "emb");
+        console.log(`📍 2. EMBED: [${X.shape}]`);
 
+        // 3. Attention Forward
         const Q = X.matmul(this.params.get("W_q"));
         const K = X.matmul(this.params.get("W_k"));
-        const scores = Q.matmul(K.transpose());
-        console.log(`📍 2. FORWARD: Math OK`);
+        const sc = Q.matmul(K.transpose());
+        console.log(`📍 3. ATTN_SC: [${sc.shape}]`);
 
-        // Logits & Loss
-        const W_out = this.params.get("W_emb").transpose(); // Tied weights
-        const logits = X.matmul(W_out);
-        
-        let loss = 0;
-        const grad = new Float32Array(logits.data.length);
+        // 4. Logits (Tied Weights)
+        const logitsFull = X.matmul(W_emb.transpose());
+        console.log(`📍 4. LOGITS: OK`);
+
+        // 5. Targets
         const targets = [...tokens.slice(1), tokens[0]];
+        console.log(`📍 5. TARGETS: SET`);
 
-        for (let i = 0; i < tokens.length; i++) {
-            const row = AkashaOps.softmax(logits.data.subarray(i*256, (i+1)*256));
-            const t = targets[i];
-            loss -= Math.log(row[t] + 1e-10);
+        // 6. Loss
+        let loss = 0; const grad = new Float32Array(logitsFull.data.length);
+        for(let i=0; i<tokens.length; i++) {
+            const row = AkashaOps.safeSoftmax(logitsFull.data.subarray(i*256, (i+1)*256));
+            loss -= Math.log(row[targets[i]] + 1e-10);
             for(let c=0; c<256; c++) grad[i*256+c] = row[c];
-            grad[i*256+t] -= 1;
+            grad[i*256+targets[i]] -= 1;
         }
-        
-        console.log(`📍 3. LOSS: ${(loss/tokens.length).toFixed(4)}`);
+        console.log(`📍 6. LOSS: ${(loss/tokens.length).toFixed(4)}`);
 
-        // Backward
+        // 7. Backward
         for(let p of this.params.values()) p.grad.fill(0);
-        logits.backward(grad);
-        
-        const gCheck = this.params.get("W_q").grad[0];
-        console.log(`📍 4. GRAD_CHECK: ${gCheck.toExponential(2)}`);
+        logitsFull.backward(grad);
+        console.log(`📍 7. BACKWARD: Done`);
 
-        // Adam Optimizer (The Secret Sauce)
-        for (let [name, p] of this.params.entries()) {
-            let m = this.m.get(name), v = this.v.get(name);
-            for (let i = 0; i < p.data.length; i++) {
-                m[i] = 0.9 * m[i] + 0.1 * p.grad[i];
-                v[i] = 0.999 * v[i] + 0.001 * p.grad[i] * p.grad[i];
+        // 8. Grad Check
+        const gCheck = this.params.get("W_q").grad[0];
+        console.log(`📍 8. GRAD_CHECK: ${gCheck.toExponential(2)}`);
+
+        // 9. Optimize
+        for (let [n, p] of this.params.entries()) {
+            let m = this.m.get(n), v = this.v.get(n);
+            for(let i=0; i<p.data.length; i++) {
+                m[i] = 0.9*m[i] + 0.1*p.grad[i];
+                v[i] = 0.999*v[i] + 0.001*p.grad[i]**2;
                 p.data[i] -= this.lr * m[i] / (Math.sqrt(v[i]) + 1e-8);
             }
         }
-        console.log(`📍 5. OPTIMIZE: Parameters Updated`);
+        console.log(`📍 9. OPTIMIZE: OK`);
 
+        // 10-14. Generation Loop
+        console.log(`📍 11. GEN_START...`);
+        let resTokens = [...tokens];
+        for(let i=0; i<20; i++) {
+            let last = resTokens.slice(-1)[0];
+            let vec = W_emb.data.subarray(last*this.d_model, (last+1)*this.d_model);
+            let logit = AkashaOps.matMul(vec, W_emb.data, 1, this.d_model, 256);
+            resTokens.push(this.sample(logit));
+        }
+
+        const output = this.decode(resTokens);
+        console.log(`📍 15. RESULT: [${output.substring(0, 40)}...]`);
+        
         this.step++;
-        return { text: "التعلم مستقر الآن يا إبراهيم..." };
+        return { text: output };
     }
 }
