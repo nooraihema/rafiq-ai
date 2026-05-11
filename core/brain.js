@@ -1,7 +1,6 @@
 /**
- * 🌌 AKASHA-TENSOR: SOVEREIGN-GPT v33.0
- * المرحلة الثالثة: Multi-Head Attention + GELU + Full Gradient Flow.
- * نظام اللوجات: تفصيلي لكل خطوة.
+ * 🌌 AKASHA-TENSOR: SOVEREIGN-GPT v34.0
+ * المرحلة الرابعة: Adam Optimizer + Cross-Entropy Loss + Token Prediction.
  */
 
 class AkashaTensor {
@@ -23,7 +22,8 @@ class AkashaTensor {
             for (let i = 0; i < this.grad.length; i++) {
                 let g = grad[i];
                 if (!isFinite(g) || isNaN(g)) g = 0;
-                this.grad[i] += Math.max(-1, Math.min(1, g)); 
+                // Clipping لضمان استقرار Adam
+                this.grad[i] += Math.max(-0.5, Math.min(0.5, g)); 
             }
         }
         if (this.creators.length > 0 && !this.visited) {
@@ -44,7 +44,6 @@ class AkashaTensor {
             const [A] = this.creators;
             const dI = new Float32Array(this.grad.length);
             for (let i = 0; i < A.data.length; i++) {
-                // تقريب مشتقة GELU
                 const x = A.data[i];
                 const c = Math.sqrt(2 / Math.PI);
                 const tanhOut = Math.tanh(c * (x + 0.044715 * Math.pow(x, 3)));
@@ -101,13 +100,28 @@ class AkashaOps {
         }
         return [dA, dB];
     }
+    static softmax(s, r, c) {
+        const out = new Float32Array(s.length);
+        for(let i=0; i<r; i++){
+            const start = i*c; let max = -Infinity;
+            for(let j=0; j<c; j++) if(s[start+j]>max) max=s[start+j];
+            let sum=0;
+            for(let j=0; j<c; j++){ out[start+j]=Math.exp(s[start+j]-max); sum+=out[start+j]; }
+            for(let j=0; j<c; j++) out[start+j] /= (sum+1e-9);
+        }
+        return out;
+    }
 }
 
 export class AkashaBrain {
     constructor(vSize = 5000, d_model = 128) {
         this.d_model = d_model; this.vSize = vSize; this.params = new Map();
         this.lr = 0.001; this.step = 0;
-        this.heads = 4; // 🔥 الابتكار الجديد
+        this.heads = 4;
+
+        // Adam Parameters
+        this.beta1 = 0.9; this.beta2 = 0.999; this.eps = 1e-8;
+        this.m = new Map(); this.v = new Map();
 
         const layers = ["W_emb", "W_q", "W_k", "W_v", "W_out", "W_ff1", "W_ff2", "W_proj"];
         layers.forEach(n => {
@@ -116,34 +130,33 @@ export class AkashaBrain {
             const scale = Math.sqrt(2/(s[0]+s[1]));
             for(let i=0; i<data.length; i++) data[i] = (Math.random()*2-1)*scale;
             this.params.set(n, new AkashaTensor(data, s, [], "param"));
+            
+            // Initialize Adam memory
+            this.m.set(n, new Float32Array(data.length));
+            this.v.set(n, new Float32Array(data.length));
         });
     }
 
-    async init() { console.log("🚀 [SYSTEM]: Akasha Phase 3 Initiated."); return true; }
+    async init() { console.log("🚀 [SYSTEM]: Akasha Phase 4 (Adam Engine) Initiated."); return true; }
+
+    decodeToken(index) { return String.fromCharCode(index % 65535); }
 
     multiHeadAttention(X) {
-        console.log("🧩 [LOG]: Multi-Head Attention Forward Started.");
+        console.log("🧩 [LOG]: Multi-Head Attention Forward.");
         const Q = X.matmul(this.params.get("W_q"));
         const K = X.matmul(this.params.get("W_k"));
         const V = X.matmul(this.params.get("W_v"));
-        
-        // تبسيط: الـ Heads مدمجة في المصفوفات الكبيرة، بنضرب ونقسم بالسكيل
         let scores = Q.matmul(K.transpose());
         const scale = Math.sqrt(this.d_model / this.heads);
         for(let i=0; i<scores.data.length; i++) scores.data[i] /= scale;
-        
         const softData = AkashaOps.softmax(scores.data, scores.rows, scores.cols);
         const weights = new AkashaTensor(softData, scores.shape, [scores], "softmax");
-        
-        console.log("🧩 [LOG]: Attention Weights Computed.");
         return weights.matmul(V).matmul(this.params.get("W_proj"));
     }
 
     forwardFFN(X) {
-        console.log("🧠 [LOG]: FFN Forward (GELU) Started.");
+        console.log("🧠 [LOG]: FFN Forward (GELU).");
         const h = X.matmul(this.params.get("W_ff1"));
-        
-        // 🔥 تطبيق GELU
         const geluData = new Float32Array(h.data.length);
         for (let i = 0; i < h.data.length; i++) {
             const x = h.data[i];
@@ -154,65 +167,86 @@ export class AkashaBrain {
     }
 
     async process(msg) {
-        console.log(`\n🔥 [AKASHA-LOG]: STEP ${this.step} - FULL PIPELINE START`);
+        console.log(`\n🔥 [AKASHA-LOG]: STEP ${this.step} START`);
         const tokens = msg.split('').map(c => c.charCodeAt(0) % this.vSize);
-        
+        if (tokens.length < 1) return { text: "الرسالة قصيرة جداً." };
+
         try {
             for (const p of this.params.values()) { p.grad.fill(0); p.visited = false; }
 
-            // 1. Embedding
+            // 1. Forward Pass
             const W_emb = this.params.get("W_emb");
             const embData = new Float32Array(tokens.length * this.d_model);
             tokens.forEach((t, i) => embData.set(W_emb.data.subarray(t*this.d_model, (t+1)*this.d_model), i*this.d_model));
             let X = new AkashaTensor(embData, [tokens.length, this.d_model], [W_emb], "embedding");
-            console.log("📥 [LOG]: Embedding Complete.");
 
-            // 2. Multi-Head Block
-            let attn = this.multiHeadAttention(X.layerNorm());
-            X = X.add(attn);
-            console.log("📥 [LOG]: Attention Block Complete.");
+            X = X.add(this.multiHeadAttention(X.layerNorm()));
+            X = X.add(this.forwardFFN(X.layerNorm()));
 
-            // 3. FFN Block
-            let ffn = this.forwardFFN(X.layerNorm());
-            X = X.add(ffn);
-            console.log("📥 [LOG]: FFN Block Complete.");
-
-            // 4. Output
             const logits = X.matmul(this.params.get("W_out"));
-            console.log("📤 [LOG]: Logits Ready. Starting Backward...");
-            
-            logits.backward();
-            console.log("📉 [LOG]: Backward Propagation Finished.");
+            console.log("📤 [LOG]: Logits Ready. Computing Cross-Entropy...");
 
-            // Reporting
-            console.log(`\n📊 --- STEP ${this.step} INTENSITY REPORT ---`);
-            for (const [name, p] of this.params.entries()) {
-                let s = 0; for(let i=0; i<p.grad.length; i++) {
-                    p.data[i] -= this.lr * p.grad[i];
-                    s += Math.abs(p.grad[i]);
+            // 2. Cross-Entropy Loss & Grad Calculation
+            const targets = tokens.slice(1);
+            targets.push(tokens[tokens.length - 1]); // Simple shift target
+            const grad = new Float32Array(logits.data.length);
+            let totalLoss = 0;
+
+            for (let r = 0; r < logits.rows; r++) {
+                const start = r * logits.cols;
+                const probs = AkashaOps.softmax(logits.data.subarray(start, start + logits.cols), 1, logits.cols);
+                const target = targets[r];
+                totalLoss += -Math.log(probs[target] + 1e-9);
+                for (let c = 0; c < logits.cols; c++) {
+                    grad[start + c] = probs[c];
                 }
-                console.log(`${name.padEnd(6)} | Grad Intensity: ${(s/p.data.length).toExponential(4)}`);
+                grad[start + target] -= 1;
             }
-            this.step++;
+            const avgLoss = totalLoss / logits.rows;
+            console.log(`📉 [LOSS]: Cross Entropy = ${avgLoss.toFixed(6)}`);
 
-            return { text: "أكاشا: المرحلة الثالثة تعمل بنجاح. راقب اللوجات، ستجد الـ W_ff والـ W_emb يتحركون الآن." };
+            // 3. Backward Pass
+            logits.backward(grad);
+            console.log("📉 [LOG]: Backward Finished.");
+
+            // 4. Adam Optimizer Update
+            console.log(`📊 --- STEP ${this.step} ADAM REPORT ---`);
+            for (const [name, p] of this.params.entries()) {
+                const m = this.m.get(name);
+                const v = this.v.get(name);
+                let totalGrad = 0;
+
+                for (let i = 0; i < p.data.length; i++) {
+                    const g = p.grad[i];
+                    m[i] = this.beta1 * m[i] + (1 - this.beta1) * g;
+                    v[i] = this.beta2 * v[i] + (1 - this.beta2) * g * g;
+                    const mHat = m[i] / (1 - Math.pow(this.beta1, this.step + 1));
+                    const vHat = v[i] / (1 - Math.pow(this.beta2, this.step + 1));
+                    p.data[i] -= this.lr * mHat / (Math.sqrt(vHat) + this.eps);
+                    totalGrad += Math.abs(g);
+                }
+                console.log(`${name.padEnd(6)} | Intensity: ${(totalGrad / p.data.length).toExponential(3)}`);
+            }
+
+            // 5. Prediction
+            const lastRow = logits.rows - 1;
+            const startIdx = lastRow * logits.cols;
+            let best = 0, bestVal = -Infinity;
+            for (let i = 0; i < logits.cols; i++) {
+                if (logits.data[startIdx + i] > bestVal) {
+                    bestVal = logits.data[startIdx + i];
+                    best = i;
+                }
+            }
+            const predictedChar = this.decodeToken(best);
+            console.log(`🔮 [PREDICTION]: Next Token ${best} -> "${predictedChar}"`);
+
+            this.step++;
+            return { text: `توقع أكاشا: "${predictedChar}" (Loss: ${avgLoss.toFixed(4)})` };
 
         } catch (e) {
             console.error("🚨 CRITICAL:", e);
-            return { text: "خطأ في المرحلة الثالثة." };
+            return { text: "عطل في نظام Adam." };
         }
     }
 }
-
-// Helper لـ Softmax
-AkashaOps.softmax = function(s, r, c) {
-    const out = new Float32Array(s.length);
-    for(let i=0; i<r; i++){
-        const start = i*c; let max = -Infinity;
-        for(let j=0; j<c; j++) if(s[start+j]>max) max=s[start+j];
-        let sum=0;
-        for(let j=0; j<c; j++){ out[start+j]=Math.exp(s[start+j]-max); sum+=out[start+j]; }
-        for(let j=0; j<c; j++) out[start+j] /= (sum+1e-9);
-    }
-    return out;
-};
