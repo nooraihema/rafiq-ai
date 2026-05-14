@@ -11,16 +11,17 @@
     .status-dot { height: 8px; width: 8px; background-color: #555; border-radius: 50%; display: inline-block; margin-left: 5px; }
     .online { background-color: #00ff41; }
     .chat-box { flex: 1; padding: 15px; overflow-y: auto; background: #f4f4f4; display: flex; flex-direction: column; }
-    .message { padding: 10px 14px; border-radius: 12px; margin: 8px 0; font-size: 14px; max-width: 80%; }
-    .user { background: #0070f3; color: #fff; align-self: flex-end; }
-    .bot { background: #eaeaea; color: #000; align-self: flex-start; }
+    .message { padding: 10px 14px; border-radius: 12px; margin: 8px 0; font-size: 14px; max-width: 80%; line-height: 1.4; }
+    .user { background: #0070f3; color: #fff; align-self: flex-end; border-bottom-right-radius: 2px; }
+    .bot { background: #eaeaea; color: #000; align-self: flex-start; border-bottom-left-radius: 2px; }
     .logs-container { width: 100%; max-width: 450px; height: 35vh; background: #000; color: #888; margin-top: 10px; border-radius: 8px; padding: 15px; font-family: 'Monaco', monospace; font-size: 11px; overflow-y: auto; border: 1px solid #333; }
     .log-step { margin-bottom: 6px; display: flex; }
     .log-step span:first-child { color: #0070f3; margin-right: 10px; font-weight: bold; }
     .log-error { color: #ff4d4d; }
     .input-container { display: flex; padding: 10px; background: white; border-top: 1px solid #eee; }
-    input { flex: 1; border: none; padding: 8px; outline: none; }
-    button { background: #000; color: #fff; border: none; padding: 8px 20px; border-radius: 5px; cursor: pointer; }
+    input { flex: 1; border: none; padding: 8px; outline: none; font-size: 14px; }
+    button { background: #000; color: #fff; border: none; padding: 8px 20px; border-radius: 5px; cursor: pointer; transition: 0.2s; }
+    button:hover { background: #333; }
   </style>
 </head>
 <body>
@@ -39,7 +40,8 @@
   <script type="module">
     import { AkashaRunner } from './src/core/akasharunner.js';
     import { WebGPUBackend } from './src/core/webgpubackend.js';
-    import { Tokenizer } from './src/core/tokenizer.js'; // استيراد التوكنايزر الجديد
+    import { Tokenizer } from './src/core/tokenizer.js';
+    import { AkashaGenerator } from './src/core/generator.js'; // استيراد المولد الجديد
 
     const logsView = document.getElementById('logs-view');
     const statusDot = document.getElementById('engine-status');
@@ -56,7 +58,7 @@
     }
 
     let runner = null;
-    // تهيئة التوكنايزر بـ 5000 كلمة كحد أقصى
+    let generator = null;
     const tokenizer = new Tokenizer(5000);
 
     async function startLifecycle() {
@@ -75,6 +77,20 @@
         }
 
         runner = new AkashaRunner(backend);
+        generator = new AkashaGenerator(runner); // ربط المولد بالرنر
+
+        // تحميل الـ Dataset وبناء القاموس
+        try {
+            printLog("Fetching dataset.txt...");
+            const response = await fetch('./dataset.txt');
+            if (!response.ok) throw new Error("Dataset file not found");
+            const trainingData = await response.text();
+            await generator.buildVocabFromText(trainingData);
+            printLog("Vocabulary Ready.");
+        } catch (vErr) {
+            printLog(`Vocab Error: ${vErr.message}. Check dataset.txt`, "error");
+        }
+
         printLog("Akasha Engine Initialized.");
       } catch (err) {
         printLog(`Critical Error: ${err.message}`, "error");
@@ -83,36 +99,38 @@
 
     sendBtn.onclick = async () => {
       const text = userInput.value.trim();
-      if (!text || !runner) return;
+      if (!text || !runner || !generator) return;
 
-      // إظهار رسالة المستخدم
-      const div = document.createElement('div'); div.className = 'message user'; div.innerText = text;
+      // إظهار رسالة المستخدم في الشات
+      const div = document.createElement('div'); 
+      div.className = 'message user'; 
+      div.innerText = text;
       chatBox.appendChild(div);
       userInput.value = '';
       
       const start = performance.now();
       
       try {
-        // الخطوة 1: تحويل النص لـ Token IDs (أرقام صحيحة)
+        // 1. تحويل النص لـ Tokens
         const tokenIds = tokenizer.encode(text);
         printLog(`Tokenized: [${tokenIds.join(', ')}]`);
 
-        // الخطوة 2: تشغيل المحرك باستخدام المعرفات الرقمية
-        const result = await runner.run(tokenIds);
+        // 2. توليد الكلمة باستخدام المولد (الذي يستدعي runner داخلياً)
+        const resultWord = await generator.generate(tokenIds);
         
         const duration = (performance.now() - start).toFixed(2);
-        const outputSlice = Array.from(result.slice(0, 3)).map(n => n.toFixed(4));
-        
         printLog(`Execution completed in ${duration}ms`);
         
-        // إظهار رد المحرك
+        // 3. إظهار رد المحرك ككلمة مفهومة
         const resDiv = document.createElement('div'); 
         resDiv.className = 'message bot'; 
-        resDiv.innerText = `النتيجة من المحرك: [${outputSlice.join(', ')}]`;
+        resDiv.innerText = resultWord; 
         chatBox.appendChild(resDiv);
+        
         chatBox.scrollTop = chatBox.scrollHeight;
       } catch (err) {
         printLog(`Execution Error: ${err.message}`, "error");
+        console.error(err);
       }
     };
 
