@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>رفيق AI | محرك أكاشا</title>
   <style>
-    /* التنسيقات كما هي لإبقاء الواجهة مألوفة لك */
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #111; margin: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
     .chat-container { width: 100%; max-width: 450px; height: 60vh; background: #fff; border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; margin-top: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
     .header { background: #000; color: #fff; padding: 15px; text-align: center; font-size: 13px; border-bottom: 1px solid #333; }
@@ -40,6 +39,7 @@
   <script type="module">
     import { AkashaRunner } from './src/core/akasharunner.js';
     import { WebGPUBackend } from './src/core/webgpubackend.js';
+    import { Tokenizer } from './src/core/tokenizer.js'; // استيراد التوكنايزر الجديد
 
     const logsView = document.getElementById('logs-view');
     const statusDot = document.getElementById('engine-status');
@@ -56,15 +56,15 @@
     }
 
     let runner = null;
+    // تهيئة التوكنايزر بـ 5000 كلمة كحد أقصى
+    const tokenizer = new Tokenizer(5000);
 
     async function startLifecycle() {
       printLog("Loading Engine Modules...");
       try {
-        // تهيئة الـ GPU
         const adapter = await navigator.gpu?.requestAdapter();
         const device = adapter ? await adapter.requestDevice() : null;
         
-        // بناء الـ Backend
         const backend = new WebGPUBackend(device);
         
         if (device) {
@@ -74,7 +74,6 @@
             printLog("CPU Fallback Active (No GPU).", "warn");
         }
 
-        // تهيئة الـ Runner بالـ Backend الجديد
         runner = new AkashaRunner(backend);
         printLog("Akasha Engine Initialized.");
       } catch (err) {
@@ -91,16 +90,19 @@
       chatBox.appendChild(div);
       userInput.value = '';
       
-      printLog(`Inferencing: "${text}"`);
       const start = performance.now();
       
       try {
-        // نستخدم دالة run ونبعث النص مباشرة
-        const result = await runner.run(text);
-        const duration = (performance.now() - start).toFixed(2);
+        // الخطوة 1: تحويل النص لـ Token IDs (أرقام صحيحة)
+        const tokenIds = tokenizer.encode(text);
+        printLog(`Tokenized: [${tokenIds.join(', ')}]`);
+
+        // الخطوة 2: تشغيل المحرك باستخدام المعرفات الرقمية
+        const result = await runner.run(tokenIds);
         
-        // تجهيز النتائج للعرض (أول 3 أرقام)
+        const duration = (performance.now() - start).toFixed(2);
         const outputSlice = Array.from(result.slice(0, 3)).map(n => n.toFixed(4));
+        
         printLog(`Execution completed in ${duration}ms`);
         
         // إظهار رد المحرك
@@ -114,7 +116,6 @@
       }
     };
 
-    // دعم زر الـ Enter
     userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendBtn.click(); });
 
     startLifecycle();
