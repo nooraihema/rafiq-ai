@@ -1,7 +1,7 @@
 /**
  * src/core/akasharunner.js
  * الحالة: المايسترو (The Orchestrator)
- * الوظيفة: تحويل مدخلات المستخدم إلى Tensors وبناء مخطط العمليات (Graph).
+ * الوظيفة: تحويل مدخلات المستخدم إلى Tensors وضمان وصول البيانات للـ Backend.
  */
 
 import { Tensor } from './tensor.js';
@@ -12,57 +12,78 @@ export class AkashaRunner {
     }
 
     async run(inputString) {
-        console.log(`🚀 [RUNNER]: Processing input: "${inputString}"`);
-
-        // 1. مرحلة التجهيز (Preprocessing)
-        // بنحول النص لمصفوفة أرقام بناءً على طول كل كلمة مثلاً
+        // 1. تحويل النص لأرقام (Tokenization)
         const inputData = this._tokenize(inputString);
-        const inputTensor = new Tensor(inputData, { shape: [inputData.length] });
+        
+        // لو النص فاضي أو مش شغال، هنعرف من هنا في الـ Console الحقيقي
+        console.log(`[DEBUG RUNNER] Input: "${inputString}" | First 3 Tokens:`, inputData.slice(0, 3));
 
-        // 2. بناء الـ Graph (العمليات اللي عايزينها تتم)
-        // هنعمل عملية رياضية حقيقية: (المدخلات + 0.5) * 0.1
-        // دي مجرد تجربة عشان نختبر إن الـ OpNode والـ WebGPUBackend شغالين صح
+        // 2. بناء التنسور والـ Graph
+        const inputTensor = new Tensor(inputData, { shape: [512] });
+        
+        // تجربة حسابية: (قيمة الحرف + 0.5) * 0.1
+        // لو الحرف "أ" قيمته 0.6، الناتج المفروض يكون 0.11
         const graph = inputTensor.add(0.5).mul(0.1);
 
-        // 3. تحويل الـ Graph لخطة تنفيذ (Plan)
-        // في المحركات الكبيرة بنعمل هنا Optimization، حالياً هنبعتها مباشرة
+        // 3. تحويل الـ Graph لخطة (Plan)
         const plan = this._buildPlan(graph);
 
-        // 4. التنفيذ والحصول على النتائج من الـ GPU
-        const resultData = await this.backend.execute(plan);
+        // 🚨 الخطوة الأهم: حقن البيانات الفعلية في الخطة 
+        // عشان الـ Backend لما يجي يـ Dispatch يعرف يبعت إيه للـ GPU
+        if (plan.length > 0) {
+            plan[0].inputTensorData = inputData;
+        }
 
-        return Array.from(resultData.slice(0, 3)); // نرجع أول 3 أرقام للتجربة
+        // 4. إرسال الخطة للتنفيذ
+        try {
+            const resultData = await this.backend.execute(plan);
+            return resultData; 
+        } catch (err) {
+            console.error("[RUNNER ERROR]: Execution failed", err);
+            throw err;
+        }
     }
 
     /**
-     * تحويل النص لأرقام (Tokenization مبدئي)
+     * تحويل النص لـ Normalized ASCII
      */
     _tokenize(text) {
-        // مؤقتاً: هنحول كل حرف للكود بتاعه (ASCII) عشان الأرقام تختلف حسب الكلام
         const tokens = new Float32Array(512).fill(0);
         for (let i = 0; i < Math.min(text.length, 512); i++) {
-            tokens[i] = text.charCodeAt(i) / 255.0; // Normalized 0-1
+            // تحويل الكود لنسبة بين 0 و 1 عشان الحسابات تكون مستقرة
+            tokens[i] = text.charCodeAt(i) / 1000.0; 
         }
         return tokens;
     }
 
     /**
-     * تحويل شجرة التنسورات إلى قائمة مرتبة من العمليات
+     * تحويل الشجرة لقائمة عمليات مرتبة
      */
     _buildPlan(tensor) {
         const plan = [];
+        const visited = new Set();
+
         const traverse = (t) => {
-            if (t.op !== 'const') {
+            if (!t || visited.has(t.id)) return;
+            
+            // زيارة المدخلات أولاً (Depth First)
+            if (t.inputs && t.inputs.length > 0) {
                 t.inputs.forEach(input => traverse(input));
+            }
+
+            // إضافة العملية للخطة لو مكنتش مجرد قيمة ثابتة
+            if (t.op && t.op !== 'const') {
                 plan.push({
                     op: t.op,
                     id: t.id,
                     shape: t.shape,
-                    // بنمرر الـ OpNode نفسه عشان الـ Backend يولد منه الـ WGSL
-                    opNode: t // بما إن التنسور في تصميمنا هو اللي شايل العملية
+                    opNode: t, // نمرر الـ Tensor نفسه كـ OpNode لإنتاج الـ WGSL
+                    inputTensorData: null // هيتم حقنها في أول عملية
                 });
+                visited.add(t.id);
             }
         };
+
         traverse(tensor);
         return plan;
     }
