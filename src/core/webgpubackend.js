@@ -1,7 +1,7 @@
 /**
  * src/core/webgpubackend.js
- * الحالة: النسخة الفولاذية (المرحلة الرابعة - دعم الـ Embedding)
- * الوظيفة: إدارة Buffers ضخمة ومعالجة مصفوفات المعاني بدقة عالية.
+ * الحالة: النسخة الفولاذية (المرحلة الخامسة - كسر الجمود الرقمي)
+ * الوظيفة: تنفيذ ضرب مصفوفات متقاطع (Self-Attention) مع موازنة رياضية.
  */
 
 export class WebGPUBackend {
@@ -12,7 +12,6 @@ export class WebGPUBackend {
         
         this.config = {
             workgroupSize: 8,
-            // التعديل: زيادة عدد العناصر المدعومة لتناسب مصفوفة (512x512)
             maxElements: 512 * 512 
         };
     }
@@ -24,6 +23,7 @@ export class WebGPUBackend {
 
     get _kernels() {
         return {
+            // التعديل الجوهري هنا: ضرب المصفوفة في نفسها (Dot Product Attention)
             matmul: `
                 @group(0) @binding(0) var<storage, read> A: array<f32>;
                 @group(0) @binding(1) var<storage, read_write> C: array<f32>;
@@ -34,13 +34,16 @@ export class WebGPUBackend {
                     let col = global_id.x;
                     let dim = 512u; 
 
-                    if (row >= 1u || col >= dim) { return; }
+                    if (row >= dim || col >= dim) { return; }
 
                     var sum = 0.0;
+                    // ضرب الصف (i) في العمود (j) لخلق مصفوفة علاقات (Attention Matrix)
                     for (var k = 0u; k < dim; k = k + 1u) {
-                        sum = sum + A[row * dim + k] * A[k]; 
+                        sum = sum + A[row * dim + k] * A[col * dim + k]; 
                     }
-                    C[row * dim + col] = sum;
+                    
+                    // Scaling factor: لمنع الانفجار الرقمي (تقسيم على جذر الأبعاد)
+                    C[row * dim + col] = sum / 22.627; // sqrt(512)
                 }
             `,
             standard: (formula) => `
@@ -62,9 +65,7 @@ export class WebGPUBackend {
                 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                     let i = global_id.x;
                     if (i >= arrayLength(&out)) { return; }
-                    
-                    // تحسين: استخدام دالة exp مع موازنة بسيطة لمنع الـ Underflow
-                    let exp_val = exp(in[i]); 
+                    let exp_val = exp(in[i] / 10.0); // Temperature scaling لضمان التنوع
                     out[i] = exp_val; 
                 }
             `
@@ -73,21 +74,16 @@ export class WebGPUBackend {
 
     async _executeOnGPU(plan) {
         const commandEncoder = this.device.createCommandEncoder();
-        
-        // حساب الحجم الفعلي المطلوب (512 حرف * 512 بُعد * 4 بايت)
         const size = this.config.maxElements * 4;
 
-        // 1. إعداد الـ Buffers بمساحة كافية للـ Embedding Data
         const inputBuffer = this._getOrCreateBuffer('input', size, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST);
         const outputBuffer = this._getOrCreateBuffer('output', size, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST);
         
         const firstStep = plan[0];
         if (firstStep && firstStep.inputTensorData) {
-            // شحن بيانات الـ Embedding بالكامل إلى الـ GPU
             this.device.queue.writeBuffer(inputBuffer, 0, firstStep.inputTensorData);
         }
 
-        // 2. التنفيذ
         for (const step of plan) {
             let shaderCode;
             switch(step.op) {
@@ -100,7 +96,6 @@ export class WebGPUBackend {
             this._dispatch(shaderCode, commandEncoder, inputBuffer, outputBuffer);
         }
 
-        // 3. القراءة (Readback)
         const stagingBuffer = this.device.createBuffer({
             size: size,
             usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
@@ -110,8 +105,6 @@ export class WebGPUBackend {
         this.device.queue.submit([commandEncoder.finish()]);
 
         await stagingBuffer.mapAsync(GPUMapMode.READ);
-        
-        // سحب أول 512 عنصر فقط للعرض في الواجهة (للحفاظ على الأداء)
         const result = new Float32Array(stagingBuffer.getMappedRange()).slice(0, 512);
         
         stagingBuffer.unmap();
@@ -134,10 +127,9 @@ export class WebGPUBackend {
         pass.setBindGroup(0, bindGroup);
         
         if (shaderCode.includes('@workgroup_size(8, 8)')) {
-            // توزيع العمل على مصفوفة 2D
-            pass.dispatchWorkgroups(64, 8); 
+            // توزيع العمل على 512x512
+            pass.dispatchWorkgroups(64, 64); 
         } else {
-            // توزيع العمل للعمليات الخطية (مع مراعاة الحجم الكلي)
             pass.dispatchWorkgroups(Math.ceil(this.config.maxElements / 64));
         }
         pass.end();
