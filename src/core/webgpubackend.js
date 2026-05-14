@@ -1,7 +1,7 @@
 /**
  * src/core/webgpubackend.js
- * الحالة: Hybrid JIT Compiler Backend (المرحلة الثانية: ربط البيانات الحقيقية)
- * الوظيفة: استقبال بيانات المستخدم ومعالجتها ديناميكياً على الـ GPU.
+ * الحالة: Hybrid JIT Compiler Backend (المرحلة الثالثة: تضخيم البيانات)
+ * الوظيفة: استقبال بيانات المستخدم ومعالجتها بقوة على الـ GPU لإظهار الفروق الدقيقة.
  */
 
 export class WebGPUBackend {
@@ -26,14 +26,13 @@ export class WebGPUBackend {
     }
 
     /**
-     * تنفيذ الخطة على الـ GPU مع ربط المدخلات (Data Binding)
+     * تنفيذ الخطة على الـ GPU
      */
     async _executeOnGPU(plan) {
         const commandEncoder = this.device.createCommandEncoder();
-        const size = 512 * 4; // 512 عنصر * 4 بايت (Float32)
+        const size = 512 * 4; 
 
-        // 1. تجهيز الـ Input Buffer (البيانات اللي جاية من الـ Runner)
-        // بنفترض إن أول خطوة في الخطة دايمًا شايلة بيانات المدخلات
+        // 1. تجهيز الـ Input Buffer بالبيانات الحقيقية
         const firstStep = plan[0];
         const inputData = firstStep.inputTensorData || new Float32Array(512).fill(0);
         
@@ -43,12 +42,12 @@ export class WebGPUBackend {
         // 2. حجز الـ Output Buffer
         const outputBuffer = this._getOrCreateBuffer('final_output', size, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC);
         
-        // 3. معالجة الخطوات
+        // 3. تنفيذ العمليات
         for (const step of plan) {
             this._dispatchStep(step, commandEncoder, inputBuffer, outputBuffer);
         }
 
-        // 4. قراءة البيانات (Readback)
+        // 4. قراءة النتائج من الـ GPU (Readback)
         const stagingBuffer = this.device.createBuffer({
             size: size,
             usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
@@ -66,9 +65,6 @@ export class WebGPUBackend {
         return result;
     }
 
-    /**
-     * تشغيل Kernel مع ربط مدخلين (Input & Output)
-     */
     _dispatchStep(step, encoder, inputBuffer, outputBuffer) {
         const shaderCode = this._generateWGSL(step);
         const pipeline = this._getOrCreatePipeline(shaderCode);
@@ -89,18 +85,18 @@ export class WebGPUBackend {
     }
 
     /**
-     * توليد WGSL يقرأ من الـ Input ويحسب في الـ Output
+     * توليد WGSL معدل "لتضخيم" الحساسية للمدخلات
      */
     _generateWGSL(step) {
-        let calculation = "";
+        let baseFormula = "";
         
         if (step.opNode && step.opNode.generateFormula) {
-            // "in[i]" بيمثل القيمة اللي جاية من كلامك بعد الـ Tokenization
-            calculation = step.opNode.generateFormula(['in[global_id.x]', '1.0']);
+            baseFormula = step.opNode.generateFormula(['in[global_id.x]', '1.0']);
         } else {
-            calculation = "in[global_id.x] * 0.01"; 
+            baseFormula = "in[global_id.x]"; 
         }
 
+        // التعديل الجوهري: ضرب القيمة في 1000 واستخدام sin لتوليد موجة مختلفة لكل حرف
         return `
             @group(0) @binding(0) var<storage, read> in: array<f32>;
             @group(0) @binding(1) var<storage, read_write> out: array<f32>;
@@ -109,8 +105,13 @@ export class WebGPUBackend {
             fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                 if (global_id.x >= arrayLength(&out)) { return; }
                 
-                // الحساب بناءً على المدخل الحقيقي
-                out[global_id.x] = ${calculation};
+                let raw_val = ${baseFormula};
+                
+                // تضخيم الفرق: لو الحرف اتغير بنسبة بسيطة، الـ sin هتخليه يضرب في مكان بعيد
+                // ده بيكسر حالة التشابه المملة اللي كانت موجودة
+                let amplified = sin(raw_val * 1000.0) * 100.0;
+                
+                out[global_id.x] = amplified;
             }
         `;
     }
