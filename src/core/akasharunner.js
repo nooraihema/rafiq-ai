@@ -1,51 +1,56 @@
 /**
  * src/core/akasharunner.js
- * الحالة: المايسترو المطور (The Multi-Head Orchestrator)
- * الوظيفة: دمج سياق الكلام باستخدام طبقة الـ Attention قبل التنفيذ وضمان توافق أبعاد المصفوفات.
+ * الحالة: المايسترو المتكامل (Full Semantic Orchestrator)
+ * الوظيفة: الربط بين الـ Embedding (المعاني) والـ Attention (السياق) والتنفيذ الفولاذي.
  */
 
 import { Tensor } from './tensor.js';
 import { MultiHeadAttention } from './layers/attention.js'; 
+import { EmbeddingLayer } from './layers/embedding.js'; // استيراد طبقة المعاني الجديدة
 
 export class AkashaRunner {
     constructor(backend) {
         this.backend = backend;
-        // تعريف طبقة الـ Attention (بأبعاد 512 و 8 رؤوس انتباه)
+        
+        // 1. تعريف طبقة المعاني (قاموس يضم 1000 حرف، وكل حرف له 512 بُعد)
+        this.embedding = new EmbeddingLayer(1000, 512);
+        
+        // 2. تعريف طبقة الانتباه (تستقبل الأبعاد الـ 512 وتعالجها بـ 8 رؤوس)
         this.attention = new MultiHeadAttention({ embedDim: 512, numHeads: 8 });
     }
 
     async run(inputString) {
-        // 1. تحويل النص لأرقام (Tokenization)
-        const inputData = this._tokenize(inputString);
+        // الخطوة 1: تحويل النص لـ Tokens خام (ASCII)
+        const tokens = this._tokenize(inputString);
         
-        // 2. بناء التنسور كـ Matrix (صف واحد و 512 عمود)
-        // هذا التعديل [1, 512] ضروري جداً لنجاح عملية الـ MatMul (Inner dimensions match)
-        const inputTensor = new Tensor(inputData, { shape: [1, 512] });
+        // الخطوة 2: تحويل الـ Tokens إلى "متجهات معاني" (Embedding)
+        // النتيجة هنا هي Tensor يحتوي على معلومات غنية عن كل حرف
+        const embeddedTensor = this.embedding.forward(tokens);
 
-        // 3. تمرير المدخلات عبر طبقة الـ Attention لدمج السياق
-        const contextualGraph = this.attention.forward(inputTensor);
+        // الخطوة 3: تمرير المتجهات الغنية عبر الـ Attention لدمج السياق
+        const contextualGraph = this.attention.forward(embeddedTensor);
 
-        // 4. بناء خطة التنفيذ من الرسم البياني
+        // الخطوة 4: بناء خطة التنفيذ من الرسم البياني المتكامل
         const plan = this._buildPlan(contextualGraph);
 
-        // 5. حقن البيانات الخام في أول خطوة في الخطة
+        // الخطوة 5: حقن البيانات المعالجة في الخطة ليتم شحنها للـ GPU
         if (plan.length > 0) {
-            plan[0].inputTensorData = inputData;
+            // نرسل الـ Data الناتجة من الـ Embedding كأول مدخل للـ Backend
+            plan[0].inputTensorData = embeddedTensor.data;
         }
 
-        // 6. التنفيذ النهائي على الـ GPU
+        // الخطوة 6: التنفيذ النهائي على محرك الـ WebGPU الفولاذي
         try {
             const resultData = await this.backend.execute(plan);
             return resultData; 
         } catch (err) {
-            console.error("[RUNNER ERROR]: Attention execution failed", err);
-            // إظهار تفاصيل الخطأ للمساعدة في التصحيح
+            console.error("[RUNNER ERROR]: Semantic pipeline failed", err);
             throw err;
         }
     }
 
     /**
-     * تحويل النص لـ Normalized ASCII بين 0 و 1
+     * تحويل النص لـ Normalized ASCII
      */
     _tokenize(text) {
         const tokens = new Float32Array(512).fill(0);
@@ -65,18 +70,16 @@ export class AkashaRunner {
         const traverse = (t) => {
             if (!t || visited.has(t.id)) return;
             
-            // زيارة المدخلات أولاً لضمان ترتيب العمليات
             if (t.inputs && t.inputs.length > 0) {
                 t.inputs.forEach(input => traverse(input));
             }
 
-            // إضافة العملية للخطة إذا كانت عقدة حسابية (Operation)
             if (t.op && t.op !== 'const') {
                 plan.push({
                     op: t.op,
                     id: t.id,
                     shape: t.shape,
-                    opNode: t, // نمرر الـ Tensor نفسه لإنتاج الـ WGSL لاحقاً
+                    opNode: t,
                     inputTensorData: null 
                 });
                 visited.add(t.id);
