@@ -1,6 +1,7 @@
 /**
  * src/core/generator.js
  * الوظيفة: محول الأرقام إلى نصوص (The Voice of Akasha)
+ * الحالة: متوافق مع AkashaRunner.run
  */
 
 export class AkashaGenerator {
@@ -27,12 +28,19 @@ export class AkashaGenerator {
 
     // دالة التنبؤ بالكلمة القادمة
     async generate(inputBuffer) {
-        const results = await this.engine.forward(inputBuffer);
+        /**
+         * تم التعديل: استخدام .run بدلاً من .forward 
+         * لتتطابق مع دالة التشغيل في AkashaRunner
+         */
+        const results = await this.engine.run(inputBuffer);
         
         // البحث عن أعلى قيمة في النتائج (Argmax)
         let maxIdx = 0;
         let maxVal = -Infinity;
         
+        // التأكد من أن النتائج مصفوفة يمكن المرور عليها
+        if (!results || results.length === 0) return "خطأ في المعالجة";
+
         for (let i = 0; i < results.length; i++) {
             if (results[i] > maxVal) {
                 maxVal = results[i];
@@ -41,8 +49,9 @@ export class AkashaGenerator {
         }
 
         // تحويل الرقم لكلمة من القاموس
-        // بنستخدم "Module" لضمان إن الرقم ميطلعش برا حدود القاموس
+        // استخدام "Modulo" لضمان عدم الخروج عن نطاق القاموس
         const vocabIdx = maxIdx % this.vocab.length;
-        return this.idToWord.get(vocabIdx) || "؟";
+        
+        return this.idToWord.get(vocabIdx) || "أكاشا";
     }
 }
