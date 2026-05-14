@@ -1,60 +1,69 @@
 /**
  * src/core/akasharunner.js
- * 
- * الوظيفة: مشغل العمليات الموحد (Unified Operation Runner).
- * تم التعديل لإصلاح خطأ Shape mismatch وضمان توافق الأبعاد.
+ * الحالة: المايسترو (The Orchestrator)
+ * الوظيفة: تحويل مدخلات المستخدم إلى Tensors وبناء مخطط العمليات (Graph).
  */
 
-import { AkashaEngine } from './akashaengine.js';
 import { Tensor } from './tensor.js';
 
 export class AkashaRunner {
-    constructor(device) {
-        this.engine = new AkashaEngine(device);
-        // مصفوفة أوزان وهمية بحجم 512
-        this.weights = new Tensor(new Float32Array(512).fill(0.5), { id: 'main_weights' });
+    constructor(backend) {
+        this.backend = backend;
+    }
+
+    async run(inputString) {
+        console.log(`🚀 [RUNNER]: Processing input: "${inputString}"`);
+
+        // 1. مرحلة التجهيز (Preprocessing)
+        // بنحول النص لمصفوفة أرقام بناءً على طول كل كلمة مثلاً
+        const inputData = this._tokenize(inputString);
+        const inputTensor = new Tensor(inputData, { shape: [inputData.length] });
+
+        // 2. بناء الـ Graph (العمليات اللي عايزينها تتم)
+        // هنعمل عملية رياضية حقيقية: (المدخلات + 0.5) * 0.1
+        // دي مجرد تجربة عشان نختبر إن الـ OpNode والـ WebGPUBackend شغالين صح
+        const graph = inputTensor.add(0.5).mul(0.1);
+
+        // 3. تحويل الـ Graph لخطة تنفيذ (Plan)
+        // في المحركات الكبيرة بنعمل هنا Optimization، حالياً هنبعتها مباشرة
+        const plan = this._buildPlan(graph);
+
+        // 4. التنفيذ والحصول على النتائج من الـ GPU
+        const resultData = await this.backend.execute(plan);
+
+        return Array.from(resultData.slice(0, 3)); // نرجع أول 3 أرقام للتجربة
     }
 
     /**
-     * تشغيل عملية معالجة سريعة (Inference)
+     * تحويل النص لأرقام (Tokenization مبدئي)
      */
-    async runInference(inputData) {
-        // 1. تحويل البيانات القادمة إلى Tensor (يجب أن يكون الطول 512)
-        const inputTensor = new Tensor(new Float32Array(inputData), { id: 'input_node' });
+    _tokenize(text) {
+        // مؤقتاً: هنحول كل حرف للكود بتاعه (ASCII) عشان الأرقام تختلف حسب الكلام
+        const tokens = new Float32Array(512).fill(0);
+        for (let i = 0; i < Math.min(text.length, 512); i++) {
+            tokens[i] = text.charCodeAt(i) / 255.0; // Normalized 0-1
+        }
+        return tokens;
+    }
 
-        // 2. بناء معادلة رياضية (Graph)
-        // إصلاح الخطأ: نقوم بإنشاء Bias بنفس طول المدخلات (512) ليتوافق مع الـ Shape
-        const biasData = new Float32Array(512).fill(0.1);
-        const bias = new Tensor(biasData, { id: 'bias_node' });
-
-        // العملية الآن: (512 * 512) + 512 = التوافق تام
-        const graph = inputTensor.mul(this.weights).add(bias);
-
-        // 3. التنفيذ الفعلي عبر الكومبايلر (سواء GPU أو CPU Fallback)
-        const resultData = await this.engine.compute(graph);
-
-        return {
-            tensorId: graph.id,
-            // نرجع أول 5 قيم للتجربة في الـ API response
-            data: resultData instanceof Float32Array ? resultData.slice(0, 5) : resultData,
-            status: "Success - Fused Execution Complete"
+    /**
+     * تحويل شجرة التنسورات إلى قائمة مرتبة من العمليات
+     */
+    _buildPlan(tensor) {
+        const plan = [];
+        const traverse = (t) => {
+            if (t.op !== 'const') {
+                t.inputs.forEach(input => traverse(input));
+                plan.push({
+                    op: t.op,
+                    id: t.id,
+                    shape: t.shape,
+                    // بنمرر الـ OpNode نفسه عشان الـ Backend يولد منه الـ WGSL
+                    opNode: t // بما إن التنسور في تصميمنا هو اللي شايل العملية
+                });
+            }
         };
-    }
-
-    /**
-     * تشغيل دورة تدريب (Training Step)
-     */
-    async runTrainingStep(data) {
-        // الـ Grad لازم يكون برضه 512
-        const gradData = new Float32Array(512).fill(0.01);
-        const grad = new Tensor(gradData, { id: 'grad_node' });
-        
-        // عملية تحديث الأوزان: W = W - Grad
-        const updatedWeights = this.weights.sub(grad);
-        
-        await this.engine.compute(updatedWeights);
-        this.weights = updatedWeights; // تحديث الأوزان في الذاكرة
-        
-        return "Weights Updated Successfully";
+        traverse(tensor);
+        return plan;
     }
 }
