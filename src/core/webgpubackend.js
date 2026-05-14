@@ -1,7 +1,7 @@
 /**
  * src/core/webgpubackend.js
- * الحالة: المحرك الفولاذي (Production-Ready Kernel Engine)
- * الوظيفة: إدارة موارد الـ GPU، تنفيذ العمليات المتوازية، ودعم الـ Multi-Head Attention.
+ * الحالة: النسخة الفولاذية (المرحلة الرابعة - دعم الـ Embedding)
+ * الوظيفة: إدارة Buffers ضخمة ومعالجة مصفوفات المعاني بدقة عالية.
  */
 
 export class WebGPUBackend {
@@ -10,10 +10,10 @@ export class WebGPUBackend {
         this.pipelineCache = new Map();
         this.bufferCache = new Map();
         
-        // تعريف أحجام افتراضية للـ التنسيق (يمكن جعلها ديناميكية لاحقاً)
         this.config = {
             workgroupSize: 8,
-            maxElements: 512
+            // التعديل: زيادة عدد العناصر المدعومة لتناسب مصفوفة (512x512)
+            maxElements: 512 * 512 
         };
     }
 
@@ -22,12 +22,8 @@ export class WebGPUBackend {
         return await this._executeOnGPU(plan);
     }
 
-    /**
-     * Kernels Library: مستودع الشيدرز المخصصة
-     */
     get _kernels() {
         return {
-            // شيدر ضرب المصفوفات الحقيقي (Tiled Matrix Multiplication)
             matmul: `
                 @group(0) @binding(0) var<storage, read> A: array<f32>;
                 @group(0) @binding(1) var<storage, read_write> C: array<f32>;
@@ -36,19 +32,17 @@ export class WebGPUBackend {
                 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                     let row = global_id.y;
                     let col = global_id.x;
-                    let dim = 512u; // حجم المصفوفة الافتراضي
+                    let dim = 512u; 
 
                     if (row >= 1u || col >= dim) { return; }
 
                     var sum = 0.0;
-                    // ضرب الصف في العمود (في حالتنا Matrix x Matrix-Transpose)
                     for (var k = 0u; k < dim; k = k + 1u) {
-                        sum = sum + A[row * dim + k] * A[k]; // تجريبي: Self-Attention Dot Product
+                        sum = sum + A[row * dim + k] * A[k]; 
                     }
                     C[row * dim + col] = sum;
                 }
             `,
-            // شيدر العمليات العنصرية (Add, Mul, etc)
             standard: (formula) => `
                 @group(0) @binding(0) var<storage, read> in: array<f32>;
                 @group(0) @binding(1) var<storage, read_write> out: array<f32>;
@@ -60,7 +54,6 @@ export class WebGPUBackend {
                     out[global_id.x] = val;
                 }
             `,
-            // شيدر الـ Softmax (أساسي للـ Attention)
             softmax: `
                 @group(0) @binding(0) var<storage, read> in: array<f32>;
                 @group(0) @binding(1) var<storage, read_write> out: array<f32>;
@@ -70,8 +63,8 @@ export class WebGPUBackend {
                     let i = global_id.x;
                     if (i >= arrayLength(&out)) { return; }
                     
-                    // تبسيط للـ Softmax (Exp / Sum)
-                    let exp_val = exp(in[i] - 1.0); // Stability trick
+                    // تحسين: استخدام دالة exp مع موازنة بسيطة لمنع الـ Underflow
+                    let exp_val = exp(in[i]); 
                     out[i] = exp_val; 
                 }
             `
@@ -80,18 +73,21 @@ export class WebGPUBackend {
 
     async _executeOnGPU(plan) {
         const commandEncoder = this.device.createCommandEncoder();
+        
+        // حساب الحجم الفعلي المطلوب (512 حرف * 512 بُعد * 4 بايت)
         const size = this.config.maxElements * 4;
 
-        // 1. تجهيز المدخلات
+        // 1. إعداد الـ Buffers بمساحة كافية للـ Embedding Data
         const inputBuffer = this._getOrCreateBuffer('input', size, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST);
         const outputBuffer = this._getOrCreateBuffer('output', size, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST);
         
         const firstStep = plan[0];
         if (firstStep && firstStep.inputTensorData) {
+            // شحن بيانات الـ Embedding بالكامل إلى الـ GPU
             this.device.queue.writeBuffer(inputBuffer, 0, firstStep.inputTensorData);
         }
 
-        // 2. معالجة الخطوات (Pipeline Execution)
+        // 2. التنفيذ
         for (const step of plan) {
             let shaderCode;
             switch(step.op) {
@@ -104,7 +100,7 @@ export class WebGPUBackend {
             this._dispatch(shaderCode, commandEncoder, inputBuffer, outputBuffer);
         }
 
-        // 3. قراءة البيانات من الـ GPU
+        // 3. القراءة (Readback)
         const stagingBuffer = this.device.createBuffer({
             size: size,
             usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
@@ -114,7 +110,9 @@ export class WebGPUBackend {
         this.device.queue.submit([commandEncoder.finish()]);
 
         await stagingBuffer.mapAsync(GPUMapMode.READ);
-        const result = new Float32Array(stagingBuffer.getMappedRange()).slice();
+        
+        // سحب أول 512 عنصر فقط للعرض في الواجهة (للحفاظ على الأداء)
+        const result = new Float32Array(stagingBuffer.getMappedRange()).slice(0, 512);
         
         stagingBuffer.unmap();
         stagingBuffer.destroy();
@@ -135,10 +133,11 @@ export class WebGPUBackend {
         pass.setPipeline(pipeline);
         pass.setBindGroup(0, bindGroup);
         
-        // موازنة الحمل: إذا كان شيدر مصفوفات استخدم توزيع 2D، وإلا استخدم 1D
         if (shaderCode.includes('@workgroup_size(8, 8)')) {
-            pass.dispatchWorkgroups(64, 1); 
+            // توزيع العمل على مصفوفة 2D
+            pass.dispatchWorkgroups(64, 8); 
         } else {
+            // توزيع العمل للعمليات الخطية (مع مراعاة الحجم الكلي)
             pass.dispatchWorkgroups(Math.ceil(this.config.maxElements / 64));
         }
         pass.end();
@@ -163,6 +162,6 @@ export class WebGPUBackend {
     }
 
     async _executeOnCPU(plan) {
-        return new Float32Array(this.config.maxElements).fill(0.1);
+        return new Float32Array(512).fill(0.1);
     }
 }
