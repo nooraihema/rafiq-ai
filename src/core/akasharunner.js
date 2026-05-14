@@ -1,19 +1,20 @@
 /**
  * src/core/akasharunner.js
- * الحالة: المايسترو المطور (Residual Transformer Block)
- * الوظيفة: الربط التسلسلي مع استخدام "الكباري" (Add) لضمان استقرار الإشارة الرقمية.
+ * الحالة: المايسترو المطور (Clean Pipeline)
+ * الوظيفة: إدارة تدفق البيانات من التوكنز وحتى مخرج الـ GPU.
  */
 
 import { MultiHeadAttention } from './layers/attention.js'; 
-import { EmbeddingLayer } from './layers/embedding.js';
+import { Embedding } from './layers/embedding.js'; // تعديل الاسم ليتوافق مع الملف الجديد
 import { FeedForward } from './layers/ffn.js';
 
 export class AkashaRunner {
     constructor(backend) {
         this.backend = backend;
         
-        // 1. طبقة المعاني (1000 حرف، 512 بُعد)
-        this.embedding = new EmbeddingLayer(1000, 512);
+        // 1. طبقة المعاني (قاموس 5000 كلمة، 512 بُعد)
+        // تأكد أن vocabSize هنا يطابق الـ Tokenizer في index.html
+        this.embedding = new Embedding(5000, 512);
         
         // 2. طبقة الانتباه (8 رؤوس)
         this.attention = new MultiHeadAttention({ embedDim: 512, numHeads: 8 });
@@ -22,58 +23,42 @@ export class AkashaRunner {
         this.ffn = new FeedForward(512, 2048);
     }
 
-    async run(inputString) {
-        // الخطوة 1: تحويل النص لـ Tokens
-        const tokens = this._tokenize(inputString);
-        
-        // الخطوة 2: المعالجة الأولية (X)
-        const x = this.embedding.forward(tokens);
+    /**
+     * @param {Uint32Array} tokenIds - مصفوفة المعرفات القادمة من الـ Tokenizer
+     */
+    async run(tokenIds) {
+        // الخطوة 1: استخراج المتجهات من الـ Embedding
+        // الـ x هنا شايل هوية الكلمات الحقيقية
+        const x = this.embedding.forward(tokenIds);
 
         /**
-         * الخطوة 3: بلوك الانتباه مع كوبري Residual
-         * المنطق: x = x + Attention(x)
+         * الخطوة 2: بلوك الانتباه
+         * الكوبري (Residual) موجود بالفعل جوه attention.forward
          */
-        const attentionOutput = this.attention.forward(x);
-        const xAfterAttention = x.add(attentionOutput); 
+        const xAfterAttention = this.attention.forward(x);
 
         /**
-         * الخطوة 4: بلوك التفكير مع كوبري Residual
-         * المنطق: x = x + FFN(x)
+         * الخطوة 3: بلوك التفكير (FFN)
+         * الكوبري (Residual) موجود بالفعل جوه ffn.forward
          */
-        const ffnOutput = this.ffn.forward(xAfterAttention);
-        const xFinal = xAfterAttention.add(ffnOutput); 
+        const xFinal = this.ffn.forward(xAfterAttention);
 
-        // الخطوة 5: بناء خطة التنفيذ من الرسم البياني النهائي (xFinal)
+        // الخطوة 4: بناء خطة التنفيذ (الرسم البياني للعمليات)
         const plan = this._buildPlan(xFinal);
 
-        // الخطوة 6: حقن بيانات الـ Embedding الأصلية كبداية للمواسير
-        if (plan.length > 0) {
-            plan[0].inputTensorData = x.data;
-        }
-
-        // الخطوة 7: التنفيذ على الـ GPU
+        // الخطوة 5: التنفيذ على الـ GPU/CPU Backend
         try {
             const resultData = await this.backend.execute(plan);
             return resultData; 
         } catch (err) {
-            console.error("[RUNNER ERROR]: Residual pipeline failed", err);
+            console.error("[RUNNER ERROR]: Pipeline execution failed", err);
             throw err;
         }
     }
 
     /**
-     * تحويل النص لـ Normalized ASCII
-     */
-    _tokenize(text) {
-        const tokens = new Float32Array(512).fill(0);
-        for (let i = 0; i < Math.min(text.length, 512); i++) {
-            tokens[i] = text.charCodeAt(i) / 1000.0; 
-        }
-        return tokens;
-    }
-
-    /**
      * ترتيب العمليات للتنفيذ (Topological Sort)
+     * بيحول شجرة التنسورات لخطة عمل واضحة للـ WebGPU
      */
     _buildPlan(tensor) {
         const plan = [];
@@ -82,18 +67,19 @@ export class AkashaRunner {
         const traverse = (t) => {
             if (!t || visited.has(t.id)) return;
             
-            // زيارة المدخلات أولاً لضمان الترتيب الصحيح
+            // زيارة المدخلات (الاعتمادات) أولاً
             if (t.inputs && t.inputs.length > 0) {
                 t.inputs.forEach(input => traverse(input));
             }
 
-            // إضافة العملية للخطة إذا لم تكن ثابتة (Constant)
+            // إضافة العملية للخطة
             if (t.op && t.op !== 'const') {
                 plan.push({
                     op: t.op,
                     id: t.id,
-                    opNode: t,
-                    inputTensorData: null 
+                    shape: t.shape,
+                    data: t.data, // البيانات الثابتة (مثل الأوزان)
+                    inputs: t.inputs // التنسورات المعتمدة عليها
                 });
                 visited.add(t.id);
             }
