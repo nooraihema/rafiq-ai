@@ -1,7 +1,7 @@
 /**
  * src/core/webgpubackend.js
- * الحالة: النسخة الفولاذية (المرحلة الخامسة - كسر الجمود الرقمي)
- * الوظيفة: تنفيذ ضرب مصفوفات متقاطع (Self-Attention) مع موازنة رياضية.
+ * الحالة: النسخة الفولاذية (المرحلة السادسة - دعم الـ Residual والـ ReLU)
+ * الوظيفة: تنفيذ الحسابات الموازية على الـ GPU مع دعم كامل لروابط الجمع.
  */
 
 export class WebGPUBackend {
@@ -23,7 +23,7 @@ export class WebGPUBackend {
 
     get _kernels() {
         return {
-            // التعديل الجوهري هنا: ضرب المصفوفة في نفسها (Dot Product Attention)
+            // شيدر ضرب المصفوفات (Self-Attention Core)
             matmul: `
                 @group(0) @binding(0) var<storage, read> A: array<f32>;
                 @group(0) @binding(1) var<storage, read_write> C: array<f32>;
@@ -37,26 +37,39 @@ export class WebGPUBackend {
                     if (row >= dim || col >= dim) { return; }
 
                     var sum = 0.0;
-                    // ضرب الصف (i) في العمود (j) لخلق مصفوفة علاقات (Attention Matrix)
                     for (var k = 0u; k < dim; k = k + 1u) {
                         sum = sum + A[row * dim + k] * A[col * dim + k]; 
                     }
-                    
-                    // Scaling factor: لمنع الانفجار الرقمي (تقسيم على جذر الأبعاد)
-                    C[row * dim + col] = sum / 22.627; // sqrt(512)
+                    C[row * dim + col] = sum / 22.627; 
                 }
             `,
+            // شيدر الجمع (Residual Connection Kernel)
+            add: `
+                @group(0) @binding(0) var<storage, read> A: array<f32>;
+                @group(0) @binding(1) var<storage, read_write> C: array<f32>;
+
+                @compute @workgroup_size(64)
+                fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+                    let i = global_id.x;
+                    if (i >= arrayLength(&C)) { return; }
+                    // نجمع المدخل الحالي مع النتيجة السابقة المخزنة في الـ Buffer
+                    C[i] = C[i] + A[i];
+                }
+            `,
+            // الشيدر العام (ReLU, Mul, Division)
             standard: (formula) => `
                 @group(0) @binding(0) var<storage, read> in: array<f32>;
                 @group(0) @binding(1) var<storage, read_write> out: array<f32>;
 
                 @compute @workgroup_size(64)
                 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-                    if (global_id.x >= arrayLength(&out)) { return; }
+                    let i = global_id.x;
+                    if (i >= arrayLength(&out)) { return; }
                     let val = ${formula};
-                    out[global_id.x] = val;
+                    out[i] = val;
                 }
             `,
+            // شيدر التوزيع الاحتمالي
             softmax: `
                 @group(0) @binding(0) var<storage, read> in: array<f32>;
                 @group(0) @binding(1) var<storage, read_write> out: array<f32>;
@@ -65,8 +78,7 @@ export class WebGPUBackend {
                 fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
                     let i = global_id.x;
                     if (i >= arrayLength(&out)) { return; }
-                    let exp_val = exp(in[i] / 10.0); // Temperature scaling لضمان التنوع
-                    out[i] = exp_val; 
+                    out[i] = exp(in[i] / 10.0); 
                 }
             `
         };
@@ -88,9 +100,11 @@ export class WebGPUBackend {
             let shaderCode;
             switch(step.op) {
                 case 'matmul': shaderCode = this._kernels.matmul; break;
+                case 'add':    shaderCode = this._kernels.add; break;
                 case 'softmax': shaderCode = this._kernels.softmax; break;
                 default: 
-                    const formula = step.opNode?.generateFormula(['in[global_id.x]', '1.0']) || "in[global_id.x]";
+                    // توليد الفورمولا ديناميكياً (زي الـ ReLU) من الـ Tensor Node
+                    const formula = step.opNode?.generateFormula(['in[i]', '1.0']) || "in[i]";
                     shaderCode = this._kernels.standard(formula);
             }
             this._dispatch(shaderCode, commandEncoder, inputBuffer, outputBuffer);
@@ -127,7 +141,6 @@ export class WebGPUBackend {
         pass.setBindGroup(0, bindGroup);
         
         if (shaderCode.includes('@workgroup_size(8, 8)')) {
-            // توزيع العمل على 512x512
             pass.dispatchWorkgroups(64, 64); 
         } else {
             pass.dispatchWorkgroups(Math.ceil(this.config.maxElements / 64));
