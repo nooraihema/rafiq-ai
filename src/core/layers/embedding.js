@@ -1,48 +1,52 @@
 /**
  * src/core/layers/embedding.js
- * الحالة: طبقة المعاني (Semantic Layer)
- * الوظيفة: تحويل الـ Tokens إلى ناقلات أبعاد (Vectors) غنية بالبيانات.
+ * الحالة: طبقة المعاني (Semantic Layer) - النسخة "المشحونة"
+ * الوظيفة: تحويل الحروف لمتجهات معاني (Vectors) قوية لمنع تلاشي الأرقام (Zero-Gradient Fix).
  */
 
 import { Tensor } from '../tensor.js';
 
 export class EmbeddingLayer {
     constructor(vocabSize, embedDim) {
-        this.vocabSize = vocabSize; // عدد الحروف/الكلمات اللي المحرك بيعرفها
-        this.embedDim = embedDim;   // عدد الأبعاد لكل حرف (مثلاً 512)
+        this.vocabSize = vocabSize; // عدد الرموز (غالباً 1000 حرف)
+        this.embedDim = embedDim;   // أبعاد كل حرف (512)
         
-        // إنشاء مصفوفة الأوزان (Weights)
-        // في البداية بتكون عشوائية، ومع التدريب "رفيق" بيتعلم القيم الصح
+        // توليد مصفوفة المعاني الأولية
         this.weights = this._initWeights(vocabSize, embedDim);
     }
 
     /**
-     * توليد أوزان أولية متوازنة (Xavier/Glorot Initialization)
+     * توليد أوزان مشحونة (High-Variance Initialization)
+     * ملاحظة: رفعنا القوة من 0.2 لـ 1.0 لضمان ظهور قيم واضحة في مخرجات الـ GPU
      */
     _initWeights(rows, cols) {
         const data = new Float32Array(rows * cols);
         for (let i = 0; i < data.length; i++) {
-            // أرقام صغيرة عشوائية بين -0.1 و 0.1 لضمان استقرار البداية
-            data[i] = (Math.random() - 0.5) * 0.2;
+            // توليد أرقام عشوائية قوية لمنع ظهور الأصفار (Underflow)
+            data[i] = (Math.random() - 0.5) * 1.0; 
         }
         return new Tensor(data, { shape: [rows, cols] });
     }
 
     /**
-     * عملية الـ Lookup: سحب المتجه الخاص بكل حرف
+     * تحويل الـ Tokens لمتجهات 512 بُعد
      */
     forward(inputTokens) {
-        // inputTokens هي الأرقام اللي جاية من الـ Tokenizer
-        const batchSize = 1;
-        const seqLen = inputTokens.length;
+        const seqLen = inputTokens.length; // طول الجملة (512)
         const outputData = new Float32Array(seqLen * this.embedDim);
 
         for (let i = 0; i < seqLen; i++) {
-            const tokenId = Math.floor(inputTokens[i] * 1000); // استرجاع الكود الأصلي
-            const startIdx = (tokenId % this.vocabSize) * this.embedDim;
+            // استعادة الكود الأصلي للحرف
+            const tokenId = Math.round(inputTokens[i] * 1000); 
             
-            // سحب الـ Vector الخاص بالحرف من المصفوفة الكبيرة
+            // التأكد من أن الـ Index داخل نطاق القاموس
+            const safeTokenId = Math.abs(tokenId) % this.vocabSize;
+            const startIdx = safeTokenId * this.embedDim;
+            
+            // سحب الـ Vector الخاص بالحرف (512 رقم يمثلون معناه التقني)
             const vector = this.weights.data.slice(startIdx, startIdx + this.embedDim);
+            
+            // دمج المتجه في المصفوفة الكبيرة الخارجة للـ GPU
             outputData.set(vector, i * this.embedDim);
         }
 
