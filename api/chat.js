@@ -1,12 +1,41 @@
-// /api/chat.js - المشغل المباشر لنواة أكاشا (نسخة التدريب المستمر)
+/**
+ * api/chat.js
+ * 
+ * المشغل الرئيسي لنواة أكاشا - نسخة الـ Graph Compiler v1.0
+ * وظيفته: الربط بين واجهة المستخدم، محرك الـ GPU، وعملية التدريب التلقائي.
+ */
+
+import { AkashaEngine } from '../core/akashaengine.js';
+import { Tensor } from '../core/tensor.js';
 import { AkashaBrain } from '../core/brain.js';
 import fs from 'fs';
 import path from 'path';
 
+// متغيرات الحالة (State) - ثابتة طوال فترة تشغيل السيرفر
+let engineInstance = null;
 let brainInstance = null;
 let datasetContent = null;
 
-// دالة لجلب جزء عشوائي من ملف البيانات للتدريب
+/**
+ * دالة تهيئة الهاردوير (Initialize WebGPU)
+ * لازم نتأكد إن الـ GPU متاح قبل أي عملية حسابية
+ */
+async function initHardware() {
+    if (engineInstance) return;
+
+    // في بيئة المتصفح نستخدم navigator.gpu، وفي Node نستخدم مكتبات مثل gpu.js أو wgpu-native
+    const adapter = await navigator.gpu.requestAdapter();
+    const device = await adapter.requestDevice();
+    
+    // إنشاء المحرك (المايسترو) وإرسال الـ device له
+    engineInstance = new AkashaEngine(device);
+    
+    // إنشاء المخ (Brain) وربطه بالمحرك
+    brainInstance = new AkashaBrain(engineInstance);
+    
+    console.log("🌌 [HARDWARE]: WebGPU Initialized - Akasha Engine Armed.");
+}
+
 function getRandomChunk(size = 64) {
     try {
         if (!datasetContent) {
@@ -20,7 +49,7 @@ function getRandomChunk(size = 64) {
             return datasetContent.substring(start, start + size);
         }
     } catch (e) {
-        console.log("⚠️ [DATASET]: Could not read dataset for training.");
+        console.log("⚠️ [DATASET]: Could not read dataset.");
     }
     return null;
 }
@@ -32,41 +61,40 @@ export default async function handler(req, res) {
         const { message, userId } = req.body;
         const rawMessage = (message || "").trim();
 
-        if (!rawMessage) {
-            return res.status(400).json({ error: "No message provided" });
-        }
+        if (!rawMessage) return res.status(400).json({ error: "No message provided" });
 
-        // 1. تشغيل المحرك فوراً
-        if (!brainInstance) {
-            brainInstance = new AkashaBrain();
-            console.log("🌌 [SYSTEM]: Akasha Core Sparked - Training Mode Active");
-        }
+        // 1. التأكد من جاهزية المحرك والـ GPU
+        await initHardware();
 
-        // --- [ خطوة التدريب الإضافية ] ---
-        // قبل الرد على المستخدم، نأخذ جزءاً من الـ dataset وندرب النموذج عليه "خلف الكواليس"
-        const trainingChunk = getRandomChunk(100); 
+        // --- [ دورة التدريب الذكي بالكومبايلر ] ---
+        const trainingChunk = getRandomChunk(128); 
         if (trainingChunk) {
-            // التدريب الصامت (Background Training)
-            // نمرر النص للدالة process عشان تشغل الـ Backward وتحدث الأوزان
-            await brainInstance.process(trainingChunk);
-            console.log("🧬 [EVOLVE]: Akasha trained on a new chunk from dataset.");
+            console.time("🔥 TrainingSync");
+            
+            // هنا الـ Brain هيعمل Trace لعمليات الـ Backpropagation 
+            // والـ Engine هيدمجهم (Fuse) ويشغلهم في خبطة واحدة على كارت الشاشة
+            await brainInstance.train(trainingChunk);
+            
+            console.timeEnd("🔥 TrainingSync");
         }
-        // --------------------------------
+        // ----------------------------------------
 
-        // 2. المعالجة والرد على المستخدم (Direct Processing)
+        // 2. معالجة رسالة المستخدم (Inference)
+        // الـ process الآن بتعتمد على الـ Graph Compiler لإنتاج الرد
         const result = await brainInstance.process(rawMessage, userId);
 
-        // 3. الرد النهائي للواجهة
+        // 3. الرد النهائي
         return res.status(200).json({
             reply: result.text,
             userId: userId || "anonymous",
-            status: "sovereign_active"
+            engineStatus: "fused_execution_active",
+            performance: "optimized_by_graph_compiler"
         });
 
     } catch (err) {
-        console.error("🚨 Akasha Engine Failure:", err);
+        console.error("🚨 Akasha Engine Runtime Error:", err);
         return res.status(500).json({ 
-            error: "النواة تواجه صعوبة في المعالجة اللحظية",
+            error: "النواة تعاني من تداخل في الـ Graph Execution",
             details: err.message 
         });
     }
