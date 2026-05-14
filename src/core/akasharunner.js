@@ -1,57 +1,60 @@
 /**
  * src/core/akasharunner.js
- * الحالة: المايسترو المتكامل (Full Semantic Orchestrator)
- * الوظيفة: الربط بين الـ Embedding (المعاني) والـ Attention (السياق) والتنفيذ الفولاذي.
+ * الحالة: المايسترو المطور (Deep Transformer Block)
+ * الوظيفة: الربط التسلسلي بين المعاني، الانتباه، والتفكير العميق عبر الـ FFN.
  */
 
 import { Tensor } from './tensor.js';
 import { MultiHeadAttention } from './layers/attention.js'; 
-import { EmbeddingLayer } from './layers/embedding.js'; // استيراد طبقة المعاني الجديدة
+import { EmbeddingLayer } from './layers/embedding.js';
+import { FeedForward } from './layers/ffn.js'; // استيراد طبقة التفكير الجديدة
 
 export class AkashaRunner {
     constructor(backend) {
         this.backend = backend;
         
-        // 1. تعريف طبقة المعاني (قاموس يضم 1000 حرف، وكل حرف له 512 بُعد)
+        // 1. طبقة المعاني (قاموس الحروف المكاني)
         this.embedding = new EmbeddingLayer(1000, 512);
         
-        // 2. تعريف طبقة الانتباه (تستقبل الأبعاد الـ 512 وتعالجها بـ 8 رؤوس)
+        // 2. طبقة الانتباه (تحليل علاقات الكلمات)
         this.attention = new MultiHeadAttention({ embedDim: 512, numHeads: 8 });
+
+        // 3. طبقة الـ FeedForward (المفرمة المنطقية - تكبير لـ 2048 ثم ضغط لـ 512)
+        this.ffn = new FeedForward(512, 2048);
     }
 
     async run(inputString) {
-        // الخطوة 1: تحويل النص لـ Tokens خام (ASCII)
+        // الخطوة 1: تحويل النص لـ Tokens
         const tokens = this._tokenize(inputString);
         
-        // الخطوة 2: تحويل الـ Tokens إلى "متجهات معاني" (Embedding)
-        // النتيجة هنا هي Tensor يحتوي على معلومات غنية عن كل حرف
+        // الخطوة 2: المعالجة المكانية والمعجمية
         const embeddedTensor = this.embedding.forward(tokens);
 
-        // الخطوة 3: تمرير المتجهات الغنية عبر الـ Attention لدمج السياق
-        const contextualGraph = this.attention.forward(embeddedTensor);
+        // الخطوة 3: تحليل السياق (Attention)
+        const attentionOutput = this.attention.forward(embeddedTensor);
 
-        // الخطوة 4: بناء خطة التنفيذ من الرسم البياني المتكامل
-        const plan = this._buildPlan(contextualGraph);
+        // الخطوة 4: التفكير العميق (FeedForward)
+        // هنا بنمرر مخرجات الانتباه لطبقة الـ FFN لكسر التشابهات
+        const semanticGraph = this.ffn.forward(attentionOutput);
 
-        // الخطوة 5: حقن البيانات المعالجة في الخطة ليتم شحنها للـ GPU
+        // الخطوة 5: بناء خطة التنفيذ الكاملة (الرسم البياني دلوقت بقى أطول وأعقد)
+        const plan = this._buildPlan(semanticGraph);
+
+        // الخطوة 6: حقن البيانات في بداية الـ Pipeline
         if (plan.length > 0) {
-            // نرسل الـ Data الناتجة من الـ Embedding كأول مدخل للـ Backend
             plan[0].inputTensorData = embeddedTensor.data;
         }
 
-        // الخطوة 6: التنفيذ النهائي على محرك الـ WebGPU الفولاذي
+        // الخطوة 7: التنفيذ على الـ GPU الفولاذي
         try {
             const resultData = await this.backend.execute(plan);
             return resultData; 
         } catch (err) {
-            console.error("[RUNNER ERROR]: Semantic pipeline failed", err);
+            console.error("[RUNNER ERROR]: Deep pipeline execution failed", err);
             throw err;
         }
     }
 
-    /**
-     * تحويل النص لـ Normalized ASCII
-     */
     _tokenize(text) {
         const tokens = new Float32Array(512).fill(0);
         for (let i = 0; i < Math.min(text.length, 512); i++) {
@@ -60,9 +63,6 @@ export class AkashaRunner {
         return tokens;
     }
 
-    /**
-     * تحويل الشجرة لقائمة عمليات مرتبة (Topological Sort)
-     */
     _buildPlan(tensor) {
         const plan = [];
         const visited = new Set();
