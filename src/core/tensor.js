@@ -1,7 +1,7 @@
 /**
  * src/core/tensor.js
- * الحالة: النسخة الاحترافية (Production-Grade)
- * الوظيفة: الهيكل الرياضي الأساسي الذي يدعم الحسابات المؤجلة (Lazy Evaluation)
+ * الحالة: النسخة الاحترافية (محرك أكاشا - المرحلة الثالثة)
+ * الوظيفة: الهيكل الرياضي الأساسي الذي يدعم الحسابات المؤجلة ويدير علاقات الـ Attention.
  */
 
 export class Tensor {
@@ -14,35 +14,28 @@ export class Tensor {
         
         // 3. الهوية والرسم البياني (Graph Identity)
         this.id = options.id || `t_${Math.random().toString(36).substr(2, 6)}`;
-        this.op = options.op || 'const'; // العملية: ثابت، جمع، ضرب، إلخ
-        this.inputs = options.inputs || []; // المدخلات التي أنتجت هذا التنسور
+        this.op = options.op || 'const'; 
+        this.inputs = options.inputs || []; 
         
         // 4. إدارة الحالة والمكان
         this.isComputed = options.isComputed !== undefined ? options.isComputed : (this.data !== null);
-        this.device = options.device || 'cpu'; // المكان: cpu أو gpu
+        this.device = options.device || 'cpu'; 
         this.dtype = options.dtype || 'float32';
     }
 
-    /**
-     * معالجة وتحويل أنواع البيانات المختلفة إلى Float32Array
-     */
     _processData(data) {
         if (data === null) return null;
         if (data instanceof Float32Array) return data;
         if (Array.isArray(data)) return new Float32Array(data);
         if (typeof data === 'number') return new Float32Array([data]);
-        if (data instanceof ArrayBuffer) return new Float32Array(data);
         return null;
     }
 
-    /**
-     * الحصول على الحجم الكلي (عدد العناصر)
-     */
     get size() {
         return this.shape.reduce((a, b) => a * b, 1);
     }
 
-    // --- العمليات الحسابية الأساسية (Element-wise) ---
+    // --- العمليات الحسابية الأساسية ---
 
     add(other) { return this._binaryOp('add', other); }
     sub(other) { return this._binaryOp('sub', other); }
@@ -50,76 +43,86 @@ export class Tensor {
     div(other) { return this._binaryOp('div', other); }
 
     /**
-     * الضرب المصفوفي (العملية الأهم في الذكاء الاصطناعي)
+     * الضرب المصفوفي (Q * K^T)
      */
     matmul(other) {
         const otherTensor = this._toTensor(other);
         
-        // التحقق من توافق المصفوفات (M1 columns must equal M2 rows)
-        if (this.shape[1] !== otherTensor.shape[0]) {
-            throw new Error(`MatMul Error: Incompatible shapes [${this.shape}] and [${otherTensor.shape}]`);
+        // التحقق من توافق المصفوفات: (M x N) * (N x P) = (M x P)
+        const [m, n1] = this.shape.length === 1 ? [1, this.shape[0]] : this.shape;
+        const [n2, p] = otherTensor.shape.length === 1 ? [otherTensor.shape[0], 1] : otherTensor.shape;
+
+        if (n1 !== n2) {
+            throw new Error(`MatMul Error: Inner dimensions must match. Found ${n1} and ${n2}`);
         }
 
-        const targetShape = [this.shape[0], otherTensor.shape[1]];
         return new Tensor(null, {
             op: 'matmul',
             inputs: [this, otherTensor],
-            shape: targetShape,
+            shape: [m, p],
             isComputed: false
         });
     }
 
     /**
-     * دالة داخلية لبناء عقد العمليات الثنائية
+     * تحويل الصفوف إلى أعمدة والعكس (ضروري للـ Key في الـ Attention)
      */
+    transpose() {
+        const newShape = this.shape.length === 2 ? [this.shape[1], this.shape[0]] : [...this.shape].reverse();
+        return new Tensor(null, {
+            op: 'transpose',
+            inputs: [this],
+            shape: newShape,
+            isComputed: false
+        });
+    }
+
+    /**
+     * توزيع الاحتمالات (Softmax) لتحويل سكور الانتباه لنظام الـ 100%
+     */
+    softmax() {
+        return new Tensor(null, {
+            op: 'softmax',
+            inputs: [this],
+            shape: this.shape,
+            isComputed: false
+        });
+    }
+
+    // --- أدوات المساعدة ---
+
     _binaryOp(type, other) {
         const otherTensor = this._toTensor(other);
-        
-        // التحقق من توافق الأبعاد (Broadcasting Check)
-        this._checkBroadcast(this.shape, otherTensor.shape);
-
         return new Tensor(null, {
             op: type,
             inputs: [this, otherTensor],
-            shape: this.shape, // نفترض حالياً الحفاظ على شكل الطرف الأول
+            shape: this.shape,
             isComputed: false
         });
     }
 
-    /**
-     * تحويل أي مدخل إلى كائن Tensor لضمان استقرار العمليات
-     */
     _toTensor(other) {
         if (other instanceof Tensor) return other;
         return new Tensor(other);
     }
 
-    /**
-     * التحقق الرياضي من إمكانية دمج المصفوفات
-     */
-    _checkBroadcast(s1, s2) {
-        // إذا كانت الأبعاد متطابقة تماماً، فالعملية سليمة
-        if (JSON.stringify(s1) === JSON.stringify(s2)) return true;
-        
-        // إذا كان أحدهما رقماً فريداً (Scalar)، فالعملية سليمة (Broadcasting)
-        if (s2.length === 1 && s2[0] === 1) return true;
-        if (s1.length === 1 && s1[0] === 1) return true;
-
-        throw new Error(`Shape Mismatch: Cannot operate on ${s1} and ${s2}`);
+    reshape(newShape) {
+        const newSize = newShape.reduce((a, b) => a * b, 1);
+        if (newSize !== this.size) throw new Error("Reshape Error: Size mismatch");
+        return new Tensor(this.data, { shape: newShape, id: this.id });
     }
 
     /**
-     * إعادة تشكيل المصفوفة دون تغيير بياناتها
+     * توليد الصيغة الرياضية للـ Backend (JIT)
      */
-    reshape(newShape) {
-        const newSize = newShape.reduce((a, b) => a * b, 1);
-        if (newSize !== this.size) {
-            throw new Error(`Reshape Error: Total size must remain ${this.size}. Attempted ${newShape}`);
+    generateFormula(inputVars) {
+        switch (this.op) {
+            case 'add': return `${inputVars[0]} + ${inputVars[1]}`;
+            case 'mul': return `${inputVars[0]} * ${inputVars[1]}`;
+            case 'sub': return `${inputVars[0]} - ${inputVars[1]}`;
+            case 'div': return `${inputVars[0]} / ${inputVars[1]}`;
+            case 'matmul': return `matmul_op`; // سيتم معالجتها كـ Kernel خاص في الـ Backend
+            default: return inputVars[0];
         }
-        return new Tensor(this.data, {
-            shape: newShape,
-            id: this.id,
-            device: this.device
-        });
     }
 }
