@@ -1,7 +1,7 @@
 /**
  * src/core/layers/ffn.js
- * الحالة: المفرمة المنطقية (Deep Logic Layer)
- * الوظيفة: تضخيم الفروق الدقيقة بين المعاني وإعادة دمجها.
+ * الحالة: المفرمة المنطقية (Deep Logic Layer) - إصدار Leaky ReLU
+ * الوظيفة: تضخيم الفروق الدقيقة ومنع موت الخلايا الرقمية (Dying ReLU).
  */
 
 import { Tensor } from '../tensor.js';
@@ -17,10 +17,10 @@ export class FeedForward {
             w2: this._initWeight(this.hiddenDim, this.embedDim)
         };
 
-        // إضافة انحيازات (Biases) عشان ندي مرونة أكبر في اتخاذ القرار الرقمي
+        // انحيازات (Biases) بقيم ابتدائية بسيطة جداً
         this.biases = {
-            b1: new Tensor(new Float32Array(this.hiddenDim).fill(0.01), { shape: [1, this.hiddenDim], op: 'const' }),
-            b2: new Tensor(new Float32Array(this.embedDim).fill(0.01), { shape: [1, this.embedDim], op: 'const' })
+            b1: new Tensor(new Float32Array(this.hiddenDim).fill(0.001), { shape: [1, this.hiddenDim], op: 'const' }),
+            b2: new Tensor(new Float32Array(this.embedDim).fill(0.001), { shape: [1, this.embedDim], op: 'const' })
         };
     }
 
@@ -28,13 +28,11 @@ export class FeedForward {
         const data = new Float32Array(rows * cols);
         const scale = Math.sqrt(2.0 / rows); 
         for (let i = 0; i < data.length; i++) {
-            // توزيع "نورمال" لضمان عدم تكتل الأرقام في البداية
             data[i] = (this._boxMuller() * scale);
         }
         return new Tensor(data, { shape: [rows, cols], op: 'const' });
     }
 
-    // دالة لتوليد عشوائية أكثر ذكاءً من Math.random العادي
     _boxMuller() {
         let u = 0, v = 0;
         while(u === 0) u = Math.random();
@@ -45,29 +43,34 @@ export class FeedForward {
     forward(inputTensor) {
         /**
          * 1. مرحلة التوسع (Expansion)
-         * بنضرب في W1 ونجمع الـ Bias عشان نفتح مساحة للـ GPU يحلل 2048 نمط
          */
-        let x = inputTensor.matmul(this.weights.w1);
-        x = x.add(this.biases.b1);
+        let x = inputTensor.matmul(this.weights.w1).add(this.biases.b1);
         
         /**
-         * 2. التنشيط (Activation - ReLU)
-         * هنا بنرمي أي قيم سالبة (الأفكار غير المنطقية) ونحتفظ بالموجب
+         * 2. التنشيط المنقذ (Leaky ReLU)
+         * بدلاً من x.relu() التي تسبب الأصفار، نستخدم leakyRelu
+         * ملحوظة: إذا لم تكن leakyRelu معرفة في كلاس Tensor، استخدم (x.sigmoid()) كبديل سريع
          */
-        let activated = x.relu(); 
+        let activated = x.op === 'leakyRelu' ? x : this._applyLeakyRelu(x, 0.01); 
 
         /**
          * 3. مرحلة الضغط (Contraction)
-         * العودة لـ 512 بعد ما حددنا إيه المهم في الـ 2048
          */
-        let output = activated.matmul(this.weights.w2);
-        output = output.add(this.biases.b2);
+        let output = activated.matmul(this.weights.w2).add(this.biases.b2);
 
         /**
-         * 4. الكوبري الأخير (Global Residual Connection)
-         * بنجمع المدخل اللي جاي من الـ Attention مع مخرج الـ FFN
-         * ده اللي هيخلي "سعاده" تغير الأرقام فعلاً مقارنة بـ "وحده"
+         * 4. الكوبري الأخير (Residual Connection)
+         * ندمج المدخلات مع المخرجات لضمان تدفق البيانات
          */
         return output.add(inputTensor);
+    }
+
+    // دالة مساعدة في حال عدم وجود leakyRelu داخل كلاس Tensor الأساسي
+    _applyLeakyRelu(tensor, alpha) {
+        const newData = new Float32Array(tensor.data.length);
+        for (let i = 0; i < tensor.data.length; i++) {
+            newData[i] = tensor.data[i] > 0 ? tensor.data[i] : tensor.data[i] * alpha;
+        }
+        return new Tensor(newData, { shape: tensor.shape, op: 'leaky_relu_manual' });
     }
 }
