@@ -11,105 +11,65 @@
       margin: 0;
       padding: 0;
       display: flex;
-      justify-content: center;
+      flex-direction: column; /* مسموح بوجود مساحة للـ logs تحت */
       align-items: center;
-      height: 100vh;
+      min-height: 100vh;
     }
     .chat-container {
       width: 100%;
       max-width: 450px;
-      height: 90vh;
+      height: 70vh; /* صغرنا الشات شوية عشان اللوجز */
       background: #fff;
       border-radius: 15px;
       display: flex;
       flex-direction: column;
       overflow: hidden;
       box-shadow: 0 0 25px rgba(0,0,0,0.3);
+      margin-top: 20px;
     }
-    .header {
-      background: #1f2937;
-      color: white;
-      padding: 15px;
-      text-align: center;
-      font-weight: bold;
-      font-size: 14px;
-    }
-    .status-dot {
-      height: 10px;
-      width: 10px;
-      background-color: #bbb;
-      border-radius: 50%;
-      display: inline-block;
-      margin-left: 5px;
-    }
+    .header { background: #1f2937; color: white; padding: 15px; text-align: center; font-weight: bold; font-size: 14px; }
+    .status-dot { height: 10px; width: 10px; background-color: #bbb; border-radius: 50%; display: inline-block; margin-left: 5px; }
     .online { background-color: #4ade80; }
-    .chat-box {
-      flex: 1;
-      padding: 15px;
+    .chat-box { flex: 1; padding: 15px; overflow-y: auto; background: #f9fafb; display: flex; flex-direction: column; }
+    .message { padding: 10px 15px; border-radius: 15px; margin: 8px 0; max-width: 85%; font-size: 14px; line-height: 1.5; }
+    .user { background: #3b82f6; color: #fff; align-self: flex-end; border-bottom-right-radius: 2px; }
+    .bot { background: #e5e7eb; color: #000; align-self: flex-start; border-bottom-left-radius: 2px; }
+    
+    /* ستايل اللوجز الجديد (زي فيرسل) */
+    .logs-container {
+      width: 100%;
+      max-width: 450px;
+      height: 25vh;
+      background: #000;
+      color: #00ff41;
+      margin-top: 10px;
+      border-radius: 10px;
+      padding: 10px;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
       overflow-y: auto;
-      background: #f9fafb;
-      display: flex;
-      flex-direction: column;
+      box-shadow: inset 0 0 10px #000;
+      border: 1px solid #333;
     }
-    .message {
-      padding: 10px 15px;
-      border-radius: 15px;
-      margin: 8px 0;
-      max-width: 85%;
-      font-size: 14px;
-      line-height: 1.5;
-    }
-    .user {
-      background: #3b82f6;
-      color: #fff;
-      align-self: flex-end;
-      border-bottom-right-radius: 2px;
-    }
-    .bot {
-      background: #e5e7eb;
-      color: #000;
-      align-self: flex-start;
-      border-bottom-left-radius: 2px;
-    }
-    .error-msg {
-      background: #fee2e2;
-      color: #dc2626;
-      border: 1px solid #fecaca;
-      font-family: monospace;
-      font-size: 12px;
-    }
-    .input-container {
-      display: flex;
-      border-top: 1px solid #ddd;
-      padding: 5px;
-    }
-    .input-container input {
-      flex: 1;
-      border: none;
-      padding: 12px;
-      font-size: 16px;
-      outline: none;
-    }
-    .input-container button {
-      border: none;
-      background: #3b82f6;
-      color: #fff;
-      padding: 0 25px;
-      font-size: 16px;
-      cursor: pointer;
-      border-radius: 8px;
-    }
+    .log-entry { margin-bottom: 4px; border-bottom: 1px solid #1a1a1a; padding-bottom: 2px; }
+    .log-time { color: #888; margin-left: 5px; }
+    .log-error { color: #ff4d4d; }
+    .log-warn { color: #ffcc00; }
+
+    .input-container { display: flex; border-top: 1px solid #ddd; padding: 5px; background: white; }
+    .input-container input { flex: 1; border: none; padding: 12px; font-size: 16px; outline: none; }
+    .input-container button { border: none; background: #3b82f6; color: #fff; padding: 0 25px; font-size: 16px; cursor: pointer; border-radius: 8px; }
   </style>
 </head>
 <body>
   <div class="chat-container">
     <div class="header">
-      رفيق AI - مستكشف الأخطاء
+      رفيق AI - محرك أكاشا
       <span id="engine-status" class="status-dot"></span>
-      <small id="status-text">فحص الـ Hardware...</small>
+      <small id="status-text">فحص النظام...</small>
     </div>
     <div id="chat-box" class="chat-box">
-      <div class="message bot">👋 أهلاً إبراهيم! لو ظهر خطأ دلوقتي، هقولك سببه إيه بالظبط هنا.</div>
+      <div class="message bot">أهلاً إبراهيم! راقب صندوق اللوجز بالأسفل لمتابعة حالة المحرك.</div>
     </div>
     <div class="input-container">
       <input type="text" id="user-input" placeholder="اكتب رسالتك..." />
@@ -117,7 +77,31 @@
     </div>
   </div>
 
+  <!-- صندوق اللوجز شبيه بـ Vercel -->
+  <div class="logs-container" id="logs-view">
+    <div class="log-entry">[SYSTEM] Waiting for initialization...</div>
+  </div>
+
   <script type="module">
+    // وظيفة طباعة اللوجز على الشاشة
+    const logsView = document.getElementById('logs-view');
+    function printLog(msg, type = 'info') {
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type === 'error' ? 'log-error' : type === 'warn' ? 'log-warn' : ''}`;
+      const time = new Date().toLocaleTimeString();
+      entry.innerHTML = `<span class="log-time">[${time}]</span> ${msg}`;
+      logsView.appendChild(entry);
+      logsView.scrollTop = logsView.scrollHeight;
+    }
+
+    // رصد أي خطأ غير متوقع في الصفحة فوراً
+    window.onerror = function(msg, url, line) {
+      printLog(`GLOBAL ERROR: ${msg} at line ${line}`, 'error');
+    };
+
+    printLog("🚀 Importing AkashaRunner...");
+    
+    // محاولة الاستيراد مع معالجة الخطأ
     import { AkashaRunner } from './src/core/akasharunner.js';
 
     const chatBox = document.getElementById('chat-box');
@@ -129,6 +113,7 @@
     let runner = null;
 
     async function initEngine() {
+      printLog("🔍 Checking for GPU capabilities...");
       try {
         let device = null;
         if (navigator.gpu) {
@@ -137,12 +122,22 @@
             device = await adapter.requestDevice();
             statusDot.classList.add('online');
             statusText.innerText = "GPU Active";
+            printLog("✅ WebGPU Adapter found and device requested.");
           }
         }
-        if (!device) statusText.innerText = "CPU Active";
+        
+        if (!device) {
+          statusText.innerText = "CPU Active";
+          printLog("⚠️ WebGPU not found, using CPU Fallback mode.", "warn");
+        }
+
+        printLog("🏗️ Initializing AkashaRunner...");
         runner = new AkashaRunner(device);
+        printLog("🚀 Akasha Engine is ready for computation.");
+
       } catch (e) {
-        addMessage(`🚨 فشل بدء المحرك: ${e.message}`, 'error-msg');
+        printLog(`🚨 INIT FAILED: ${e.message}`, 'error');
+        console.error(e);
       }
     }
 
@@ -158,25 +153,27 @@
       const text = userInput.value.trim();
       if (!text) return;
       if (!runner) {
-        addMessage("⚠️ المحرك لم يكتمل تحميله بعد.", 'bot');
+        printLog("❌ Attempted to send but runner is null", "error");
         return;
       }
 
       addMessage(text, 'user');
       userInput.value = '';
+      printLog(`📩 Processing message: "${text}"`);
       
       try {
-        // تجهيز بيانات المدخلات
         const inputData = new Float32Array(512).fill(text.length / 100);
+        printLog(`🧪 Created Input Tensor with length: ${inputData.length}`);
         
-        // محاولة التشغيل
+        const startTime = performance.now();
         const result = await runner.runInference(inputData);
+        const duration = (performance.now() - startTime).toFixed(2);
         
-        addMessage(`✅ نجحت المعالجة!\nالنتيجة: ${result.data.slice(0,2)}`, 'bot');
+        printLog(`⚡ Computation finished in ${duration}ms`, "info");
+        addMessage(`✅ النتيجة: ${result.data.slice(0,2)}`, 'bot');
       } catch (err) {
-        // طباعة الخطأ التقني كاملاً للمساعدة في الحل
-        addMessage(`🚨 خطأ تقني داخلي:\n${err.stack || err.message}`, 'error-msg');
-        console.error("Full Trace:", err);
+        printLog(`🚨 EXECUTION ERROR: ${err.message}`, 'error');
+        printLog(err.stack, 'error');
       }
     };
 
