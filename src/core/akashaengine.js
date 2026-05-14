@@ -6,9 +6,9 @@
  * يوفر للمستخدم واجهة بسيطة لتشغيل الكومبايلر بضغطة واحدة.
  */
 
-import { GraphBuilder } from './graphbuilder.js';
-import { IROptimizer } from './iroptimizer.js';
-import { WebGPUBackend } from './webgpubackend.js';
+import { GraphBuilder } from '/graphbuilder.js';
+import { IROptimizer } from '/iroptimizer.js';
+import { WebGPUBackend } from '/webgpubackend.js';
 
 export class AkashaEngine {
     /**
