@@ -1,88 +1,111 @@
 /**
  * src/core/opnode.js
- * 
- * الوظيفة: تعريف وحدات العمليات (Operation Nodes).
- * يمثل هذا الملف المنطق الرياضي لكل عملية في الـ Graph. 
- * بدلاً من حساب النتيجة، يقوم بتخزين "كيفية" الحساب لكي يتمكن الـ Compiler 
- * من دمجها (Fusion) أو توزيعها على الـ GPU لاحقاً.
+ * الحالة: تطوير هندسي شامل (Compiler-Ready)
+ * الوظيفة: تعريف منطق العمليات وتحويلها إلى صيغ رياضية قابلة للتنفيذ على الـ GPU.
  */
 
 export class OpNode {
     /**
-     * @param {string} type - نوع العملية (add, mul, matmul, etc.)
+     * @param {string} type - نوع العملية (add, mul, matmul, relu, etc.)
      * @param {Array} inputs - الـ Tensors الداخلة في العملية
-     * @param {Object} attrs - خصائص إضافية (مثل الـ axis في الـ reduction)
+     * @param {Object} attrs - خصائص إضافية
      */
     constructor(type, inputs, attrs = {}) {
         this.type = type;
-        this.inputs = inputs; // مراجع للـ Tensors الأصلية
+        this.inputs = inputs;
         this.attrs = attrs;
-        
-        // تسجيل وقت الإنشاء لتتبع ترتيب العمليات في الـ Graph
-        this.timestamp = Date.now();
-        
-        // سيتم ملء هذا الحقل بواسطة الـ Compiler عند توليد الكود
-        this.kernelSource = null;
+        this.id = `op_${Math.random().toString(36).substr(2, 5)}`;
     }
 
     /**
-     * الحصول على تعريف العملية للـ Compiler
-     * يحدد هذا الجزء الصيغة الرياضية التي سيتم تحويلها لـ WGSL
+     * قاموس العمليات: يحتوي على "الكود المصدري" لكل عملية رياضية.
+     * تم تصميمه ليدعم الـ Scalar Ops التي تُحقن مباشرة في الـ Shaders.
      */
-    getOpDefinition() {
-        const definitions = {
-            'add': {
-                scalarOp: (a, b) => `${a} + ${b}`,
-                isElementWise: true
+    static get DEFINITIONS() {
+        return {
+            'add':  { symbol: '+', isElementWise: true,  identity: 0.0 },
+            'sub':  { symbol: '-', isElementWise: true,  identity: 0.0 },
+            'mul':  { symbol: '*', isElementWise: true,  identity: 1.0 },
+            'div':  { symbol: '/', isElementWise: true,  identity: 1.0 },
+            'relu': { 
+                isElementWise: true, 
+                customFormula: (a) => `max(0.0, ${a})` 
             },
-            'sub': {
-                scalarOp: (a, b) => `${a} - ${b}`,
-                isElementWise: true
-            },
-            'mul': {
-                scalarOp: (a, b) => `${a} * ${b}`,
-                isElementWise: true
-            },
-            'matmul': {
-                isElementWise: false,
-                customKernel: true // تحتاج لمعالجة خاصة في الـ GPU
+            'matmul': { 
+                isElementWise: false, 
+                customKernel: true 
             }
         };
-
-        return definitions[this.type] || null;
     }
 
     /**
-     * التحقق من توافق أبعاد المدخلات قبل بناء الـ Graph
+     * توليد الصيغة الرياضية للعملية (التي ستوضع داخل الـ WGSL Shader)
+     * @param {Array<string>} inputVars - أسماء المتغيرات البرمجية للمدخلات (مثل val1, val2)
+     */
+    generateFormula(inputVars) {
+        const def = OpNode.DEFINITIONS[this.type];
+        if (!def) throw new Error(`Unsupported operation: ${this.type}`);
+
+        if (def.customFormula) {
+            return def.customFormula(...inputVars);
+        }
+
+        if (def.symbol) {
+            // دعم العمليات الثنائية مثل a + b
+            return `(${inputVars[0]} ${def.symbol} ${inputVars[1]})`;
+        }
+
+        return inputVars[0]; // Fallback
+    }
+
+    /**
+     * التحقق الهندسي من الأبعاد (Shape Validation)
+     * يدعم الآن الـ Scalar Broadcasting (الجمع/الضرب في رقم واحد)
      */
     validateShapes() {
-        if (this.inputs.length < 1) return false;
+        if (this.inputs.length === 0) return false;
         
         const shapeA = this.inputs[0].shape;
-        
-        if (this.type === 'add' || this.type === 'sub' || this.type === 'mul') {
+        const def = OpNode.DEFINITIONS[this.type];
+
+        if (def && def.isElementWise && this.inputs.length === 2) {
             const shapeB = this.inputs[1].shape;
-            // التحقق من التوافق (بسيط حالياً، سيتم تطويره لدعم الـ Broadcasting)
-            return shapeA.every((val, index) => val === shapeB[index]);
+            
+            // قاعدة الـ Broadcasting البسيطة:
+            // 1. الأبعاد متطابقة تماماً.
+            // 2. أو أحدهما طوله 1 (Scalar).
+            const isMatch = shapeA.every((val, i) => val === shapeB[i]);
+            const isScalarB = shapeB.length === 1 && shapeB[0] === 1;
+            const isScalarA = shapeA.length === 1 && shapeA[0] === 1;
+
+            if (!isMatch && !isScalarB && !isScalarA) {
+                throw new Error(`Shape Mismatch: ${this.type} requires compatible shapes. Got ${shapeA} and ${shapeB}`);
+            }
+            return true;
         }
-        
+
         if (this.type === 'matmul') {
             const shapeB = this.inputs[1].shape;
-            // قاعدة ضرب المصفوفات: أعمدة الأولى تساوي صفوف الثانية
-            return shapeA[shapeA.length - 1] === shapeB[0];
+            // قاعدة ضرب المصفوفات الكلاسيكية
+            if (shapeA[1] !== shapeB[0]) {
+                throw new Error(`MatMul Mismatch: Inner dimensions must match. Got ${shapeA[1]} and ${shapeB[0]}`);
+            }
+            return true;
         }
 
         return true;
     }
 
     /**
-     * تتبع المسار الخلفي (Backtrace)
-     * يساعد الـ Compiler في بناء شجرة الاعتمادات (Dependency Tree)
+     * تحديد ما إذا كانت العملية قابلة للدمج (Fusion Eligible)
+     * دمج العمليات يقلل من استهلاك الـ GPU للكهرباء والوقت بنسبة تصل لـ 40%
      */
-    getDependencies() {
-        return this.inputs.map(tensor => ({
-            tensorId: tensor.id,
-            sourceOp: tensor.op
-        }));
+    isFusable() {
+        const def = OpNode.DEFINITIONS[this.type];
+        return def ? def.isElementWise : false;
+    }
+
+    getOpDefinition() {
+        return OpNode.DEFINITIONS[this.type] || null;
     }
 }
