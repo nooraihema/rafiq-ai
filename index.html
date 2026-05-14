@@ -10,14 +10,19 @@
     .header { background: #000; color: #fff; padding: 15px; text-align: center; font-size: 13px; border-bottom: 1px solid #333; }
     .status-dot { height: 8px; width: 8px; background-color: #555; border-radius: 50%; display: inline-block; margin-left: 5px; }
     .online { background-color: #00ff41; }
+    
     .chat-box { flex: 1; padding: 15px; overflow-y: auto; background: #f4f4f4; display: flex; flex-direction: column; }
     .message { padding: 10px 14px; border-radius: 12px; margin: 8px 0; font-size: 14px; max-width: 80%; line-height: 1.4; }
     .user { background: #0070f3; color: #fff; align-self: flex-end; border-bottom-right-radius: 2px; }
-    .bot { background: #eaeaea; color: #000; align-self: flex-start; border-bottom-left-radius: 2px; }
-    .logs-container { width: 100%; max-width: 450px; height: 35vh; background: #000; color: #888; margin-top: 10px; border-radius: 8px; padding: 15px; font-family: 'Monaco', monospace; font-size: 11px; overflow-y: auto; border: 1px solid #333; }
-    .log-step { margin-bottom: 6px; display: flex; }
-    .log-step span:first-child { color: #0070f3; margin-right: 10px; font-weight: bold; }
-    .log-error { color: #ff4d4d; }
+    .bot { background: #eaeaea; color: #000; align-self: flex-start; border-bottom-left-radius: 2px; font-weight: 500; }
+
+    /* تحسين شكل اللوج */
+    .logs-container { width: 100%; max-width: 450px; height: 35vh; background: #000; color: #00ff41; margin-top: 10px; border-radius: 8px; padding: 15px; font-family: 'Monaco', monospace; font-size: 11px; overflow-y: auto; border: 1px solid #333; box-shadow: inset 0 0 10px #000; }
+    .log-step { margin-bottom: 8px; border-bottom: 1px solid #1a1a1a; padding-bottom: 4px; line-height: 1.5; }
+    .log-tag { color: #0070f3; font-weight: bold; margin-right: 5px; text-transform: uppercase; }
+    .log-val { color: #f1c40f; }
+    .log-error { color: #ff4d4d; border-left: 2px solid #ff4d4d; padding-left: 5px; }
+
     .input-container { display: flex; padding: 10px; background: white; border-top: 1px solid #eee; }
     input { flex: 1; border: none; padding: 8px; outline: none; font-size: 14px; }
     button { background: #000; color: #fff; border: none; padding: 8px 20px; border-radius: 5px; cursor: pointer; transition: 0.2s; }
@@ -41,7 +46,7 @@
     import { AkashaRunner } from './src/core/akasharunner.js';
     import { WebGPUBackend } from './src/core/webgpubackend.js';
     import { Tokenizer } from './src/core/tokenizer.js';
-    import { AkashaGenerator } from './src/core/generator.js'; // استيراد المولد الجديد
+    import { AkashaGenerator } from './src/core/generator.js';
 
     const logsView = document.getElementById('logs-view');
     const statusDot = document.getElementById('engine-status');
@@ -49,10 +54,11 @@
     const userInput = document.getElementById('user-input');
     const sendBtn = document.getElementById('send-btn');
 
-    function printLog(msg, type = 'info') {
+    // وظيفة طباعة اللوج بشكل منظم
+    function printLog(tag, msg, type = 'info') {
       const entry = document.createElement('div');
       entry.className = `log-step ${type === 'error' ? 'log-error' : ''}`;
-      entry.innerHTML = `<span>❯</span> ${msg}`;
+      entry.innerHTML = `<span class="log-tag">[${tag}]</span> <span class="log-msg">${msg}</span>`;
       logsView.appendChild(entry);
       logsView.scrollTop = logsView.scrollHeight;
     }
@@ -62,38 +68,32 @@
     const tokenizer = new Tokenizer(5000);
 
     async function startLifecycle() {
-      printLog("Loading Engine Modules...");
+      printLog("CORE", "Initializing Akasha Engine...");
       try {
         const adapter = await navigator.gpu?.requestAdapter();
         const device = adapter ? await adapter.requestDevice() : null;
-        
         const backend = new WebGPUBackend(device);
         
         if (device) {
             statusDot.classList.add('online');
-            printLog("WebGPU Backend Active.");
+            printLog("GPU", `WebGPU Active: ${adapter.name || 'Generic GPU'}`);
         } else {
-            printLog("CPU Fallback Active (No GPU).", "warn");
+            printLog("GPU", "Fallback to CPU mode", "warn");
         }
 
         runner = new AkashaRunner(backend);
-        generator = new AkashaGenerator(runner); // ربط المولد بالرنر
+        generator = new AkashaGenerator(runner);
 
-        // تحميل الـ Dataset وبناء القاموس
-        try {
-            printLog("Fetching dataset.txt...");
-            const response = await fetch('./dataset.txt');
-            if (!response.ok) throw new Error("Dataset file not found");
-            const trainingData = await response.text();
-            await generator.buildVocabFromText(trainingData);
-            printLog("Vocabulary Ready.");
-        } catch (vErr) {
-            printLog(`Vocab Error: ${vErr.message}. Check dataset.txt`, "error");
-        }
+        // تحميل الـ Dataset
+        printLog("DATA", "Fetching dataset.txt...");
+        const response = await fetch('./dataset.txt');
+        const trainingData = await response.text();
+        await generator.buildVocabFromText(trainingData);
+        printLog("VOCAB", `Ready with ${generator.vocab.length} words`);
 
-        printLog("Akasha Engine Initialized.");
+        printLog("STATUS", "Engine Online & Ready.");
       } catch (err) {
-        printLog(`Critical Error: ${err.message}`, "error");
+        printLog("CRITICAL", err.message, "error");
       }
     }
 
@@ -101,7 +101,7 @@
       const text = userInput.value.trim();
       if (!text || !runner || !generator) return;
 
-      // إظهار رسالة المستخدم في الشات
+      // إظهار رسالة المستخدم
       const div = document.createElement('div'); 
       div.className = 'message user'; 
       div.innerText = text;
@@ -111,25 +111,32 @@
       const start = performance.now();
       
       try {
-        // 1. تحويل النص لـ Tokens
+        // 1. Tokenization
         const tokenIds = tokenizer.encode(text);
-        printLog(`Tokenized: [${tokenIds.join(', ')}]`);
+        printLog("TOKEN", `Input IDs: <span class="log-val">[${tokenIds.join(', ')}]</span>`);
 
-        // 2. توليد الكلمة باستخدام المولد (الذي يستدعي runner داخلياً)
-        const resultWord = await generator.generate(tokenIds);
+        // 2. Generation & Engine Result
+        // ملاحظة: تأكد أن ملف generator.js يرجع Object يحتوي على {word, raw}
+        const prediction = await generator.generate(tokenIds);
         
         const duration = (performance.now() - start).toFixed(2);
-        printLog(`Execution completed in ${duration}ms`);
         
-        // 3. إظهار رد المحرك ككلمة مفهومة
+        // طباعة تفاصيل الحسابات في اللوج
+        if (prediction.raw) {
+            printLog("RAW OUT", `Logits: <span class="log-val">[${prediction.raw.join(', ')}...]</span>`);
+        }
+        printLog("TIME", `Execution: ${duration}ms`);
+        printLog("PREDICT", `Result: <span class="log-val">"${prediction.word || prediction}"</span>`);
+        
+        // 3. إظهار رد المحرك
         const resDiv = document.createElement('div'); 
         resDiv.className = 'message bot'; 
-        resDiv.innerText = resultWord; 
+        resDiv.innerText = prediction.word || prediction; 
         chatBox.appendChild(resDiv);
         
         chatBox.scrollTop = chatBox.scrollHeight;
       } catch (err) {
-        printLog(`Execution Error: ${err.message}`, "error");
+        printLog("EXEC ERR", err.message, "error");
         console.error(err);
       }
     };
