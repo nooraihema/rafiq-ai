@@ -1,103 +1,53 @@
 /**
  * src/core/tensor.js
- * 
- * الوظيفة: حجر الأساس للنظام (The Graph Tracer).
- * هذا الملف مسؤول عن إدارة البيانات وتتبع العمليات حسابياً دون تنفيذها فوراً،
- * مما يمهد الطريق للـ Compiler لعمل الـ Optimization والـ Fusion.
+ * الوظيفة: الهيكل الرياضي الأساسي للبيانات (The Core Data Structure).
  */
 
 export class Tensor {
-    /**
-     * @param {Array|TypedArray} data - البيانات العددية
-     * @param {Object} options - إعدادات إضافية (shape, dtype, requiresGrad)
-     */
     constructor(data, options = {}) {
-        // تعريف الهوية الفريدة للـ Tensor داخل الـ Graph
-        this.id = options.id || `t_${Math.random().toString(36).substring(7)}`;
+        // تحويل البيانات لـ Float32Array لو مش كدة
+        this.data = data instanceof Float32Array ? data : new Float32Array(data);
         
-        // إدارة الأبعاد (Shape) ونوع البيانات (DType)
-        this.shape = options.shape || (data.length ? [data.length] : [0]);
-        this.dtype = options.dtype || 'float32';
-        this.size = this.shape.reduce((a, b) => a * b, 1);
+        // تحديد الأبعاد (Default: 1D array)
+        this.shape = options.shape || [this.data.length];
+        this.id = options.id || `t_${Math.random().toString(36).substr(2, 6)}`;
         
-        // تخزين البيانات فعلياً في ذاكرة متصلة (Buffer)
-        // ملاحظة: إذا كان الـ Tensor ناتجاً عن عملية (Op)، قد تكون البيانات فارغة مبدئياً
-        this.data = data.length > 0 ? this._ensureTypedArray(data, this.dtype) : null;
+        // تتبع العمليات لبناء الـ Graph
+        this.op = options.op || 'const'; // العملية اللي انتجت التنسور
+        this.inputs = options.inputs || []; // التنسورات اللي شاركت في العملية
         
-        // إدارة التدرجات (Gradients) للدعم اللاحق للـ Backpropagation
-        this.requiresGrad = options.requiresGrad || false;
-        this.grad = null; 
-        
-        // --- حقول الـ Graph Compiler ---
-        
-        // العملية (Operation) التي أنتجت هذا الـ Tensor
-        this.op = options.op || null; 
-        
-        // المدخلات (الـ Tensors) التي شاركت في إنتاج هذا الـ Tensor
-        this.inputs = options.inputs || []; 
-        
-        // رقم الإصدار لتتبع التغييرات (Versioning)
-        this.version = 0;
-
-        // حالة التنفيذ: هل تم حساب هذا الـ Tensor أم أنه لا يزال "وعداً" (Promise)؟
-        this.isComputed = this.op === null;
+        this.isComputed = options.isComputed !== undefined ? options.isComputed : true;
+        this.dtype = 'float32';
     }
 
-    /**
-     * ضمان تخزين البيانات في مصفوفات محددة النوع (TypedArrays)
-     */
-    _ensureTypedArray(data, dtype) {
-        if (data instanceof Float32Array || data instanceof Float64Array) return data;
-        return dtype === 'float64' ? new Float64Array(data) : new Float32Array(data);
-    }
+    // دالة لجمع تنسورين مع التأكد من الأبعاد
+    add(other) {
+        if (!(other instanceof Tensor)) {
+            other = new Tensor([other], { shape: [1] });
+        }
+        
+        // التحقق من توافق الأبعاد (Fixing Shape Mismatch)
+        if (JSON.stringify(this.shape) !== JSON.stringify(other.shape)) {
+            // هنا ممكن نضيف خاصية الـ Broadcasting لاحقاً
+            throw new Error(`Graph Error: Shape mismatch in 'add' between ${this.shape} and ${other.shape}`);
+        }
 
-    /**
-     * تسجيل عملية في الـ Graph بدلاً من تنفيذها (Lazy Tracking)
-     */
-    _attachOp(opName, inputs) {
-        return new Tensor([], {
-            op: opName,
-            inputs: [this, ...inputs],
-            shape: this._inferShape(opName, inputs),
-            requiresGrad: this.requiresGrad || inputs.some(i => i.requiresGrad)
+        return new Tensor(null, {
+            op: 'add',
+            inputs: [this, other],
+            shape: this.shape,
+            isComputed: false,
+            id: `t_add_${Math.random().toString(36).substr(2, 4)}`
         });
     }
 
-    /**
-     * استنتاج شكل المصفوفة الناتجة بناءً على نوع العملية
-     */
-    _inferShape(op, inputs) {
-        return this.shape; 
-    }
-
-    // --- واجهة العمليات الرياضية (Operations API) ---
-    // هذه الدوال تبني الـ Graph فقط ولا تستهلك CPU حالياً
-
-    add(other) {
-        return this._attachOp('add', [other]);
-    }
-
-    sub(other) {
-        return this._attachOp('sub', [other]);
-    }
-
-    mul(other) {
-        return this._attachOp('mul', [other]);
-    }
-
-    matmul(other) {
-        return this._attachOp('matmul', [other]);
-    }
-
-    /**
-     * المزامنة (Sync): النقطة التي يتدخل فيها الـ Compiler لتحويل الـ Graph لكود تنفيذي
-     */
-    async syncData() {
-        if (!this.isComputed) {
-            // سيتم ربطه لاحقاً بـ AkashaEngine.compileAndRun(this)
-            console.log(`[Graph Trace] Resolving: ${this.op} for Tensor ${this.id}`);
-            this.isComputed = true;
+    // دالة لتغيير الشكل (Reshape) - مهمة جداً للـ Neural Networks
+    reshape(newShape) {
+        const newSize = newShape.reduce((a, b) => a * b, 1);
+        if (newSize !== this.data.length) {
+            throw new Error(`Cannot reshape tensor of size ${this.data.length} to ${newShape}`);
         }
-        return this.data;
+        this.shape = newShape;
+        return this;
     }
 }
