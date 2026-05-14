@@ -1,7 +1,7 @@
 /**
  * src/core/webgpubackend.js
  * الحالة: النسخة الفولاذية المحدثة (دعم الـ Residual والـ Leaky ReLU)
- * الوظيفة: تنفيذ العمليات على الـ GPU مع حماية من بيانات الـ Null.
+ * الوظيفة: تنفيذ الحسابات على الـ GPU مع حماية صارمة من بيانات الـ Null.
  */
 
 export class WebGPUBackend {
@@ -80,15 +80,15 @@ export class WebGPUBackend {
         const firstStep = plan[0];
         let initialData = null;
 
-        // نبحث عن أي بيانات أولية متاحة (سواء في الـ step أو الـ opNode)
         if (firstStep) {
-            initialData = firstStep.inputTensorData || (firstStep.opNode && firstStep.opNode.data);
+            // فحص كل الأماكن المحتملة لوجود البيانات الأولية
+            initialData = firstStep.inputTensorData || (firstStep.opNode && firstStep.opNode.data) || (firstStep.data);
         }
 
         if (initialData && initialData.length > 0) {
             this.device.queue.writeBuffer(inputBuffer, 0, initialData);
         } else {
-            // لو مفيش بيانات، املأ بـ 0.01 بدل Null لمنع الانهيار
+            // لو مفيش بيانات، املأ بـ 0.01 بدل Null لمنع انهيار الـ length
             this.device.queue.writeBuffer(inputBuffer, 0, new Float32Array(512).fill(0.01));
         }
 
