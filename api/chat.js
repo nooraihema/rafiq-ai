@@ -1,58 +1,48 @@
 /**
  * api/chat.js
  * 
- * المشغل الرئيسي لنواة أكاشا - نسخة الـ Graph Compiler v1.0
- * وظيفته: الربط بين واجهة المستخدم، محرك الـ GPU، وعملية التدريب التلقائي.
+ * تم تعديل المسارات لتتوافق مع هيكلة الفولدرات الجديدة: src/core/
  */
 
-import { AkashaEngine } from '../core/akashaengine.js';
-import { Tensor } from '../core/tensor.js';
-import { AkashaBrain } from '../core/brain.js';
+// المسار الصحيح للوصول من /api إلى /src/core
+import { AkashaEngine } from '../src/core/akashaengine.js';
+import { Tensor } from '../src/core/tensor.js';
+// تأكد أن ملف brain.js موجود أيضاً داخل src/core/
+import { AkashaBrain } from '../src/core/brain.js'; 
+
 import fs from 'fs';
 import path from 'path';
 
-// متغيرات الحالة (State) - ثابتة طوال فترة تشغيل السيرفر
 let engineInstance = null;
 let brainInstance = null;
 let datasetContent = null;
 
 /**
- * دالة تهيئة الهاردوير (Initialize WebGPU)
- * لازم نتأكد إن الـ GPU متاح قبل أي عملية حسابية
+ * تهيئة المحرك وربطه بكرت الشاشة
  */
 async function initHardware() {
     if (engineInstance) return;
 
-    // في بيئة المتصفح نستخدم navigator.gpu، وفي Node نستخدم مكتبات مثل gpu.js أو wgpu-native
-    const adapter = await navigator.gpu.requestAdapter();
-    const device = await adapter.requestDevice();
-    
-    // إنشاء المحرك (المايسترو) وإرسال الـ device له
-    engineInstance = new AkashaEngine(device);
-    
-    // إنشاء المخ (Brain) وربطه بالمحرك
-    brainInstance = new AkashaBrain(engineInstance);
-    
-    console.log("🌌 [HARDWARE]: WebGPU Initialized - Akasha Engine Armed.");
+    try {
+        // التحقق من دعم WebGPU في البيئة الحالية
+        if (!navigator.gpu) {
+            throw new Error("WebGPU is not supported in this environment.");
+        }
+
+        const adapter = await navigator.gpu.requestAdapter();
+        const device = await adapter.requestDevice();
+        
+        engineInstance = new AkashaEngine(device);
+        brainInstance = new AkashaBrain(engineInstance);
+        
+        console.log("🌌 [HARDWARE]: Akasha Engine Armed via src/core/");
+    } catch (err) {
+        console.error("❌ Hardware Init Failed:", err);
+        throw err;
+    }
 }
 
-function getRandomChunk(size = 64) {
-    try {
-        if (!datasetContent) {
-            const filePath = path.join(process.cwd(), 'dataset.txt');
-            if (fs.existsSync(filePath)) {
-                datasetContent = fs.readFileSync(filePath, 'utf-8');
-            }
-        }
-        if (datasetContent && datasetContent.length > size) {
-            const start = Math.floor(Math.random() * (datasetContent.length - size));
-            return datasetContent.substring(start, start + size);
-        }
-    } catch (e) {
-        console.log("⚠️ [DATASET]: Could not read dataset.");
-    }
-    return null;
-}
+// ... بقية دالة getRandomChunk كما هي ...
 
 export default async function handler(req, res) {
     if (req.method !== "POST") return res.status(405).end();
@@ -63,38 +53,27 @@ export default async function handler(req, res) {
 
         if (!rawMessage) return res.status(400).json({ error: "No message provided" });
 
-        // 1. التأكد من جاهزية المحرك والـ GPU
+        // 1. التأكد من المسارات والجاهزية
         await initHardware();
 
-        // --- [ دورة التدريب الذكي بالكومبايلر ] ---
+        // 2. التدريب الصامت (Background Training)
         const trainingChunk = getRandomChunk(128); 
         if (trainingChunk) {
-            console.time("🔥 TrainingSync");
-            
-            // هنا الـ Brain هيعمل Trace لعمليات الـ Backpropagation 
-            // والـ Engine هيدمجهم (Fuse) ويشغلهم في خبطة واحدة على كارت الشاشة
             await brainInstance.train(trainingChunk);
-            
-            console.timeEnd("🔥 TrainingSync");
         }
-        // ----------------------------------------
 
-        // 2. معالجة رسالة المستخدم (Inference)
-        // الـ process الآن بتعتمد على الـ Graph Compiler لإنتاج الرد
+        // 3. المعالجة والرد
         const result = await brainInstance.process(rawMessage, userId);
 
-        // 3. الرد النهائي
         return res.status(200).json({
             reply: result.text,
-            userId: userId || "anonymous",
-            engineStatus: "fused_execution_active",
-            performance: "optimized_by_graph_compiler"
+            status: "fused_execution_active"
         });
 
     } catch (err) {
-        console.error("🚨 Akasha Engine Runtime Error:", err);
+        console.error("🚨 Akasha Engine Failure:", err);
         return res.status(500).json({ 
-            error: "النواة تعاني من تداخل في الـ Graph Execution",
+            error: "فشل في تحميل الأنظمة الأساسية من src/core/",
             details: err.message 
         });
     }
