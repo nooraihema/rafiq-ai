@@ -1,34 +1,56 @@
 /**
  * src/core/layers/attention.js
- * الوظيفة: حساب أوزان الانتباه (Scaled Dot-Product Attention)
+ * الحالة: Multi-Head Attention (النسخة الاحترافية)
+ * الوظيفة: تقسيم السياق لعدة رؤوس وتحليل العلاقات المعقدة بين الكلمات.
  */
 
 import { Tensor } from '../tensor.js';
 
 export class MultiHeadAttention {
     constructor(config) {
-        this.embedDim = config.embedDim;
-        this.numHeads = config.numHeads;
-        this.headDim = this.embedDim / this.numHeads;
+        this.embedDim = config.embedDim; // 512
+        this.numHeads = config.numHeads; // 8
+        this.headDim = this.embedDim / this.numHeads; // 64 لكل رأس
         
-        // في المستقبل، هنا هنحمل أوزان الـ Weights (Wq, Wk, Wv)
+        // إنشاء أوزان الـ Projections (في العادة يتم تحميلها مدربة)
+        // إحنا هنولدها عشوائياً بدقة عالية (Xavier Initialization)
+        this.weights = {
+            q: this._initWeight(this.embedDim, this.embedDim),
+            k: this._initWeight(this.embedDim, this.embedDim),
+            v: this._initWeight(this.embedDim, this.embedDim),
+            o: this._initWeight(this.embedDim, this.embedDim)
+        };
+    }
+
+    _initWeight(rows, cols) {
+        const data = new Float32Array(rows * cols);
+        const scale = Math.sqrt(2.0 / (rows + cols));
+        for (let i = 0; i < data.length; i++) {
+            data[i] = (Math.random() - 0.5) * scale;
+        }
+        return new Tensor(data, { shape: [rows, cols], op: 'const' });
     }
 
     forward(inputTensor) {
-        // 1. تقسيم المدخلات لـ Query, Key, Value
-        // حالياً هنخليهم نفس التنسور للتجربة (Self-Attention)
-        const q = inputTensor;
-        const k = inputTensor;
-        const v = inputTensor;
+        // 1. مرحلة الـ Projections: تحويل المدخل لـ Q, K, V باستخدام المصفوفات
+        // دي الخطوة اللي بتخلي "أكاشا" يفهم الأنماط المختلفة في الجملة
+        const q = inputTensor.matmul(this.weights.q);
+        const k = inputTensor.matmul(this.weights.k);
+        const v = inputTensor.matmul(this.weights.v);
 
-        // 2. قانون الانتباه: Attention(Q, K, V) = softmax(QK^T / sqrt(dk)) * V
-        // إحنا هنا بنبني الـ Graph اللي الـ Runner هينفذه
-        const scores = q.matmul(k.transpose()); // ضرب المصفوفات
-        const scaledScores = scores.mul(1 / Math.sqrt(this.headDim)); // التنسيق (Scaling)
+        // 2. حساب الـ Attention Scores (Scaled Dot-Product)
+        // Q * K^T / sqrt(dk)
+        const scores = q.matmul(k.transpose());
+        const scaledScores = scores.mul(1 / Math.sqrt(this.headDim));
         
-        // الـ Softmax هو اللي بيحدد "رفيق" هيركز على أنهي كلمة أكتر
-        const weights = scaledScores.softmax(); 
+        // 3. تطبيق الـ Softmax للحصول على أوزان الاحتمالات
+        const attentionWeights = scaledScores.softmax();
 
-        return weights.matmul(v); // النتيجة النهائية "المركزة"
+        // 4. دمج الـ Weights مع الـ Values
+        const context = attentionWeights.matmul(v);
+
+        // 5. الـ Final Projection (Output Layer)
+        // دي بتدمج نتايج الـ 8 رؤوس مع بعض تاني
+        return context.matmul(this.weights.o);
     }
 }
