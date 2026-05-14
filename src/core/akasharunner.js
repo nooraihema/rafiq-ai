@@ -2,7 +2,7 @@
  * src/core/akasharunner.js
  * 
  * الوظيفة: مشغل العمليات الموحد (Unified Operation Runner).
- * هذا الكود هو حلقة الوصل بين الـ API وبين الـ 7 ملفات الأساسية.
+ * تم التعديل لإصلاح خطأ Shape mismatch وضمان توافق الأبعاد.
  */
 
 import { AkashaEngine } from './akashaengine.js';
@@ -11,7 +11,7 @@ import { Tensor } from './tensor.js';
 export class AkashaRunner {
     constructor(device) {
         this.engine = new AkashaEngine(device);
-        // مصفوفة أوزان وهمية كبداية (Weights)
+        // مصفوفة أوزان وهمية بحجم 512
         this.weights = new Tensor(new Float32Array(512).fill(0.5), { id: 'main_weights' });
     }
 
@@ -19,20 +19,25 @@ export class AkashaRunner {
      * تشغيل عملية معالجة سريعة (Inference)
      */
     async runInference(inputData) {
-        // 1. تحويل البيانات القادمة إلى Tensor
+        // 1. تحويل البيانات القادمة إلى Tensor (يجب أن يكون الطول 512)
         const inputTensor = new Tensor(new Float32Array(inputData), { id: 'input_node' });
 
         // 2. بناء معادلة رياضية (Graph)
-        // هنا الكومبايلر هيدمج الـ mul والـ add في Kernel واحد
-        const graph = inputTensor.mul(this.weights).add(new Tensor([0.1]));
+        // إصلاح الخطأ: نقوم بإنشاء Bias بنفس طول المدخلات (512) ليتوافق مع الـ Shape
+        const biasData = new Float32Array(512).fill(0.1);
+        const bias = new Tensor(biasData, { id: 'bias_node' });
 
-        // 3. التنفيذ الفعلي عبر الكومبايلر
+        // العملية الآن: (512 * 512) + 512 = التوافق تام
+        const graph = inputTensor.mul(this.weights).add(bias);
+
+        // 3. التنفيذ الفعلي عبر الكومبايلر (سواء GPU أو CPU Fallback)
         const resultData = await this.engine.compute(graph);
 
         return {
             tensorId: graph.id,
-            data: resultData.slice(0, 5), // نرجع أول 5 قيم للتجربة
-            status: "Success - Fused Execution"
+            // نرجع أول 5 قيم للتجربة في الـ API response
+            data: resultData instanceof Float32Array ? resultData.slice(0, 5) : resultData,
+            status: "Success - Fused Execution Complete"
         };
     }
 
@@ -40,14 +45,16 @@ export class AkashaRunner {
      * تشغيل دورة تدريب (Training Step)
      */
     async runTrainingStep(data) {
-        const grad = new Tensor(new Float32Array(512).fill(0.01));
+        // الـ Grad لازم يكون برضه 512
+        const gradData = new Float32Array(512).fill(0.01);
+        const grad = new Tensor(gradData, { id: 'grad_node' });
         
         // عملية تحديث الأوزان: W = W - Grad
         const updatedWeights = this.weights.sub(grad);
         
         await this.engine.compute(updatedWeights);
-        this.weights = updatedWeights; // تحديث الذاكرة
+        this.weights = updatedWeights; // تحديث الأوزان في الذاكرة
         
-        return "Weights Updated via GPU";
+        return "Weights Updated Successfully";
     }
 }
