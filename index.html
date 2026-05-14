@@ -1,14 +1,13 @@
-
 <!DOCTYPE html>
 <html lang="ar">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>رفيق AI</title>
+  <title>رفيق AI | مدعوم بمحرك أكاشا</title>
   <style>
     body {
       font-family: Arial, sans-serif;
-      background: #f2f2f2;
+      background: #111827; /* غيرت الخلفية لغامق عشان تليق بمحرك AI */
       margin: 0;
       padding: 0;
       display: flex;
@@ -18,73 +17,164 @@
     }
     .chat-container {
       width: 100%;
-      max-width: 400px;
+      max-width: 450px;
       height: 90vh;
       background: #fff;
-      border-radius: 10px;
+      border-radius: 15px;
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      box-shadow: 0 0 15px rgba(0,0,0,0.2);
+      box-shadow: 0 0 25px rgba(0,0,0,0.3);
     }
+    .header {
+      background: #1f2937;
+      color: white;
+      padding: 15px;
+      text-align: center;
+      font-weight: bold;
+      font-size: 14px;
+    }
+    .status-dot {
+      height: 10px;
+      width: 10px;
+      background-color: #bbb;
+      border-radius: 50%;
+      display: inline-block;
+      margin-left: 5px;
+    }
+    .online { background-color: #4ade80; }
     .chat-box {
       flex: 1;
-      padding: 10px;
+      padding: 15px;
       overflow-y: auto;
-      background: #fafafa;
+      background: #f9fafb;
+      display: flex;
+      flex-direction: column;
     }
-    .chat-box .user {
-      background: #007bff;
+    .message {
+      padding: 10px 15px;
+      border-radius: 15px;
+      margin: 8px 0;
+      max-width: 80%;
+      font-size: 15px;
+      line-height: 1.4;
+    }
+    .user {
+      background: #3b82f6;
       color: #fff;
-      padding: 8px 12px;
-      border-radius: 12px;
-      margin: 5px 0;
       align-self: flex-end;
-      max-width: 75%;
+      border-bottom-right-radius: 2px;
     }
-    .chat-box .bot {
-      background: #e4e6eb;
+    .bot {
+      background: #e5e7eb;
       color: #000;
-      padding: 8px 12px;
-      border-radius: 12px;
-      margin: 5px 0;
       align-self: flex-start;
-      max-width: 75%;
+      border-bottom-left-radius: 2px;
     }
     .input-container {
       display: flex;
       border-top: 1px solid #ddd;
+      padding: 5px;
     }
     .input-container input {
       flex: 1;
       border: none;
-      padding: 10px;
+      padding: 12px;
       font-size: 16px;
       outline: none;
     }
     .input-container button {
       border: none;
-      background: #007bff;
+      background: #3b82f6;
       color: #fff;
-      padding: 0 20px;
+      padding: 0 25px;
       font-size: 16px;
       cursor: pointer;
+      border-radius: 8px;
     }
-    .input-container button:hover {
-      background: #0056b3;
-    }
+    .input-container button:disabled { background: #94a3b8; }
   </style>
 </head>
 <body>
   <div class="chat-container">
+    <div class="header">
+      رفيق AI 
+      <span id="engine-status" class="status-dot"></span>
+      <small id="status-text">جاري فحص المحرك...</small>
+    </div>
     <div id="chat-box" class="chat-box">
-      <div class="bot">👋 أهلاً! أنا رفيق، هنا علشان أسمعك.</div>
+      <div class="message bot">👋 أهلاً إبراهيم! أنا رفيق، محرك أكاشا جاهز للمعالجة على جهازك.</div>
     </div>
     <div class="input-container">
-      <input type="text" id="user-input" placeholder="اكتب رسالتك..." />
+      <input type="text" id="user-input" placeholder="اكتب رسالتك هنا..." />
       <button id="send-btn">إرسال</button>
     </div>
   </div>
-  <script src="script.js"></script>
+
+  <!-- الربط مع المحرك مباشرة -->
+  <script type="module">
+    import { AkashaRunner } from './src/core/akasharunner.js';
+
+    const chatBox = document.getElementById('chat-box');
+    const userInput = document.getElementById('user-input');
+    const sendBtn = document.getElementById('send-btn');
+    const statusDot = document.getElementById('engine-status');
+    const statusText = document.getElementById('status-text');
+
+    let runner = null;
+
+    // تهيئة المحرك عند فتح الصفحة
+    async function initEngine() {
+      try {
+        let device = null;
+        if (navigator.gpu) {
+          const adapter = await navigator.gpu.requestAdapter();
+          device = await adapter.requestDevice();
+          statusDot.classList.add('online');
+          statusText.innerText = "وضع الـ GPU نشط";
+        } else {
+          statusText.innerText = "وضع الـ CPU نشط";
+        }
+        runner = new AkashaRunner(device);
+      } catch (e) {
+        statusText.innerText = "خطأ في المحرك";
+        console.error(e);
+      }
+    }
+
+    function addMessage(text, sender) {
+      const msgDiv = document.createElement('div');
+      msgDiv.className = `message ${sender}`;
+      msgDiv.innerText = text;
+      chatBox.appendChild(msgDiv);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    sendBtn.onclick = async () => {
+      const text = userInput.value.trim();
+      if (!text || !runner) return;
+
+      addMessage(text, 'user');
+      userInput.value = '';
+      
+      // إظهار علامة انتظار
+      const loadingId = "load-" + Date.now();
+      addMessage("جاري المعالجة عبر أكاشا...", 'bot');
+
+      try {
+        // تشغيل المحرك الحقيقي
+        const inputData = new Float32Array(512).fill(text.length / 100);
+        const startTime = performance.now();
+        const result = await runner.runInference(inputData);
+        const duration = (performance.now() - startTime).toFixed(2);
+
+        addMessage(`الرد: تمت المعالجة بنجاح في ${duration}ms. عينة البيانات: ${result.data.slice(0,2)}`, 'bot');
+      } catch (err) {
+        addMessage("🚨 حدث خطأ في معالجة البيانات.", 'bot');
+      }
+    };
+
+    initEngine();
+  </script>
 </body>
 </html>
