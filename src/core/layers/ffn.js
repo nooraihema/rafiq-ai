@@ -1,7 +1,7 @@
 /**
  * src/core/layers/ffn.js
- * الحالة: المفرمة المنطقية (Deep Logic Layer) - إصدار Leaky ReLU
- * الوظيفة: تضخيم الفروق الدقيقة ومنع موت الخلايا الرقمية (Dying ReLU).
+ * الحالة: المفرمة المنطقية (Clean Architecture)
+ * الوظيفة: تضخيم المعاني مع الحفاظ على تسلسل الـ Pipeline للمحرك.
  */
 
 import { Tensor } from '../tensor.js';
@@ -11,13 +11,11 @@ export class FeedForward {
         this.embedDim = embedDim;   // 512
         this.hiddenDim = hiddenDim; // 2048
         
-        // الأوزان مع Initialization محسّن (He Initialization)
         this.weights = {
             w1: this._initWeight(this.embedDim, this.hiddenDim),
             w2: this._initWeight(this.hiddenDim, this.embedDim)
         };
 
-        // انحيازات (Biases) بقيم ابتدائية بسيطة جداً
         this.biases = {
             b1: new Tensor(new Float32Array(this.hiddenDim).fill(0.001), { shape: [1, this.hiddenDim], op: 'const' }),
             b2: new Tensor(new Float32Array(this.embedDim).fill(0.001), { shape: [1, this.embedDim], op: 'const' })
@@ -47,11 +45,11 @@ export class FeedForward {
         let x = inputTensor.matmul(this.weights.w1).add(this.biases.b1);
         
         /**
-         * 2. التنشيط المنقذ (Leaky ReLU)
-         * بدلاً من x.relu() التي تسبب الأصفار، نستخدم leakyRelu
-         * ملحوظة: إذا لم تكن leakyRelu معرفة في كلاس Tensor، استخدم (x.sigmoid()) كبديل سريع
+         * 2. التنشيط (Leaky ReLU)
+         * هنا بننادي العملية من الـ Tensor مباشرة عشان الـ Graph ميتكسرش
+         * لو كلاس Tensor مفيهوش leakyRelu، استخدم relu() مؤقتاً لحد ما نصلح التنسور
          */
-        let activated = x.op === 'leakyRelu' ? x : this._applyLeakyRelu(x, 0.01); 
+        let activated = x.relu(); 
 
         /**
          * 3. مرحلة الضغط (Contraction)
@@ -59,18 +57,8 @@ export class FeedForward {
         let output = activated.matmul(this.weights.w2).add(this.biases.b2);
 
         /**
-         * 4. الكوبري الأخير (Residual Connection)
-         * ندمج المدخلات مع المخرجات لضمان تدفق البيانات
+         * 4. الكوبري (Residual)
          */
         return output.add(inputTensor);
-    }
-
-    // دالة مساعدة في حال عدم وجود leakyRelu داخل كلاس Tensor الأساسي
-    _applyLeakyRelu(tensor, alpha) {
-        const newData = new Float32Array(tensor.data.length);
-        for (let i = 0; i < tensor.data.length; i++) {
-            newData[i] = tensor.data[i] > 0 ? tensor.data[i] : tensor.data[i] * alpha;
-        }
-        return new Tensor(newData, { shape: tensor.shape, op: 'leaky_relu_manual' });
     }
 }
