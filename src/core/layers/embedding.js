@@ -1,75 +1,54 @@
 /**
  * src/core/layers/embedding.js
- * الحالة: طبقة المعاني المكانية (Spatio-Semantic Layer)
- * الوظيفة: تحويل الحروف لمتجهات مع دمج "بوصلة" رياضية لتحديد ترتيب الكلمات.
+ * الحالة: نظام المعرفات الثابتة (Fixed Token Mapping)
+ * الوظيفة: تحويل الكلمة (Token ID) لمتجه كثيف (Dense Vector) بدون فقدان الهوية.
  */
 
 import { Tensor } from '../tensor.js';
 
-export class EmbeddingLayer {
+export class Embedding {
     constructor(vocabSize, embedDim) {
-        this.vocabSize = vocabSize; 
-        this.embedDim = embedDim;   
+        this.vocabSize = vocabSize;
+        this.embedDim = embedDim;
         
-        // 1. توليد مصفوفة المعاني (المعجم)
-        this.weights = this._initWeights(vocabSize, embedDim);
+        // الأوزان: مصفوفة ضخمة [القاموس × الأبعاد]
+        this.weights = this._initWeights();
     }
 
-    /**
-     * توليد أوزان أولية قوية لضمان تدفق البيانات
-     */
-    _initWeights(rows, cols) {
-        const data = new Float32Array(rows * cols);
-        for (let i = 0; i < data.length; i++) {
-            data[i] = (Math.random() - 0.5) * 1.0; 
+    _initWeights() {
+        const size = this.vocabSize * this.embedDim;
+        const data = new Float32Array(size);
+        const scale = Math.sqrt(2.0 / this.embedDim);
+        
+        for (let i = 0; i < size; i++) {
+            data[i] = (Math.random() - 0.5) * scale;
         }
-        return new Tensor(data, { shape: [rows, cols] });
+        return new Tensor(data, { shape: [this.vocabSize, this.embedDim], op: 'const' });
     }
 
     /**
-     * 🚀 حقن الترميز المكاني (Positional Encoding)
-     * تستخدم معادلات الجيب والتمام (Sin/Cos) لإعطاء كل موقع "تردد" فريد
+     * @param {Uint32Array} tokenIds - مصفوفة أرقام صحيحة حقيقية صادر من Tokenizer
      */
-    _applyPositionalEncoding(data, seqLen, embedDim) {
-        for (let pos = 0; pos < seqLen; pos++) {
-            for (let i = 0; i < embedDim; i++) {
-                // حساب الزاوية بناءً على الموقع والبعد (Formula: pos / 10000^(2i/d_model))
-                const angle = pos / Math.pow(10000, (2 * i) / embedDim);
-                const offset = pos * embedDim + i;
-                
-                if (i % 2 === 0) {
-                    data[offset] += Math.sin(angle); // الأبعاد الزوجية
-                } else {
-                    data[offset] += Math.cos(angle); // الأبعاد الفردية
-                }
-            }
-        }
-        return data;
-    }
+    forward(tokenIds) {
+        const seqLen = tokenIds.length;
+        const outputData = new Float32Array(seqLen * this.embedDim);
 
-    /**
-     * معالجة المدخلات: تحويل Tokens -> Embeddings -> Positional Encoding
-     */
-    forward(inputTokens) {
-        const seqLen = inputTokens.length; 
-        let outputData = new Float32Array(seqLen * this.embedDim);
-
-        // أ- عملية الـ Lookup (استخراج المتجهات)
         for (let i = 0; i < seqLen; i++) {
-            const tokenId = Math.round(inputTokens[i] * 1000); 
-            const safeTokenId = Math.abs(tokenId) % this.vocabSize;
-            const startIdx = safeTokenId * this.embedDim;
+            const tokenId = tokenIds[i];
             
-            const vector = this.weights.data.slice(startIdx, startIdx + this.embedDim);
+            // حماية القاموس: التأكد أن المعرف داخل النطاق
+            if (tokenId >= this.vocabSize) {
+                console.warn(`Token ID ${tokenId} خارج نطاق القاموس!`);
+                continue; 
+            }
+
+            const startIdx = tokenId * this.embedDim;
+            
+            // بدلاً من slice() المكلفة، نستخدم subarray() أو نسخ مباشر سريع
+            const vector = this.weights.data.subarray(startIdx, startIdx + this.embedDim);
             outputData.set(vector, i * this.embedDim);
         }
 
-        // ب- إضافة "البصمة المكانية" (السر الذي يكسر تشابه النتائج)
-        outputData = this._applyPositionalEncoding(outputData, seqLen, this.embedDim);
-
-        return new Tensor(outputData, { 
-            shape: [seqLen, this.embedDim],
-            op: 'embedding_with_pos' 
-        });
+        return new Tensor(outputData, { shape: [seqLen, this.embedDim], op: 'embedding_out' });
     }
 }
