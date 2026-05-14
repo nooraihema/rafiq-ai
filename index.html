@@ -5,28 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>رفيق AI | نظام تشخيص الأعطال</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #111827;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      flex-direction: column; /* مسموح بوجود مساحة للـ logs تحت */
-      align-items: center;
-      min-height: 100vh;
-    }
-    .chat-container {
-      width: 100%;
-      max-width: 450px;
-      height: 70vh; /* صغرنا الشات شوية عشان اللوجز */
-      background: #fff;
-      border-radius: 15px;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      box-shadow: 0 0 25px rgba(0,0,0,0.3);
-      margin-top: 20px;
-    }
+    body { font-family: Arial, sans-serif; background: #111827; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+    .chat-container { width: 100%; max-width: 450px; height: 65vh; background: #fff; border-radius: 15px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 0 25px rgba(0,0,0,0.3); margin-top: 10px; }
     .header { background: #1f2937; color: white; padding: 15px; text-align: center; font-weight: bold; font-size: 14px; }
     .status-dot { height: 10px; width: 10px; background-color: #bbb; border-radius: 50%; display: inline-block; margin-left: 5px; }
     .online { background-color: #4ade80; }
@@ -34,28 +14,11 @@
     .message { padding: 10px 15px; border-radius: 15px; margin: 8px 0; max-width: 85%; font-size: 14px; line-height: 1.5; }
     .user { background: #3b82f6; color: #fff; align-self: flex-end; border-bottom-right-radius: 2px; }
     .bot { background: #e5e7eb; color: #000; align-self: flex-start; border-bottom-left-radius: 2px; }
-    
-    /* ستايل اللوجز الجديد (زي فيرسل) */
-    .logs-container {
-      width: 100%;
-      max-width: 450px;
-      height: 25vh;
-      background: #000;
-      color: #00ff41;
-      margin-top: 10px;
-      border-radius: 10px;
-      padding: 10px;
-      font-family: 'Courier New', monospace;
-      font-size: 11px;
-      overflow-y: auto;
-      box-shadow: inset 0 0 10px #000;
-      border: 1px solid #333;
-    }
+    .logs-container { width: 100%; max-width: 450px; height: 30vh; background: #000; color: #00ff41; margin-top: 5px; border-radius: 10px; padding: 10px; font-family: 'Courier New', monospace; font-size: 11px; overflow-y: auto; border: 1px solid #333; }
     .log-entry { margin-bottom: 4px; border-bottom: 1px solid #1a1a1a; padding-bottom: 2px; }
     .log-time { color: #888; margin-left: 5px; }
-    .log-error { color: #ff4d4d; }
+    .log-error { color: #ff4d4d; font-weight: bold; }
     .log-warn { color: #ffcc00; }
-
     .input-container { display: flex; border-top: 1px solid #ddd; padding: 5px; background: white; }
     .input-container input { flex: 1; border: none; padding: 12px; font-size: 16px; outline: none; }
     .input-container button { border: none; background: #3b82f6; color: #fff; padding: 0 25px; font-size: 16px; cursor: pointer; border-radius: 8px; }
@@ -66,10 +29,10 @@
     <div class="header">
       رفيق AI - محرك أكاشا
       <span id="engine-status" class="status-dot"></span>
-      <small id="status-text">فحص النظام...</small>
+      <small id="status-text">جاري بدء التشغيل...</small>
     </div>
     <div id="chat-box" class="chat-box">
-      <div class="message bot">أهلاً إبراهيم! راقب صندوق اللوجز بالأسفل لمتابعة حالة المحرك.</div>
+      <div class="message bot">أهلاً إبراهيم! لو الـ Logs تحت وقفت، صورها وابعتها لي فوراً.</div>
     </div>
     <div class="input-container">
       <input type="text" id="user-input" placeholder="اكتب رسالتك..." />
@@ -77,14 +40,16 @@
     </div>
   </div>
 
-  <!-- صندوق اللوجز شبيه بـ Vercel -->
-  <div class="logs-container" id="logs-view">
-    <div class="log-entry">[SYSTEM] Waiting for initialization...</div>
-  </div>
+  <div class="logs-container" id="logs-view"></div>
 
   <script type="module">
-    // وظيفة طباعة اللوجز على الشاشة
     const logsView = document.getElementById('logs-view');
+    const statusDot = document.getElementById('engine-status');
+    const statusText = document.getElementById('status-text');
+    const chatBox = document.getElementById('chat-box');
+    const userInput = document.getElementById('user-input');
+    const sendBtn = document.getElementById('send-btn');
+
     function printLog(msg, type = 'info') {
       const entry = document.createElement('div');
       entry.className = `log-entry ${type === 'error' ? 'log-error' : type === 'warn' ? 'log-warn' : ''}`;
@@ -94,26 +59,32 @@
       logsView.scrollTop = logsView.scrollHeight;
     }
 
-    // رصد أي خطأ غير متوقع في الصفحة فوراً
-    window.onerror = function(msg, url, line) {
-      printLog(`GLOBAL ERROR: ${msg} at line ${line}`, 'error');
-    };
+    // صيد الأخطاء التي تمنع التحميل
+    window.addEventListener('error', (event) => {
+      printLog(`GLOBAL ERROR: ${event.message}`, 'error');
+    });
 
-    printLog("🚀 Importing AkashaRunner...");
-    
-    // محاولة الاستيراد مع معالجة الخطأ
-    import { AkashaRunner } from './src/core/akasharunner.js';
-
-    const chatBox = document.getElementById('chat-box');
-    const userInput = document.getElementById('user-input');
-    const sendBtn = document.getElementById('send-btn');
-    const statusDot = document.getElementById('engine-status');
-    const statusText = document.getElementById('status-text');
-
+    let AkashaRunner;
     let runner = null;
 
+    async function startLifecycle() {
+      printLog("🚀 بدأت عملية التحميل (Import Phase)...");
+      try {
+        // محاولة استيراد الـ Runner بشكل ديناميكي لكشف الخطأ
+        const module = await import('./src/core/akasharunner.js');
+        AkashaRunner = module.AkashaRunner;
+        printLog("✅ تم استيراد الملفات الأساسية بنجاح.");
+        
+        await initEngine();
+      } catch (err) {
+        printLog("🚨 فشل حرج في التحميل!", "error");
+        printLog(`السبب المحتمل: ${err.message}`, "error");
+        printLog("نصيحة: تأكد أن جميع الـ imports داخل ملفاتك تنتهي بـ .js", "warn");
+      }
+    }
+
     async function initEngine() {
-      printLog("🔍 Checking for GPU capabilities...");
+      printLog("🔍 فحص العتاد (GPU/CPU Check)...");
       try {
         let device = null;
         if (navigator.gpu) {
@@ -122,22 +93,21 @@
             device = await adapter.requestDevice();
             statusDot.classList.add('online');
             statusText.innerText = "GPU Active";
-            printLog("✅ WebGPU Adapter found and device requested.");
+            printLog("🟢 تم تفعيل كرت الشاشة (WebGPU Ready).");
           }
         }
         
         if (!device) {
           statusText.innerText = "CPU Active";
-          printLog("⚠️ WebGPU not found, using CPU Fallback mode.", "warn");
+          printLog("🟡 الـ GPU غير متاح، الانتقال لوضع المعالج (CPU).", "warn");
         }
 
-        printLog("🏗️ Initializing AkashaRunner...");
+        printLog("🏗️ بناء المحرك (Runner Setup)...");
         runner = new AkashaRunner(device);
-        printLog("🚀 Akasha Engine is ready for computation.");
+        printLog("🚀 محرك أكاشا جاهز تماماً!");
 
       } catch (e) {
-        printLog(`🚨 INIT FAILED: ${e.message}`, 'error');
-        console.error(e);
+        printLog(`🚨 خطأ في بناء المحرك: ${e.message}`, 'error');
       }
     }
 
@@ -151,33 +121,30 @@
 
     sendBtn.onclick = async () => {
       const text = userInput.value.trim();
-      if (!text) return;
-      if (!runner) {
-        printLog("❌ Attempted to send but runner is null", "error");
+      if (!text || !runner) {
+        if(!runner) printLog("❌ المحرك لم يكتمل، لا يمكن الإرسال.", "error");
         return;
       }
 
       addMessage(text, 'user');
       userInput.value = '';
-      printLog(`📩 Processing message: "${text}"`);
-      
+      printLog(`📩 معالجة: ${text}`);
+
       try {
         const inputData = new Float32Array(512).fill(text.length / 100);
-        printLog(`🧪 Created Input Tensor with length: ${inputData.length}`);
-        
         const startTime = performance.now();
         const result = await runner.runInference(inputData);
         const duration = (performance.now() - startTime).toFixed(2);
         
-        printLog(`⚡ Computation finished in ${duration}ms`, "info");
-        addMessage(`✅ النتيجة: ${result.data.slice(0,2)}`, 'bot');
+        printLog(`⚡ تمت الحسبة في ${duration}ms`, "info");
+        addMessage(`✅ رفيق: العملية تمت بنجاح في ${duration}ms.`, 'bot');
       } catch (err) {
-        printLog(`🚨 EXECUTION ERROR: ${err.message}`, 'error');
-        printLog(err.stack, 'error');
+        printLog(`🚨 خطأ في التنفيذ: ${err.message}`, 'error');
       }
     };
 
-    initEngine();
+    // تشغيل دورة الحياة
+    startLifecycle();
   </script>
 </body>
 </html>
