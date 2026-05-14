@@ -1,127 +1,126 @@
 /**
  * src/core/webgpubackend.js
- * الحالة: تفعيل الحسابات الحقيقية واسترجاع البيانات من الـ GPU.
+ * الحالة: Hybrid JIT Compiler Backend
+ * الوظيفة: تحويل الـ Graph لعمليات GPU حقيقية وإدارة الذاكرة بكفاءة.
  */
 
 export class WebGPUBackend {
     constructor(device) {
         this.device = device;
         this.pipelineCache = new Map();
-        this.bufferCache = new Map();
-        
-        if (!this.device) {
-            console.warn("⚠️ [BACKEND]: GPU not found. Falling back to CPU.");
-        }
+        this.bufferCache = new Map(); // لتجنب إعادة إنشاء الـ Buffers مع كل كليك
     }
 
     async execute(plan) {
-        if (this.device) {
-            return await this._executeOnGPU(plan);
-        } else {
-            return await this._executeOnCPU(plan);
-        }
+        return this.device ? await this._executeOnGPU(plan) : await this._executeOnCPU(plan);
     }
 
     /**
-     * الحساب عبر المعالج (CPU) - للأجهزة الضعيفة
+     * الحساب عبر المعالج (CPU Fallback)
      */
     async _executeOnCPU(plan) {
-        console.log("📱 [EXECUTION]: Processing via CPU...");
-        let result = new Float32Array(512).fill(0.1); 
-        // محاكاة بسيطة: نغير النتائج بناءً على عدد الخطوات في الخطة
-        for (let i = 0; i < result.length; i++) {
-            result[i] = (i * 0.01) + (plan.length * 0.5);
+        console.log("📱 CPU Processing...");
+        // محاكاة سريعة للنتائج بناءً على طول الخطة
+        const out = new Float32Array(512);
+        for(let i=0; i<512; i++) out[i] = Math.sin(i * 0.1) * plan.length;
+        return out;
+    }
+
+    /**
+     * تنفيذ الخطة على الـ GPU مع إدارة ذكية للذاكرة
+     */
+    async _executeOnGPU(plan) {
+        const commandEncoder = this.device.createCommandEncoder();
+        
+        // 1. حجز الـ Output Buffer (المكان اللي هنستلم فيه النتيجة النهائية)
+        const outputSize = 512 * 4; 
+        const outputBuffer = this._getOrCreateBuffer('final_output', outputSize, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC);
+        
+        // 2. معالجة كل خطوة في الخطة (قد تكون عملية واحدة أو مجموعة عمليات مدمجة Fused)
+        for (const step of plan) {
+            this._dispatchStep(step, commandEncoder, outputBuffer);
         }
+
+        // 3. قراءة البيانات (Readback)
+        const stagingBuffer = this.device.createBuffer({
+            size: outputSize,
+            usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
+        });
+
+        commandEncoder.copyBufferToBuffer(outputBuffer, 0, stagingBuffer, 0, outputSize);
+        this.device.queue.submit([commandEncoder.finish()]);
+
+        await stagingBuffer.mapAsync(GPUMapMode.READ);
+        const result = new Float32Array(stagingBuffer.getMappedRange()).slice();
+        
+        stagingBuffer.unmap();
+        stagingBuffer.destroy(); // الـ Staging يمسح فوراً، أما الـ Output يبقى في الكاش
+        
         return result;
     }
 
     /**
-     * الحساب عبر كرت الشاشة (WebGPU) - السرعة القصوى
+     * تشغيل Kernel (عملية) معينة
      */
-    async _executeOnGPU(plan) {
-        const size = 512 * Float32Array.BYTES_PER_ELEMENT;
-
-        // 1. تجهيز الـ Buffers (أوعية البيانات)
-        const outputBuffer = this.device.createBuffer({
-            size: size,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
-        });
-
-        const stagingBuffer = this.device.createBuffer({
-            size: size,
-            usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
-        });
-
-        const commandEncoder = this.device.createCommandEncoder();
+    _dispatchStep(step, encoder, outputBuffer) {
+        const shaderCode = this._generateWGSL(step);
+        const pipeline = this._getOrCreatePipeline(shaderCode);
         
-        // 2. تنفيذ العمليات (Kernels)
-        for (const step of plan) {
-            this._runFusedKernel(step, commandEncoder, outputBuffer);
-        }
-
-        // 3. نسخ النتيجة من ذاكرة الـ GPU لذاكرة يمكن للمتصفح قراءتها
-        commandEncoder.copyBufferToBuffer(outputBuffer, 0, stagingBuffer, 0, size);
-
-        // 4. إرسال الأوامر للتنفيذ
-        this.device.queue.submit([commandEncoder.finish()]);
-
-        // 5. قراءة النتيجة النهائية
-        await stagingBuffer.mapAsync(GPUMapMode.READ);
-        const copyArrayBuffer = stagingBuffer.getMappedRange();
-        const finalData = new Float32Array(copyArrayBuffer).slice();
-        
-        // تنظيف الذاكرة
-        stagingBuffer.unmap();
-        outputBuffer.destroy();
-        stagingBuffer.destroy();
-
-        return finalData;
-    }
-
-    _runFusedKernel(step, commandEncoder, outputBuffer) {
-        const kernelSource = this._generateWGSL(step);
-        const pipeline = this._getOrCreatePipeline(kernelSource);
-        
-        // إنشاء Bind Group لربط الـ Buffer بالـ Shader
         const bindGroup = this.device.createBindGroup({
             layout: pipeline.getBindGroupLayout(0),
             entries: [{ binding: 0, resource: { buffer: outputBuffer } }]
         });
 
-        const passEncoder = commandEncoder.beginComputePass();
-        passEncoder.setPipeline(pipeline);
-        passEncoder.setBindGroup(0, bindGroup);
-        
-        const workgroupCount = Math.ceil(512 / 64); 
-        passEncoder.dispatchWorkgroups(workgroupCount);
-        passEncoder.end();
+        const pass = encoder.beginComputePass();
+        pass.setPipeline(pipeline);
+        pass.setBindGroup(0, bindGroup);
+        pass.dispatchWorkgroups(Math.ceil(512 / 64));
+        pass.end();
     }
 
+    /**
+     * السحر الحقيقي: توليد كود WGSL ديناميكياً من الـ OpNode
+     */
     _generateWGSL(step) {
-        // هنا بنكتب كود حقيقي يخلي الـ GPU يعمل حاجة
-        // مؤقتاً: سنقوم بعمل حسابات بناءً على الـ Global ID لضمان تغير الأرقام
+        // إذا كانت عمليات مدمجة (Fusion)، نجمع المعادلات معاً
+        let calculation = "";
+        
+        if (step.op) {
+            // هنا بنادي على generateFormula اللي طورناها في OpNode
+            // وبنمرر لها i كمتغير (index)
+            calculation = step.op.generateFormula(['f32(global_id.x)', '1.0']); 
+        } else {
+            calculation = "f32(global_id.x) * 0.01"; // Fallback
+        }
+
         return `
-            @group(0) @binding(0) var<storage, read_write> output: array<f32>;
+            @group(0) @binding(0) var<storage, read_write> out: array<f32>;
 
             @compute @workgroup_size(64)
             fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-                let i = global_id.x;
-                if (i >= arrayLength(&output)) { return; }
+                if (global_id.x >= arrayLength(&out)) { return; }
                 
-                // عملية حسابية حقيقية: حاصل ضرب الـ index في قيمة متغيرة
-                output[i] = f32(i) * 0.001 + 0.123;
+                // حقن المعادلة الرياضية المولدة ديناميكياً
+                out[global_id.x] = ${calculation};
             }
         `;
     }
 
-    _getOrCreatePipeline(source) {
-        if (this.pipelineCache.has(source)) return this.pipelineCache.get(source);
-        const shaderModule = this.device.createShaderModule({ code: source });
+    _getOrCreateBuffer(name, size, usage) {
+        if (this.bufferCache.has(name)) return this.bufferCache.get(name);
+        const buffer = this.device.createBuffer({ size, usage });
+        this.bufferCache.set(name, buffer);
+        return buffer;
+    }
+
+    _getOrCreatePipeline(code) {
+        if (this.pipelineCache.has(code)) return this.pipelineCache.get(code);
+        const module = this.device.createShaderModule({ code });
         const pipeline = this.device.createComputePipeline({
             layout: 'auto',
-            compute: { module: shaderModule, entryPoint: 'main' }
+            compute: { module, entryPoint: 'main' }
         });
-        this.pipelineCache.set(source, pipeline);
+        this.pipelineCache.set(code, pipeline);
         return pipeline;
     }
 }
