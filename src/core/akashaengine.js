@@ -1,21 +1,17 @@
+}
 /**
  * src/core/akashaengine.js
  * 
  * الوظيفة: المايسترو (The Orchestrator).
- * الملف النهائي الذي يربط التنسورات، الرسم البياني، المحسن، والمحرك التنفيذي.
- * يوفر للمستخدم واجهة بسيطة لتشغيل الكومبايلر بضغطة واحدة.
+ * تم التعديل لضمان استلام البيانات من الـ Backend وتحديث التنسور.
  */
 
-// استيراد المكونات الأساسية - تم التأكد من المسارات لبيئة Vercel
 import { GraphBuilder } from './graphbuilder.js';
 import { IROptimizer } from './iroptimizer.js';
 import { WebGPUBackend } from './webgpubackend.js';
-import { Tensor } from './tensor.js'; // السطر ده ضروري لعمل دالة createTensor
+import { Tensor } from './tensor.js'; 
 
 export class AkashaEngine {
-    /**
-     * @param {GPUDevice} device - جهاز الـ GPU المفعل من الـ WebGPU API
-     */
     constructor(device) {
         this.device = device;
         this.builder = new GraphBuilder();
@@ -26,54 +22,47 @@ export class AkashaEngine {
     }
 
     /**
-     * الوظيفة الأهم: تنفيذ الحسابات لأي Tensor
-     * تقوم الدالة بتتبع العمليات، تحسينها، ثم تحويلها لكود GPU وتنفيذها.
-     * @param {Tensor} targetTensor - التنسور المراد حساب قيمته النهائية
+     * تنفيذ الحسابات لأي Tensor
      */
     async compute(targetTensor) {
-        // إذا كان التنسور محسوباً بالفعل، نرجع البيانات مباشرة
         if (targetTensor.isComputed) return targetTensor.data;
 
         console.time("🔥 Akasha Execution Time");
 
-        // 1. تتبع المسار وبناء الرسم البياني (Tracing)
-        // يحول العمليات المسجلة إلى تسلسل منطقي (Execution Order)
-        const executionOrder = this.builder.trace(targetTensor);
+        // 1. تتبع المسار وبناء الرسم البياني
+        this.builder.trace(targetTensor);
         
-        // 2. تحسين الرسم البياني ودمج العمليات (Optimization/Fusion)
-        // هنا يتم دمج العمليات البسيطة (مثل Add و Mul) لتقليل استهلاك الذاكرة
+        // 2. تحسين الرسم البياني ودمج العمليات
         const optimizedPlan = this.optimizer.optimize();
         
         // 3. تخطيط الذاكرة (Memory Planning)
-        // يتم حجز الأماكن اللازمة في الـ VRAM لضمان أعلى أداء
         this.optimizer.planMemory();
 
-        // 4. الترجمة للـ WGSL والتنفيذ على كرت الشاشة (Code Gen & Execution)
-        // تحويل الخطة إلى كود Shader حقيقي وتشغيله
-        await this.backend.execute(optimizedPlan);
+        // 4. التنفيذ (Code Gen & Execution)
+        // تعديل مهم: استلام النتيجة من الـ Backend
+        const resultData = await this.backend.execute(optimizedPlan);
 
-        // 5. تحديث حالة التنسور
+        // 5. تحديث حالة التنسور بالبيانات الجديدة
+        targetTensor.data = resultData;
         targetTensor.isComputed = true;
         
         console.timeEnd("🔥 Akasha Execution Time");
 
+        // إرجاع البيانات الحقيقية
         return targetTensor.data;
     }
 
-    /**
-     * دالة مساعدة لإنشاء التنسورات مرتبطة بهذا المحرك
-     */
     createTensor(data, options = {}) {
         return new Tensor(data, options);
     }
 
-    /**
-     * تنظيف الذاكرة (Memory Cleanup)
-     * ضروري جداً لمنع الـ Memory Leaks في كرت الشاشة
-     */
     dispose() {
-        this.backend.bufferCache.forEach(buffer => buffer.destroy());
-        this.backend.bufferCache.clear();
+        if (this.backend.bufferCache) {
+            this.backend.bufferCache.forEach(buffer => {
+                if (buffer.destroy) buffer.destroy();
+            });
+            this.backend.bufferCache.clear();
+        }
         this.backend.pipelineCache.clear();
         console.log("🧹 Engine memory cleared.");
     }
