@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>رفيق AI | مدعوم بمحرك أكاشا</title>
+  <title>رفيق AI | نظام تشخيص الأعطال</title>
   <style>
     body {
       font-family: Arial, sans-serif;
-      background: #111827; /* غيرت الخلفية لغامق عشان تليق بمحرك AI */
+      background: #111827;
       margin: 0;
       padding: 0;
       display: flex;
@@ -55,9 +55,9 @@
       padding: 10px 15px;
       border-radius: 15px;
       margin: 8px 0;
-      max-width: 80%;
-      font-size: 15px;
-      line-height: 1.4;
+      max-width: 85%;
+      font-size: 14px;
+      line-height: 1.5;
     }
     .user {
       background: #3b82f6;
@@ -70,6 +70,13 @@
       color: #000;
       align-self: flex-start;
       border-bottom-left-radius: 2px;
+    }
+    .error-msg {
+      background: #fee2e2;
+      color: #dc2626;
+      border: 1px solid #fecaca;
+      font-family: monospace;
+      font-size: 12px;
     }
     .input-container {
       display: flex;
@@ -92,26 +99,24 @@
       cursor: pointer;
       border-radius: 8px;
     }
-    .input-container button:disabled { background: #94a3b8; }
   </style>
 </head>
 <body>
   <div class="chat-container">
     <div class="header">
-      رفيق AI 
+      رفيق AI - مستكشف الأخطاء
       <span id="engine-status" class="status-dot"></span>
-      <small id="status-text">جاري فحص المحرك...</small>
+      <small id="status-text">فحص الـ Hardware...</small>
     </div>
     <div id="chat-box" class="chat-box">
-      <div class="message bot">👋 أهلاً إبراهيم! أنا رفيق، محرك أكاشا جاهز للمعالجة على جهازك.</div>
+      <div class="message bot">👋 أهلاً إبراهيم! لو ظهر خطأ دلوقتي، هقولك سببه إيه بالظبط هنا.</div>
     </div>
     <div class="input-container">
-      <input type="text" id="user-input" placeholder="اكتب رسالتك هنا..." />
+      <input type="text" id="user-input" placeholder="اكتب رسالتك..." />
       <button id="send-btn">إرسال</button>
     </div>
   </div>
 
-  <!-- الربط مع المحرك مباشرة -->
   <script type="module">
     import { AkashaRunner } from './src/core/akasharunner.js';
 
@@ -123,28 +128,27 @@
 
     let runner = null;
 
-    // تهيئة المحرك عند فتح الصفحة
     async function initEngine() {
       try {
         let device = null;
         if (navigator.gpu) {
           const adapter = await navigator.gpu.requestAdapter();
-          device = await adapter.requestDevice();
-          statusDot.classList.add('online');
-          statusText.innerText = "وضع الـ GPU نشط";
-        } else {
-          statusText.innerText = "وضع الـ CPU نشط";
+          if (adapter) {
+            device = await adapter.requestDevice();
+            statusDot.classList.add('online');
+            statusText.innerText = "GPU Active";
+          }
         }
+        if (!device) statusText.innerText = "CPU Active";
         runner = new AkashaRunner(device);
       } catch (e) {
-        statusText.innerText = "خطأ في المحرك";
-        console.error(e);
+        addMessage(`🚨 فشل بدء المحرك: ${e.message}`, 'error-msg');
       }
     }
 
-    function addMessage(text, sender) {
+    function addMessage(text, type) {
       const msgDiv = document.createElement('div');
-      msgDiv.className = `message ${sender}`;
+      msgDiv.className = `message ${type}`;
       msgDiv.innerText = text;
       chatBox.appendChild(msgDiv);
       chatBox.scrollTop = chatBox.scrollHeight;
@@ -152,25 +156,27 @@
 
     sendBtn.onclick = async () => {
       const text = userInput.value.trim();
-      if (!text || !runner) return;
+      if (!text) return;
+      if (!runner) {
+        addMessage("⚠️ المحرك لم يكتمل تحميله بعد.", 'bot');
+        return;
+      }
 
       addMessage(text, 'user');
       userInput.value = '';
       
-      // إظهار علامة انتظار
-      const loadingId = "load-" + Date.now();
-      addMessage("جاري المعالجة عبر أكاشا...", 'bot');
-
       try {
-        // تشغيل المحرك الحقيقي
+        // تجهيز بيانات المدخلات
         const inputData = new Float32Array(512).fill(text.length / 100);
-        const startTime = performance.now();
+        
+        // محاولة التشغيل
         const result = await runner.runInference(inputData);
-        const duration = (performance.now() - startTime).toFixed(2);
-
-        addMessage(`الرد: تمت المعالجة بنجاح في ${duration}ms. عينة البيانات: ${result.data.slice(0,2)}`, 'bot');
+        
+        addMessage(`✅ نجحت المعالجة!\nالنتيجة: ${result.data.slice(0,2)}`, 'bot');
       } catch (err) {
-        addMessage("🚨 حدث خطأ في معالجة البيانات.", 'bot');
+        // طباعة الخطأ التقني كاملاً للمساعدة في الحل
+        addMessage(`🚨 خطأ تقني داخلي:\n${err.stack || err.message}`, 'error-msg');
+        console.error("Full Trace:", err);
       }
     };
 
