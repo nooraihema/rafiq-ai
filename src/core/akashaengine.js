@@ -119,24 +119,31 @@ export class AkashaEngine {
                                 console.log(`  🔍 جاري محاولة سحب الإشارة حياً من الـ GPU للعقدة الوسيطة: [${step.id}] | Op: ${step.op}`);
                                 const rawBufferData = await this.backend.readBuffer(step.id);
                                 
-                                if (rawBufferData) {
+                                if (rawBufferData && rawBufferData.byteLength > 0) {
+                                    // تأمين القراءة لمنع الخدع النصية للـ undefined
                                     step.tensor.data = new Float32Array(rawBufferData);
                                     step.tensor.isComputed = true;
                                     
                                     const midSample = Array.from(step.tensor.data.slice(0, 4));
                                     const midZeros = step.tensor.data.every(v => v === 0);
-                                    const midNaNs = step.tensor.data.some(v => isNaN(v));
                                     
-                                    console.log(`  ✨ [SCAN SUCCESS] العقدة [${step.id}]: عينة = [${midSample.join(', ')}] | ميتة (أصفار)؟ [${midZeros}] | تحتوى NaN؟ [${midNaNs}]`);
+                                    // فحص صارم يشمل الـ NaN الحقيقي والزائف القادم كـ String ناتج عن خلل الذاكرة
+                                    const midNaNs = step.tensor.data.some(v => Number.isNaN(v) || v === undefined || String(v) === 'NaN');
+                                    
+                                    console.log(`  ✨ [SCAN SUCCESS] العقدة [${step.id}]: عينة = [${midSample.join(', ')}] | ميتة (أصفار)? [${midZeros}] | تحتوى NaN صريح أو زائف؟ [${midNaNs}]`);
+                                } else {
+                                    console.warn(`  ⚠️ [READ EMPTY] البفر المرجوع للعقدة [${step.id}] فارغ أو غير جاهز للقراءة بعد.`);
                                 }
                             } catch (e) {
                                 console.warn(`  ⚠️ [SCAN SKIP] تعذر قراءة البفر الوسيط [${step.id}] حيوياً تزامناً مع التشغيل: ${e.message}`);
                                 step.tensor.isComputed = false;
                             }
                         } else {
+                            // حظر التغذية الرجعية للأصفار الكلية وضخ نبض حي ضئيل بدلاً منها لمنع الموت التتابعي
+                            console.log(`  🔗 [FALLBACK SAFETY] تم حظر التغذية الرجعية للأصفار للعقدة [${step.id}].`);
                             if (!step.tensor.data) {
-                                console.log(`  🔗 [FALLBACK] ربط مخرجات تلقائي للعقدة [${step.id}] لمنع انهيار التتابع العشوائي.`);
-                                step.tensor.data = targetTensor.data.slice(0, step.tensor.shape.reduce((a, b) => a * b, 1));
+                                const elementCount = step.tensor.shape?.reduce((a, b) => a * b, 1) || 1024;
+                                step.tensor.data = new Float32Array(elementCount).fill(0.001); 
                                 step.tensor.isComputed = true;
                             }
                         }
