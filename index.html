@@ -95,7 +95,6 @@
       let detailsHtml = '';
       if (details) {
         if (typeof details === 'object') {
-          // تنسيق الكائنات البرمجية بشكل مصفوف ومقروء جداً (Pretty Print)
           detailsHtml = `<div class="log-stat-block">🧬 [التحليل الداخلي]:\n${JSON.stringify(details, null, 2)}</div>`;
         } else {
           detailsHtml = `<div class="log-stat-block">📊 ${details}</div>`;
@@ -118,10 +117,8 @@
         return { name, status: 'CRITICAL_NULL', error: 'المصفوفة غير موجودة في الذاكرة الحية' };
       }
 
-      // استخراج البيانات الحقيقية سواء كان ممرر كـ Tensor Object أو مصفوفة صريحة
       let rawData = arrayOrTensor.data !== undefined ? arrayOrTensor.data : arrayOrTensor;
       
-      // حماية إضافية لو الـ rawData كائن وليس مصفوفة مسطحة
       if (rawData && typeof rawData === 'object' && !ArrayBuffer.isView(rawData) && !Array.isArray(rawData)) {
         rawData = rawData.data || Object.values(rawData);
       }
@@ -154,7 +151,6 @@
 
       const totalValid = rawData.length - nanCount;
       const mean = totalValid > 0 ? sum / totalValid : 0;
-      // حساب الانحراف المعياري للتأكد من جودة تشتت توزيع الأوزان (Gaussian check)
       const variance = totalValid > 0 ? (squareSum / totalValid) - (mean * mean) : 0;
       const stdDev = Math.sqrt(Math.max(0, variance));
       const signalDensity = ((nonZeroCount / rawData.length) * 100).toFixed(2);
@@ -164,7 +160,6 @@
       else if (nonZeroCount === 0) healthStatus = 'BRAIN_DEAD_ALL_ZEROS';
       else if (parseFloat(signalDensity) < 15.0) healthStatus = 'FADING_SIGNAL_WARNING';
 
-      // 🛡️ المصفحة الأمنية: معالجة شاملة لمنع السقوط في فخ toFixed is not a function
       const safeToFixed = (val, digits = 6) => {
         if (typeof val === 'number' && !isNaN(val) && isFinite(val)) {
           return val.toFixed(digits);
@@ -208,7 +203,6 @@
         const device = await adapter.requestDevice();
         printLog("GPU", "✅ تم إنشاء الـ GPUDevice وتخصيص قنوات التزامن.", LOG_LEVELS.SUCCESS);
 
-        // التعديل الهيكلي الجوهري لمنع تكرار الـ Backends
         printLog("COMPILER", "📍 تهيئة الـ Akasha Engine الموحد (The Orchestrator)...", LOG_LEVELS.TRACE);
         engine = new AkashaEngine(device);
         
@@ -217,6 +211,10 @@
         printLog("RUNNER", "✅ تم ربط الطبقات (Embedding, Attention, FFN) وتأمين الأوزان العشوائية.", LOG_LEVELS.SUCCESS);
 
         generator = new AkashaGenerator(runner);
+
+        // 🛡️ [نظام حقن جواسيس التتبع الخارجي] 
+        // بنحقرن وظائف فحص حية جوه الأكواد بمجرد إنشائها لمراقبة الـ Data Flow لحظياً
+        injectDataFlowTracers();
 
         printLog("DATA", "📍 جاري سحب الـ dataset.txt وتجهيز مصفوفة الوعي الفلسفي...", LOG_LEVELS.TRACE);
         const res = await fetch('./dataset.txt');
@@ -233,6 +231,60 @@
       } catch (err) {
         statusDot.classList.remove('online');
         printLog("FATAL", `💥 قفلة قاتلة في تهيئة النظام: ${err.message}`, LOG_LEVELS.FATAL, { stack: err.stack });
+      }
+    }
+
+    // 🕵️ دالة الجاسوسية وحقن الـ Tracers لرصد محطات الأمعاء الأربعة بدون لمس ملفاتها
+    function injectDataFlowTracers() {
+      if (!runner || !engine) return;
+
+      // محطة 1 و 4: تتبع الـ Embedding والـ Const Propagation من خلال الـ Runner
+      const originalForward = runner.forward || runner.execute;
+      if (originalForward) {
+        const wrappedForward = async function(...args) {
+          printLog("TRACER_INPUT", "📥 محطة (1): الـ Runner استلم نبضة التوكنز وبدأ فحص المدخلات...", LOG_LEVELS.DEBUG, { inputArgs: args });
+          
+          // فحص حالة أوزان الـ Embedding والأوزان المخزنة (Const Propagation) قبل التنفيذ
+          if (this.embeddingWeights || this.weights) {
+            const embWeights = this.embeddingWeights || this.weights;
+            printLog("TRACER_CONST", "💾 محطة (4): فحص انتشار الأوزان (Const Propagation) في الذاكرة الحية...", LOG_LEVELS.TRACE, inspectArrayStructure(embWeights, 'Embedding/Weights Array'));
+          }
+
+          const result = await originalForward.apply(this, args);
+
+          printLog("TRACER_EMBED", "🎫 محطة (1): ناتج عملية الـ Embedding Lookup بعد الفحص...", LOG_LEVELS.TRACE, inspectArrayStructure(result, 'Embedding Output Tensor'));
+          return result;
+        };
+        if (runner.forward) runner.forward = wrappedForward;
+        else if (runner.execute) runner.execute = wrappedForward;
+      }
+
+      // محطة 2: تتبع ضرب المصفوفات ومدخلات الـ Attention
+      if (runner.attention || runner.attnBlock) {
+        const tgt = runner.attention || runner.attnBlock;
+        const originalAttn = tgt.forward || tgt.execute;
+        if (originalAttn) {
+          const wrappedAttn = async function(...args) {
+            printLog("TRACER_ATTN_IN", "🧠 محطة (2): دخول الخامات لطبقة الـ Attention (التحقق من Q, K, V)...", LOG_LEVELS.DEBUG);
+            const attnResult = await originalAttn.apply(this, args);
+            printLog("TRACER_ATTN_OUT", "💥 محطة (2): خروج الإشارة من الـ Attention.. هل ركبها الـ Softmax؟", LOG_LEVELS.TRACE, inspectArrayStructure(attnResult, 'Attention Out Vector'));
+            return attnResult;
+          };
+          if (tgt.forward) tgt.forward = wrappedAttn;
+          else if (tgt.execute) tgt.execute = wrappedAttn;
+        }
+      }
+
+      // محطة 3: فحص الـ Plan Builder وحجز الـ Buffers جوه الـ Engine
+      const originalSetBuffer = engine.setBuffer || engine.registerTensor || engine.writeBuffer;
+      if (originalSetBuffer) {
+        engine.setBuffer = function(tensorId, buffer, ...args) {
+          printLog("TRACER_PLAN", `📋 محطة (3): الـ Plan Builder يحجز ويحور Tensor حقيقي في الـ GPU`, LOG_LEVELS.TRACE, {
+            tensorId: tensorId,
+            bufferSizeLength: buffer ? buffer.size : 'No Buffer Object'
+          });
+          return originalSetBuffer.apply(this, [tensorId, buffer, ...args]);
+        };
       }
     }
 
@@ -256,7 +308,6 @@
         printLog("PIPELINE", "🚀 إطلاق الـ Feed-Forward ومراقبة التنسورز العميقة في قاع المصفوفات...", LOG_LEVELS.DEBUG);
         
         const startTime = performance.now();
-        // تشغيل الـ Runner الموحد والمصحح
         const result = await generator.generate(tokenIds);
         const executionTime = (performance.now() - startTime).toFixed(2);
 
@@ -266,7 +317,6 @@
           throw new Error("الـ Pipeline أكمل دورتة لكن المخرج النهائي رجع Null أو غير معرف!");
         }
 
-        // الأشعة التشخيصية العميقة للأمعاء (Deep Inside Inspection)
         printLog("DIAGNOSTIC", "🔮 جاري عمل فحص أشعة تشخيصية (X-Ray) لمصفوفة المخرجات الناتجة...", LOG_LEVELS.DEBUG);
         const internalInspection = inspectArrayStructure(result.raw, 'Final Logits Output');
         
@@ -280,7 +330,6 @@
           printLog("SIGNAL_HEALTH", "✅ إشارة حية وصحية ممتازة واخترقت المصفوفات بنجاح!", LOG_LEVELS.SUCCESS, internalInspection);
         }
 
-        // طباعة المخرج النهائي للـ UI
         printLog("RESULT", `🎯 الكلمة المرجحة من الذكاء الاصطناعي: "${result.word}"`, LOG_LEVELS.SUCCESS, {
           confidenceScore: result.confidence,
           predictedIndex: result.index
