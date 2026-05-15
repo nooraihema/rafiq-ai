@@ -262,13 +262,25 @@
 
       const originalForward = runner.forward || runner.execute;
       if (originalForward) {
-        const wrappedForward = async function(...args) {
+        const wrappedForward = async function(inputIds, ...args) {
           if (this.embeddingWeights || this.weights) {
             const embWeights = this.embeddingWeights || this.weights;
             printLog("TRACER_CONST", "💾 محطة (4): فحص انتشار الأوزان (Const Propagation) في الذاكرة الحية...", LOG_LEVELS.TRACE, inspectArrayStructure(embWeights, 'Embedding/Weights Array'));
           }
 
-          const result = await originalForward.apply(this, args);
+          // معالجة وحقن مصفوفة الأبعاد الثنائية الحقيقية لمنع استدعاء مصفوفات طوارئ فارغة داخل المحرك الفيد-فورورد
+          let targetInput = inputIds;
+          if (inputIds && Array.isArray(inputIds)) {
+            targetInput = {
+              data: new Int32Array(inputIds),
+              shape: [1, inputIds.length],
+              id: 'inputTensor'
+            };
+          } else if (inputIds && inputIds.data && !inputIds.shape) {
+            inputIds.shape = [1, inputIds.data.length];
+          }
+
+          const result = await originalForward.apply(this, [targetInput, ...args]);
           printLog("TRACER_EMBED", "🎫 محطة (1): ناتج عملية الـ Embedding Lookup بعد الفحص...", LOG_LEVELS.TRACE, inspectArrayStructure(result, 'Embedding Output Tensor'));
           return result;
         };
@@ -315,8 +327,16 @@
         const tokenIds = tokenizer.encode(text);
         printLog("TOKENIZER", `✅ عملية التوكنز تمت بنجاح. العدد: ${tokenIds.length} توكنز.`, LOG_LEVELS.SUCCESS, { IDs: Object.fromEntries(Object.entries(tokenIds)) });
 
+        // بناء كائن الـ Tensor المنظم ثنائي الأبعاد وتمريره لـ Generator لضمان التزامن الكامل عبر خطوط الـ WebGPU
+        const explicitTensorInput = {
+          data: new Int32Array(tokenIds),
+          shape: [1, tokenIds.length],
+          id: 'inputTensor'
+        };
+
         const startTime = performance.now();
-        const result = await generator.generate(tokenIds);
+        // تمرير الـ Input بالهيكل الجديد الموحد
+        const result = await generator.generate(explicitTensorInput);
         const executionTime = (performance.now() - startTime).toFixed(2);
 
         printLog("GPU_PERF", `⏱️ تم تنفيذ الحسابات على الـ GPU الشامل في غضون: ${executionTime}ms`, LOG_LEVELS.SUCCESS);
