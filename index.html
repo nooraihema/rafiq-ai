@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>رفيق AI | محرك أكاشا</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #111; margin: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; color: white; }
-    .chat-container { width: 100%; max-width: 450px; height: 50vh; background: #fff; border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; margin-top: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #111; margin: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; color: #fff; }
+    h1 { color: #00ff41; font-size: 24px; margin: 20px 0 0; }
+    .chat-container { width: 100%; max-width: 450px; height: 50vh; background: #fff; border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; margin-top: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
     .header { background: #000; color: #fff; padding: 15px; text-align: center; font-size: 13px; border-bottom: 1px solid #333; }
     .status-dot { height: 8px; width: 8px; background-color: #555; border-radius: 50%; display: inline-block; margin-left: 5px; }
     .online { background-color: #00ff41; box-shadow: 0 0 5px #00ff41; }
@@ -16,12 +17,20 @@
     .user { background: #0070f3; color: #fff; align-self: flex-end; border-bottom-right-radius: 2px; }
     .bot { background: #eaeaea; color: #000; align-self: flex-start; border-bottom-left-radius: 2px; font-weight: 500; }
 
-    .logs-container { width: 100%; max-width: 450px; height: 40vh; background: #000; color: #00ff41; margin-top: 10px; border-radius: 8px; padding: 15px; font-family: 'Monaco', monospace; font-size: 11px; overflow-y: auto; border: 1px solid #333; }
-    .log-step { margin-bottom: 5px; border-bottom: 1px solid #1a1a1a; padding-bottom: 2px; }
-    .log-tag { color: #0070f3; font-weight: bold; }
-    .log-val { color: #f1c40f; }
-    .log-stat { color: #ff00ff; } /* لون خاص للإحصائيات */
+    .logs-container { width: 100%; max-width: 450px; height: 50vh; background: #0a0a0a; color: #00ff41; margin-top: 10px; border-radius: 8px; padding: 15px; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 11px; overflow-y: auto; border: 1px solid #222; }
+    .log-step { margin-bottom: 8px; border-left: 2px solid #00ff41; padding-left: 10px; }
+    .log-step.error { border-left-color: #ff4d4d; color: #ff4d4d; }
+    .log-step.warning { border-left-color: #ffb800; color: #ffb800; }
+    .log-step.success { border-left-color: #00ff41; color: #00ff41; }
+    .log-step.info { border-left-color: #0070f3; color: #0070f3; }
+    .log-step.debug { border-left-color: #ff00ff; color: #ff00ff; }
+    
+    .log-tag { color: #f1c40f; font-weight: bold; }
+    .log-val { color: #00ff41; }
+    .log-stat { color: #ff00ff; font-weight: bold; }
     .log-error { color: #ff4d4d; }
+    .log-success { color: #00ff41; }
+    .log-time { color: #888; font-size: 10px; }
 
     .input-container { display: flex; padding: 10px; background: white; border-top: 1px solid #eee; }
     input { flex: 1; border: none; padding: 8px; outline: none; font-size: 14px; color: #333; }
@@ -29,6 +38,7 @@
   </style>
 </head>
 <body>
+  <h1>🔮 محرك أكاشا - نظام تشخيص عميق</h1>
   <div class="chat-container">
     <div class="header">
       رفيق AI - محرك أكاشا <span id="engine-status" class="status-dot"></span>
@@ -53,78 +63,250 @@
     const userInput = document.getElementById('user-input');
     const sendBtn = document.getElementById('send-btn');
 
-    function printLog(tag, msg, type = 'info') {
+    // نظام السجل المتقدم
+    const LOG_LEVELS = {
+      ERROR: 'error',
+      WARNING: 'warning',
+      SUCCESS: 'success',
+      INFO: 'info',
+      DEBUG: 'debug'
+    };
+
+    let logCounter = 0;
+    const logHistory = [];
+
+    function getTimestamp() {
+      const now = new Date();
+      return now.toLocaleTimeString('ar-EG', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
+    }
+
+    function printLog(tag, msg, level = LOG_LEVELS.INFO, details = null) {
+      const timestamp = getTimestamp();
+      const logEntry = {
+        counter: ++logCounter,
+        timestamp,
+        tag,
+        msg,
+        level,
+        details
+      };
+      logHistory.push(logEntry);
+
       const entry = document.createElement('div');
-      entry.className = `log-step ${type === 'error' ? 'log-error' : ''}`;
-      entry.innerHTML = `<span class="log-tag">[${tag}]</span> ${msg}`;
+      entry.className = `log-step ${level}`;
+      
+      let detailsHtml = '';
+      if (details) {
+        if (typeof details === 'object') {
+          detailsHtml = `<br/><span class="log-stat">📊 ${JSON.stringify(details).substring(0, 150)}</span>`;
+        } else {
+          detailsHtml = `<br/><span class="log-stat">📊 ${details}</span>`;
+        }
+      }
+
+      entry.innerHTML = `
+        <span class="log-tag">[${logCounter}:${tag}]</span> 
+        <span>${msg}</span>
+        ${detailsHtml}
+        <span class="log-time">(${timestamp})</span>
+      `;
       logsView.appendChild(entry);
       logsView.scrollTop = logsView.scrollHeight;
     }
 
-    // وظيفة لتحليل مصفوفة البيانات (Checking for Zeros)
-    function analyzeTensor(data) {
-        let sum = 0, max = -Infinity, nonZeros = 0;
-        for(let v of data) {
-            sum += Math.abs(v);
-            if(v > max) max = v;
-            if(v !== 0) nonZeros++;
-        }
-        const mean = sum / data.length;
-        const health = ((nonZeros / data.length) * 100).toFixed(1);
-        return `<span class="log-stat">Mean: ${mean.toFixed(6)} | Max: ${max.toFixed(4)} | Health: ${health}%</span>`;
+    // تحليل مصفوفة البيانات (Checking for Zeros)
+    function analyzeTensor(data, name = 'Array') {
+      if (!data || data.length === 0) {
+        return {
+          name,
+          size: 0,
+          sum: 0,
+          mean: 0,
+          max: 0,
+          min: 0,
+          nonZeroCount: 0,
+          health: '0%',
+          isEmpty: true,
+          allZeros: true
+        };
+      }
+
+      let sum = 0;
+      let max = -Infinity;
+      let min = Infinity;
+      let nonZeros = 0;
+
+      for (let v of data) {
+        sum += Math.abs(v);
+        if (v > max) max = v;
+        if (v < min) min = v;
+        if (v !== 0) nonZeros++;
+      }
+
+      const mean = sum / data.length;
+      const health = ((nonZeros / data.length) * 100).toFixed(1);
+      const allZeros = nonZeros === 0;
+
+      return {
+        name,
+        size: data.length,
+        sum: sum.toFixed(6),
+        mean: mean.toFixed(8),
+        max: max.toFixed(6),
+        min: min.toFixed(6),
+        nonZeroCount: nonZeros,
+        health: `${health}%`,
+        isEmpty: data.length === 0,
+        allZeros: allZeros,
+        sampleValues: Array.from(data.slice(0, 5)).map(v => v.toFixed(4))
+      };
     }
 
     let runner, generator;
     const tokenizer = new Tokenizer(5000);
 
     async function init() {
-      printLog("CORE", "Starting Akasha Engine...");
+      printLog("CORE", "🚀 بدء تشغيل محرك أكاشا...", LOG_LEVELS.INFO);
+      
       try {
+        // ✅ الخطوة 1: طلب WebGPU Adapter
+        printLog("GPU", "📍 طلب WebGPU Adapter...", LOG_LEVELS.DEBUG);
         const adapter = await navigator.gpu?.requestAdapter();
-        const device = await adapter?.requestDevice();
-        if (!device) throw new Error("WebGPU not supported on this browser.");
+        if (!adapter) {
+          throw new Error("❌ WebGPU Adapter غير متاح - تحقق من متصفحك");
+        }
+        printLog("GPU", "✅ تم الحصول على GPU Adapter", LOG_LEVELS.SUCCESS, { type: adapter });
 
-        statusDot.classList.add('online');
+        // ✅ الخطوة 2: طلب WebGPU Device
+        printLog("GPU", "📍 طلب WebGPU Device...", LOG_LEVELS.DEBUG);
+        const device = await adapter.requestDevice();
+        if (!device) {
+          throw new Error("❌ WebGPU Device لم ينشأ");
+        }
+        printLog("GPU", "✅ تم إنشاء WebGPU Device بنجاح", LOG_LEVELS.SUCCESS, { deviceType: device.constructor.name });
+
+        // ✅ الخطوة 3: تهيئة Backend
+        printLog("BACKEND", "📍 تهيئة WebGPU Backend...", LOG_LEVELS.DEBUG);
         const backend = new WebGPUBackend(device);
-        runner = new AkashaRunner(backend);
-        generator = new AkashaGenerator(runner);
+        printLog("BACKEND", "✅ تم تهيئة Backend بنجاح", LOG_LEVELS.SUCCESS);
 
-        // تحميل البيانات
-        printLog("DATA", "Loading dataset.txt...");
+        // ✅ الخطوة 4: تهيئة Runner
+        printLog("RUNNER", "📍 تهيئة Akasha Runner...", LOG_LEVELS.DEBUG);
+        runner = new AkashaRunner(backend);
+        printLog("RUNNER", "✅ تم تهيئة Runner بنجاح", LOG_LEVELS.SUCCESS);
+
+        // �� الخطوة 5: تهيئة Generator
+        printLog("GENERATOR", "📍 تهيئة Akasha Generator...", LOG_LEVELS.DEBUG);
+        generator = new AkashaGenerator(runner);
+        printLog("GENERATOR", "✅ تم تهيئة Generator بنجاح", LOG_LEVELS.SUCCESS);
+
+        // ✅ الخطوة 6: تحميل البيانات
+        printLog("DATA", "📍 جاري تحميل dataset.txt...", LOG_LEVELS.DEBUG);
         const res = await fetch('./dataset.txt');
+        if (!res.ok) {
+          throw new Error(`❌ فشل تحميل dataset.txt - Status: ${res.status}`);
+        }
         const text = await res.text();
+        printLog("DATA", `✅ تم تحميل البيانات (${text.length} حرف)`, LOG_LEVELS.SUCCESS, { fileSize: `${(text.length / 1024).toFixed(2)} KB` });
+
+        // ✅ الخطوة 7: بناء القاموس
+        printLog("VOCAB", "📍 بناء القاموس من البيانات...", LOG_LEVELS.DEBUG);
         await generator.buildVocabFromText(text);
-        printLog("VOCAB", `Dictionary size: ${generator.vocab.length}`);
-        printLog("READY", "System is stable.");
+        printLog("VOCAB", `✅ تم بناء القاموس (${generator.vocab.length} كلمة)`, LOG_LEVELS.SUCCESS, { 
+          vocabSize: generator.vocab.length,
+          sampleWords: generator.vocab.slice(0, 5).join(', ')
+        });
+
+        // ✅ الخطوة 8: النظام جاهز
+        statusDot.classList.add('online');
+        printLog("READY", "🎯 النظام جاهز للعمل!", LOG_LEVELS.SUCCESS, {
+          components: ['GPU ✅', 'Backend ✅', 'Runner ✅', 'Generator ✅', 'Vocab ✅']
+        });
+
       } catch (err) {
-        printLog("FATAL", err.message, "error");
+        statusDot.classList.remove('online');
+        printLog("FATAL", `❌ خطأ في التهيئة: ${err.message}`, LOG_LEVELS.ERROR, { errorStack: err.stack });
       }
     }
 
     sendBtn.onclick = async () => {
       const text = userInput.value.trim();
-      if (!text || !generator) return;
+      if (!text || !generator) {
+        printLog("INPUT", "⚠️ إدخال فارغ أو النظام لم يتهيأ بعد", LOG_LEVELS.WARNING);
+        return;
+      }
 
       appendMessage('user', text);
       userInput.value = '';
       
       try {
-        printLog("EXEC", `Processing: "${text}"`);
-        const tokenIds = tokenizer.encode(text);
+        printLog("EXEC", `═════════════════════════════════════`, LOG_LEVELS.DEBUG);
+        printLog("EXEC", `🔄 معالجة النص: "${text}"`, LOG_LEVELS.INFO);
         
+        // الخطوة 1: تحويل النص لـ Token IDs
+        printLog("TOKENIZER", "📍 تحويل النص إلى Token IDs...", LOG_LEVELS.DEBUG);
+        const tokenIds = tokenizer.encode(text);
+        printLog("TOKENIZER", `✅ تم التحويل (${tokenIds.length} tokens)`, LOG_LEVELS.SUCCESS, { 
+          tokens: tokenIds.slice(0, 10),
+          totalTokens: tokenIds.length 
+        });
+
+        // الخطوة 2: استدعاء Generator
+        printLog("GENERATOR", "📍 جاري استدعاء Generator.generate()...", LOG_LEVELS.DEBUG);
         const start = performance.now();
         const result = await generator.generate(tokenIds);
         const time = (performance.now() - start).toFixed(2);
-
-        // تحليل النتائج (كشف الاصفار)
-        if (result.raw) {
-            printLog("SIGNAL", analyzeTensor(result.raw));
-        }
         
-        printLog("RESULT", `Predicted Word: <span class="log-val">"${result.word}"</span> (${time}ms)`);
+        printLog("GENERATOR", `✅ اكتملت العملية في ${time}ms`, LOG_LEVELS.SUCCESS);
+
+        // الخطوة 3: تحليل النتائج
+        printLog("ANALYSIS", "📍 تحليل النتائج...", LOG_LEVELS.DEBUG);
+        
+        if (!result) {
+          printLog("ANALYSIS", "❌ النتيجة فارغة!", LOG_LEVELS.ERROR);
+          return;
+        }
+
+        // تحليل الإحصائيات
+        const rawAnalysis = analyzeTensor(result.raw, 'Raw Output');
+        printLog("OUTPUT_STATS", `📊 إحصائيات المخرجات:`, LOG_LEVELS.INFO, rawAnalysis);
+
+        // الكشف عن الأصفار
+        if (rawAnalysis.allZeros) {
+          printLog("CRITICAL", "🚨 خطر حرج: جميع القيم أصفار! (موت الإشارة)", LOG_LEVELS.ERROR, {
+            health: result.stats?.health,
+            isDead: result.stats?.isDead,
+            meanSignal: result.stats?.mean
+          });
+        } else if (parseFloat(rawAnalysis.health) < 20) {
+          printLog("WARNING", "⚠️ تحذير: جودة الإشارة منخفضة جداً", LOG_LEVELS.WARNING, {
+            health: rawAnalysis.health,
+            nonZeros: rawAnalysis.nonZeroCount,
+            size: rawAnalysis.size
+          });
+        } else {
+          printLog("SIGNAL", `✅ جودة الإشارة جيدة (${rawAnalysis.health})`, LOG_LEVELS.SUCCESS, {
+            health: rawAnalysis.health,
+            mean: rawAnalysis.mean,
+            max: rawAnalysis.max
+          });
+        }
+
+        // النتيجة النهائية
+        printLog("RESULT", `🎯 الكلمة المتنبأ بها: "${result.word}"`, LOG_LEVELS.SUCCESS, {
+          confidence: result.confidence,
+          index: result.index,
+          stats: result.stats
+        });
+
+        printLog("EXEC", `═════════════════════════════════════`, LOG_LEVELS.DEBUG);
+
         appendMessage('bot', result.word);
       } catch (err) {
-        printLog("GPU_ERR", err.message, "error");
+        printLog("ERROR", `❌ خطأ أثناء التنفيذ: ${err.message}`, LOG_LEVELS.ERROR, { 
+          errorType: err.constructor.name,
+          stack: err.stack?.split('\n').slice(0, 3).join(' | ')
+        });
       }
     };
 
@@ -136,7 +318,11 @@
       chatBox.scrollTop = chatBox.scrollHeight;
     }
 
-    userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendBtn.click(); });
+    userInput.addEventListener('keypress', (e) => { 
+      if (e.key === 'Enter') sendBtn.click(); 
+    });
+
+    printLog("STARTUP", "🎬 بدء التطبيق...", LOG_LEVELS.INFO);
     init();
   </script>
 </body>
