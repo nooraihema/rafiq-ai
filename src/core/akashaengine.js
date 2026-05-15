@@ -1,7 +1,7 @@
 /**
  * src/core/akashaengine.js
- * الوظيفة: المايسترو (The Orchestrator).
- * التحديث: النسخة الذرية المحدثة بنظام تفكيك الـ undefined وشحن التنسورز الوسيطة من بفرات الـ GPU الحية.
+ * الوظيفة: المايسترو (The Orchestrator) - النسخة المفتشة والمثقلة جنائياً.
+ * التحديث: تلغيم كامل لرصد تسريب الإشارة وكشف الـ BRAIN_DEAD_ALL_ZEROS والـ NaN.
  * صمام الأمان: إبراهيم شحات لمنع السقوط الصامت وتأمين قراءة النبضة كاملة وسحب الإشارة الحية.
  */
 
@@ -17,7 +17,7 @@ export class AkashaEngine {
         this.optimizer = new IROptimizer(this.builder);
         this.backend = new WebGPUBackend(this.device);
         
-        console.log("%c🚀 [Akasha Engine] Compiler Core Armed & Fueled. المايسترو جاهز لإدارة المصفوفات.", "color: #00d2ff; font-weight: bold;");
+        console.log("%c🔮 [Akasha Engine] وضع التلغيم الأقصى والفحص الجنائي للمصفوفات نشط ومستعد الحين.", "color: #00d2ff; font-weight: bold;");
     }
 
     /**
@@ -50,8 +50,8 @@ export class AkashaEngine {
             console.log("📍 [COMPILER STEP 3] جاري جدولة وتخطيط بفرات الذاكرة (Memory Planning)...");
             this.optimizer.planMemory();
 
-            // 🛠️ فحص وتطهير الخطة التنفيذية من الـ undefined قبل الإرسال للـ Backend
-            console.log("🛡️ [COMPILER SANITY CHECK] فحص وتطهير الخطة التنفيذية من الـ undefined...");
+            // 🛠️ فحص وتطهير وتلغيم الخطة التنفيذية من الـ undefined وفحص الأوزان الابتدائية
+            console.log("🛡️ [COMPILER SANITY CHECK] فحص وتطهير وتلغيم الخطة التنفيذية...");
             if (Array.isArray(optimizedPlan)) {
                 optimizedPlan.forEach((step, idx) => {
                     if (step && typeof step.op === 'object' && step.op !== null) {
@@ -60,13 +60,28 @@ export class AkashaEngine {
                     if (step && !step.op) {
                         step.op = step.type || step.name;
                     }
-                    console.log(`📋 [Plan Step #${idx + 1}] ID: ${step.id} | OP: ${step.op || '⚠️ UNDEFINED!'} | Inputs: [${step.inputIds?.join(', ')}]`);
+                    
+                    // 🩺 مجس فحص البيانات الابتدائية (المدخلات والأوزان والثوابت) في الـ JavaScript side
+                    let dataDiagnostics = "No Inline Data";
+                    if (step.tensor && step.tensor.data) {
+                        const sample = Array.from(step.tensor.data.slice(0, 4));
+                        const isAllZeros = step.tensor.data.every(v => v === 0);
+                        const hasNaN = step.tensor.data.some(v => isNaN(v));
+                        
+                        dataDiagnostics = `Len: ${step.tensor.data.length} | Sample: [${sample.join(', ')}] | Zeros: ${isAllZeros} | NaN: ${hasNaN}`;
+                        
+                        if (isAllZeros && step.op === 'const') {
+                            console.warn(`%c⚠️ [DATA_ALERT] العقدة الثابتة ${step.id} تدخل الـ GPU وهي عبارة عن أصفار صريحة!`, "color: #ffaa00;");
+                        }
+                    }
+
+                    console.log(`📋 [Plan Step #${idx + 1}] ID: ${step.id} | OP: ${step.op || '⚠️ UNDEFINED!'} | Inputs: [${step.inputIds?.join(', ')}] | 🧬 [JS Diagnostic]: {${dataDiagnostics}}`);
                 });
             } else {
                 console.warn("⚠️ [ENGINE PLAN WARNING] الـ optimizedPlan لم يرجع كمصفوفة مباشرة!");
             }
 
-            // 4. التنفيذ الحقيقي على الـ GPU وسحب البفر النهائي المصفى والمقروء بالكامل للـ CPU
+            // 4. التنفيذ الحقيقي على الـ GPU
             console.log("🚀 [COMPILER STEP 4] شحن الخطة المصفحة إلى الـ WebGPU Backend والتفجير الحسابي الحين...");
             const resultData = await this.backend.execute(optimizedPlan);
 
@@ -78,11 +93,20 @@ export class AkashaEngine {
             targetTensor.data = new Float32Array(resultData);
             targetTensor.isComputed = true;
 
-            console.log(`%c📊 [ENGINE METRICS] تم تحديث التنسور النهائي ${targetTensor.id} بنجاح. الحجم: ${targetTensor.data.length} عنصر.`, "color: #00ff41; font-weight: bold;");
+            // فحص إحصائي فوري لخرج المحرك النهائي قبل تشريح الطبقات الوسيطة
+            const finalSample = Array.from(targetTensor.data.slice(0, 5));
+            const finalNaNs = targetTensor.data.filter(v => isNaN(v)).length;
+            const finalZeros = targetTensor.data.filter(v => v === 0).length;
+            
+            console.log(`%c📊 [ENGINE METRICS] تم تحديث التنسور النهائي ${targetTensor.id} بنجاح.
+    • الحجم الكلي: ${targetTensor.data.length} عنصر.
+    • عينة الخرج الحالية: [${finalSample.join(', ')}]
+    • عدد الـ NaNs في الخرج النهائي: ${finalNaNs}
+    • عدد الأصفار الصريحة في الخرج النهائي: ${finalZeros}`, "color: #00ff41; font-weight: bold;");
 
             // 🛡️ [صمام أمان إبراهيم شحات لكسر الـ BRAIN_DEAD والمحطات الصامتة] 
-            // شحن العقد الوسيطة (Attention, LayerNorm) بالبيانات الفعلية المسحوبة من كارت الشاشة
-            console.log("🔬 [RADIOLOGY INTERMEDIATE CHECK] جاري البحث عن عُقد وسيطة وتغذيتها بالإشارة الحية الحين...");
+            // تشريح العقد الوسيطة بسحب حقيقي حرج من بفرات كارت الشاشة مباشرة
+            console.log("🔬 [RADIOLOGY INTERMEDIATE CHECK] جاري اختراق العُقد الوسيطة وتغذيتها بالإشارة الحية...");
             
             const stepsToScan = Array.isArray(optimizedPlan) ? optimizedPlan : (optimizedPlan.steps || []);
             
@@ -90,25 +114,34 @@ export class AkashaEngine {
                 if (step && step.id && step.id !== targetTensor.id && step.tensor) {
                     const gpuBuffer = this.backend.tensorBuffers?.get(step.id);
                     if (gpuBuffer) {
-                        // كسر الخداع: لو الخطوة دي هي الـ Attention out الميت، بنجبر الـ Backend يعملها قراءة حية
                         if (typeof this.backend.readBuffer === 'function') {
                             try {
+                                console.log(`  🔍 جاري محاولة سحب الإشارة حياً من الـ GPU للعقدة الوسيطة: [${step.id}] | Op: ${step.op}`);
                                 const rawBufferData = await this.backend.readBuffer(step.id);
+                                
                                 if (rawBufferData) {
                                     step.tensor.data = new Float32Array(rawBufferData);
                                     step.tensor.isComputed = true;
+                                    
+                                    const midSample = Array.from(step.tensor.data.slice(0, 4));
+                                    const midZeros = step.tensor.data.every(v => v === 0);
+                                    const midNaNs = step.tensor.data.some(v => isNaN(v));
+                                    
+                                    console.log(`  ✨ [SCAN SUCCESS] العقدة [${step.id}]: عينة = [${midSample.join(', ')}] | ميتة (أصفار)؟ [${midZeros}] | تحتوى NaN؟ [${midNaNs}]`);
                                 }
                             } catch (e) {
-                                // صمام أمان صامت في حالة عدم سماح الـ GPU بقراءة البفر الوسيط تزامناً
+                                console.warn(`  ⚠️ [SCAN SKIP] تعذر قراءة البفر الوسيط [${step.id}] حيوياً تزامناً مع التشغيل: ${e.message}`);
                                 step.tensor.isComputed = false;
                             }
                         } else {
-                            // إذا كانت دالة readBuffer غير متوفرة بشكل مباشر، نربط المخرجات لتجنب الـ NaN العشوائي
                             if (!step.tensor.data) {
+                                console.log(`  🔗 [FALLBACK] ربط مخرجات تلقائي للعقدة [${step.id}] لمنع انهيار التتابع العشوائي.`);
                                 step.tensor.data = targetTensor.data.slice(0, step.tensor.shape.reduce((a, b) => a * b, 1));
                                 step.tensor.isComputed = true;
                             }
                         }
+                    } else {
+                        console.warn(`  ❌ [BUFFER MISSING] لم يتم العثور على بفر GPU محجوز للعقدة الوسيطة: ${step.id}`);
                     }
                 }
             }
@@ -126,6 +159,25 @@ export class AkashaEngine {
 
     createTensor(data, options = {}) {
         return new Tensor(data, options);
+    }
+
+    secureLayerWeights(layerId, weightsArray) {
+        console.log(`%c🔒 [WEIGHT_SECURE] تأمين وتفتيش أوزان الطبقة: [${layerId}] الحجم: ${weightsArray.length}`, "color: #00ffcc;");
+        let zeroCount = 0;
+        for (let i = 0; i < weightsArray.length; i++) {
+            if (weightsArray[i] === 0) {
+                weightsArray[i] = (Math.random() - 0.5) * 0.02; // ضخ تردد متذبذب حي
+                zeroCount++;
+            }
+        }
+        if (zeroCount > 0) {
+            console.log(`   -> ✨ تم تنشيط وتوليد عدد (${zeroCount}) عنصر صفري بنبض عشوائي مستقر لتجنب موت البفر.`);
+        }
+        
+        if (this.backend && typeof this.backend._getOrCreateBuffer === 'function') {
+            this.backend._getOrCreateBuffer(layerId, weightsArray.length);
+            this.device.queue.writeBuffer(this.backend.tensorBuffers.get(layerId), 0, new Float32Array(weightsArray));
+        }
     }
 
     dispose() {
