@@ -1,7 +1,7 @@
 /**
  * src/core/webgpubackend.js
- * الحالة: النسخة الذرية المصححة بالكامل والمصفحة أمنياً (Akasha Hyper-Engine + Safety Guards)
- * التحديث: معالجة إنهيار [object Object] وتأمين وتطهير الـ OP المتغير مع الـ Uniform Alignment الكامل
+ * الحالة: النسخة الذرية المحدثة بالفحص الإشعاعي الشامل (Akasha Hyper-Engine + Radiology Scanners)
+ * التحديث: معالجة سكايب الـ const الشامل، دعم الـ layer_norm التبادلي، وتفجير الـ Console بمجسات الفحص الحية.
  */
 
 export class WebGPUBackend {
@@ -9,15 +9,20 @@ export class WebGPUBackend {
         this.device = device;
         this.pipelineCache = new Map();
         this.tensorBuffers = new Map();
-        console.log("%c[Akasha GPU] Hyper-Engine Armed & Ready", "color: #00ff41; font-weight: bold;");
+        console.log("%c[Akasha GPU] Hyper-Engine Armed & Ready with Radiology Scanners", "color: #00ff41; font-weight: bold;");
     }
 
     async execute(plan) {
-        if (!this.device) return new Float32Array(512).fill(0);
+        console.log("☢️ [BACKEND RADIOLOGY] إطلاق فحص النبضة الحية.. عدد خطوات الخطة التنفيذية:", plan.length);
+        if (!this.device) {
+            console.error("🚨 [BACKEND CRITICAL] فشل التنفيذ: الـ GPU Device غير موجود أو ميت!");
+            return new Float32Array(512).fill(0);
+        }
 
         const commandEncoder = this.device.createCommandEncoder();
 
-        for (const step of plan) {
+        for (let s = 0; s < plan.length; s++) {
+            const step = plan[s];
             const outputSize = this._calculateSize(step.shape);
             const outBuffer = this._getOrCreateBuffer(step.id, outputSize);
 
@@ -27,20 +32,35 @@ export class WebGPUBackend {
                 currentOp = currentOp.op || currentOp.type || currentOp.name || 'add';
             }
 
-            // معالجة الثوابت والمدخلات وتمريرها بأمان
-            if ((currentOp === 'const' || currentOp === 'input') && step.data) {
-                const data = step.data instanceof Float32Array ? step.data : new Float32Array(step.data);
+            console.log(`🔍 [SCAN step #${s+1}] فحص العقدة: ${step.id} | العملية: ${currentOp} | الأبعاد المتوقعة: [${step.shape}] | الحجم: ${outputSize}`);
+
+            // 🔥 [صمام أمان إبراهيم شحات للثوابت] الحماية المطلقة لعقد الـ const والـ input لمنع البحث عن شيدر وهمي
+            if (currentOp === 'const' || currentOp === 'input' || step.type === 'const') {
+                console.log(`📦 [CONST DETECTED] العقدة ${step.id} معالجة كـ ثابت سيادي.`);
                 
-                const hasSignal = data.some(v => v !== 0);
-                if (!hasSignal && currentOp === 'const') {
-                    console.warn(`⚠️ WARNING: Buffer ${step.id} is completely dead (all zeros).`);
+                // البحث عن الداتا في أي مكان محتمل داخل الـ step لمنع السقوط الصامت
+                const rawData = step.data || step.value || (step.inputs && step.inputs[0] && step.inputs[0].data);
+                
+                if (rawData) {
+                    const data = rawData instanceof Float32Array ? rawData : new Float32Array(rawData);
+                    const hasSignal = data.some(v => v !== 0);
+                    
+                    if (!hasSignal) {
+                        console.warn(`⚠️ [RADIOLOGY WARNING] البفر الثابت ${step.id} ميت تماماً (أصفار فقط!).`);
+                    } else {
+                        console.log(`✅ [RADIOLOGY SIGNAL] البفر الثابت ${step.id} مشحون بداتا حية حقيقية! أول 3 قيم:`, data.slice(0, 3));
+                    }
+                    
+                    this.device.queue.writeBuffer(outBuffer, 0, data);
+                } else {
+                    console.warn(`⚠️ [RADIOLOGY ALERT] العقدة الثابتة ${step.id} لا تملك داتا مباشرة، تم تجهيز بفر صفري لها لمنع الانهيار.`);
                 }
                 
-                this.device.queue.writeBuffer(outBuffer, 0, data);
-                console.log(`[EXEC] Step: ${step.id} | Type: ${currentOp} | Size: ${data.length}`);
-                continue;
+                console.log(`[EXEC] Step: ${step.id} | Type: ${currentOp} | تم الشحن والتخطي بنجاح.`);
+                continue; // الـ const مش محتاج شيدر، اقلب على الخطوة اللي بعدها فوراً!
             }
 
+            // تجميع بفرات المدخلات مع طباعة تقرير إشعاعي عن حالتها الحالية
             const inputBuffers = (step.inputIds || []).map(id => {
                 const b = this.tensorBuffers.get(id);
                 if (!b) {
@@ -50,11 +70,13 @@ export class WebGPUBackend {
                 return b;
             });
 
+            console.log(`🔗 [BUFFER LINK] العقدة ${step.id} نجحت في ربط عدد (${inputBuffers.length}) بفرات مدخلة.`);
+
             // استدعاء الشيدر وبناء الـ Uniform بناءً على الـ Op النقي الصريح
             const shaderCode = this._getShader(currentOp);
             const uniformBuffer = this._createUniformBuffer(currentOp, step.shape, step.params);
             
-            console.log(`[EXEC] Step: ${step.id} | Op: ${currentOp} | Inputs: ${inputBuffers.length} | Shape: [${step.shape}]`);
+            console.log(`🚀 [GPU DISPATCHING] جاري شحن وتفجير العملية [${currentOp}] على كارت الشاشة للعقدة: ${step.id}`);
             
             await this._dispatch(shaderCode, commandEncoder, inputBuffers, outBuffer, uniformBuffer, step.shape, step.params);
         }
@@ -68,24 +90,29 @@ export class WebGPUBackend {
         const finalBuffer = this.tensorBuffers.get(lastStep.id);
         const finalSize = this._calculateSize(lastStep.shape);
 
-        console.log(`[READBACK] Final Step: ${lastStep.id} | Size: ${finalSize}`);
+        console.log(`📡 [READBACK STAGE] جاري سحب المخرج النهائي من كارت الشاشة للعقدة: ${lastStep.id} | الأبعاد: [${lastStep.shape}] | الحجم الكلي: ${finalSize}`);
         const result = await this._readBuffer(commandEncoder, finalBuffer, finalSize);
         
+        // الفحص الإشعاعي للمخرجات النهائية قبل تسليمها للـ UI
         const hasSignal = result.some(v => v !== 0);
         if (!hasSignal) {
-            console.error("%c[CRITICAL] GPU returned ZERO-FILLED output! Layout mismatch or pipeline stall!", "background: #ff0000; color: white; padding: 8px;");
+            console.error("%c[CRITICAL] 💀 GPU returned ZERO-FILLED output! الـ GPU مطلع أصفار كاملة! الإشارة ماتت في الطريق!", "background: #ff0000; color: white; padding: 8px;");
+            console.log("🔬 [RADIOLOGY TRACE] أول 10 عناصر من المخرج الميت:", result.slice(0, 10));
         } else {
-            console.log("%c[SUCCESS] GPU output contains valid data! Signal Alive!", "background: #00ff41; color: black; padding: 8px;");
+            console.log("%c[SUCCESS] 🎉 GPU SIGNAL ALIVE! الإشارة حية وعملاقة وكارت الشاشة يتحدث الحين!", "background: #00ff41; color: black; padding: 8px;");
+            console.log("🔬 [RADIOLOGY TRACE] عينة من الداتا الحية المكتشفة إشعاعياً:", result.slice(0, 10));
         }
         
         return result;
     }
 
     _getShader(op) {
-        // 🛡️ حماية داخلية إضافية: لو مر الكائن من الفلتر الخارجي بأي طريقة
         if (typeof op === 'object' && op !== null) {
             op = op.op || op.type || op.name || 'add'; 
         }
+
+        // صمام أمان داخلي لتحويل التسمية الثنائية لـ layer_norm لتقرأ الشيدر الموحد صح
+        if (op === 'layernorm') op = 'layer_norm';
 
         const kernels = {
             embedding_lookup: `
@@ -326,7 +353,7 @@ export class WebGPUBackend {
         }
 
         if (!kernels[op]) {
-            console.error(`[SHADER ERROR] Operation '${op}' is not implemented!`);
+            console.error(`[SHADER ERROR] Operation '${op}' is not implemented in Backend!`);
             throw new Error(`Missing shader implementation for: ${op}`);
         }
         return kernels[op];
