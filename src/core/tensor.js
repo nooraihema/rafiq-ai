@@ -1,6 +1,6 @@
 /**
  * src/core/tensor.js
- * الحالة: النسخة الفولاذية المحدثة (Residual Support + Unique Tracing)
+ * الحالة: النسخة الفولاذية المحدثة (Residual Support + Unique Tracing + Safety Guards)
  * الوظيفة: الهيكل الرياضي الأساسي الذي يدعم "الكباري" (Residual Connections) والعمليات المتقاطعة.
  */
 
@@ -9,8 +9,11 @@ export class Tensor {
         // 1. معالجة البيانات الأولية (Float32 لضمان التوافق مع الـ GPU)
         this.data = this._processData(data);
         
-        // 2. إدارة الأبعاد (Shape Management)
+        // 2. إدارة الأبعاد (Shape Management) - تأمين عدم تمرير مصفوفات فارغة أو مشوهة
         this.shape = options.shape || (this.data ? [this.data.length] : [0]);
+        if (!Array.isArray(this.shape)) {
+            this.shape = typeof this.shape === 'number' ? [this.shape] : [0];
+        }
         
         // 3. الهوية والرسم البياني (Graph Identity)
         // أضفنا Timestamp وعشوائية للـ ID لضمان عدم تداخل Buffers الـ GPU
@@ -26,15 +29,20 @@ export class Tensor {
     }
 
     _processData(data) {
-        if (data === null) return null;
+        if (data === null || data === undefined) return null;
         if (data instanceof Float32Array) return data;
         if (Array.isArray(data)) return new Float32Array(data);
         if (typeof data === 'number') return new Float32Array([data]);
         return null;
     }
 
+    // مصفحة بالكامل لمنع أي ضربة في الـ reduce لو استدعيت خارجياً
     get size() {
-        return this.shape.reduce((a, b) => a * b, 1);
+        if (!this.shape || !Array.isArray(this.shape) || this.shape.length === 0) return 0;
+        return this.shape.reduce((a, b) => {
+            const val = typeof b === 'number' ? b : 1;
+            return a * (val === 0 ? 1 : val);
+        }, 1);
     }
 
     // --- العمليات الحسابية المحدثة ---
@@ -124,6 +132,7 @@ export class Tensor {
     }
 
     reshape(newShape) {
+        if (!newShape || !Array.isArray(newShape)) throw new Error("Reshape Error: Invalid shape");
         const newSize = newShape.reduce((a, b) => a * b, 1);
         if (newSize !== this.size) throw new Error("Reshape Error: Size mismatch");
         return new Tensor(this.data, { shape: newShape, id: this.id });
