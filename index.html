@@ -3,38 +3,42 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>رفيق AI | محرك أكاشا</title>
+  <title>رفيق AI | محرك أكاشا المتطور</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #111; margin: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; color: #fff; }
-    h1 { color: #00ff41; font-size: 24px; margin: 20px 0 0; }
-    .chat-container { width: 100%; max-width: 450px; height: 50vh; background: #fff; border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; margin-top: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-    .header { background: #000; color: #fff; padding: 15px; text-align: center; font-size: 13px; border-bottom: 1px solid #333; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0a0a0c; margin: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; color: #fff; }
+    h1 { color: #00ff41; font-size: 24px; margin: 20px 0 0; text-shadow: 0 0 10px rgba(0,255,65,0.3); }
+    .chat-container { width: 100%; max-width: 500px; height: 40vh; background: #111; border: 1px solid #222; border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; margin-top: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.7); }
+    .header { background: #000; color: #fff; padding: 12px; text-align: center; font-size: 13px; border-bottom: 1px solid #222; font-weight: bold; letter-spacing: 0.5px; }
     .status-dot { height: 8px; width: 8px; background-color: #555; border-radius: 50%; display: inline-block; margin-left: 5px; }
-    .online { background-color: #00ff41; box-shadow: 0 0 5px #00ff41; }
+    .online { background-color: #00ff41; box-shadow: 0 0 8px #00ff41; }
     
-    .chat-box { flex: 1; padding: 15px; overflow-y: auto; background: #f4f4f4; display: flex; flex-direction: column; }
-    .message { padding: 10px 14px; border-radius: 12px; margin: 8px 0; font-size: 14px; max-width: 80%; line-height: 1.4; }
+    .chat-box { flex: 1; padding: 15px; overflow-y: auto; background: #141416; display: flex; flex-direction: column; }
+    .message { padding: 10px 14px; border-radius: 12px; margin: 6px 0; font-size: 14px; max-width: 80%; line-height: 1.4; }
     .user { background: #0070f3; color: #fff; align-self: flex-end; border-bottom-right-radius: 2px; }
-    .bot { background: #eaeaea; color: #000; align-self: flex-start; border-bottom-left-radius: 2px; font-weight: 500; }
+    .bot { background: #202024; color: #fff; align-self: flex-start; border-bottom-left-radius: 2px; border: 1px solid #333; font-weight: 500; }
 
-    .logs-container { width: 100%; max-width: 450px; height: 50vh; background: #0a0a0a; color: #00ff41; margin-top: 10px; border-radius: 8px; padding: 15px; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 11px; overflow-y: auto; border: 1px solid #222; }
-    .log-step { margin-bottom: 8px; border-left: 2px solid #00ff41; padding-left: 10px; }
-    .log-step.error { border-left-color: #ff4d4d; color: #ff4d4d; }
+    /* لوحة الـ Log الحديدية */
+    .logs-container { width: 100%; max-width: 500px; height: 50vh; background: #020204; color: #00ff41; margin-top: 10px; border-radius: 8px; padding: 15px; font-family: 'Consolas', 'Monaco', 'Ubuntu Mono', monospace; font-size: 11px; overflow-y: auto; border: 1px solid #1f1f2e; box-shadow: inset 0 0 20px rgba(0,0,0,0.9); box-sizing: border-box;}
+    .log-step { margin-bottom: 6px; border-left: 3px solid #00ff41; padding-left: 10px; line-height: 1.5; word-break: break-all; }
+    
+    /* ستايلات مخصصة لكل مستوى لسهولة الفحص بالعين */
+    .log-step.fatal { border-left-color: #ff0055; color: #ff0055; background: rgba(255,0,85,0.05); font-weight: bold; }
+    .log-step.error { border-left-color: #ff4d4d; color: #ff4d4d; background: rgba(255,77,77,0.03); }
     .log-step.warning { border-left-color: #ffb800; color: #ffb800; }
     .log-step.success { border-left-color: #00ff41; color: #00ff41; }
-    .log-step.info { border-left-color: #0070f3; color: #0070f3; }
-    .log-step.debug { border-left-color: #ff00ff; color: #ff00ff; }
+    .log-step.info { border-left-color: #00d2ff; color: #00d2ff; }
+    .log-step.debug { border-left-color: #bd93f9; color: #bd93f9; }
+    .log-step.trace { border-left-color: #ff79c6; color: #ff79c6; opacity: 0.85; }
     
-    .log-tag { color: #f1c40f; font-weight: bold; }
-    .log-val { color: #00ff41; }
-    .log-stat { color: #ff00ff; font-weight: bold; }
-    .log-error { color: #ff4d4d; }
-    .log-success { color: #00ff41; }
-    .log-time { color: #888; font-size: 10px; }
+    .log-tag { color: #f1c40f; font-weight: bold; margin-right: 4px; }
+    .log-val { color: #50fa7b; }
+    .log-stat-block { background: #09090e; border: 1px solid #1a1a24; padding: 6px; border-radius: 4px; margin: 4px 0; color: #ff79c6; display: block; font-size: 10.5px; white-space: pre-wrap; }
+    .log-time { color: #6272a4; font-size: 9px; float: left; margin-top: 2px; }
 
-    .input-container { display: flex; padding: 10px; background: white; border-top: 1px solid #eee; }
-    input { flex: 1; border: none; padding: 8px; outline: none; font-size: 14px; color: #333; }
-    button { background: #000; color: #fff; border: none; padding: 8px 20px; border-radius: 5px; cursor: pointer; }
+    .input-container { display: flex; padding: 10px; background: #18181c; border-top: 1px solid #222; }
+    input { flex: 1; border: 1px solid #333; background: #111; color: #fff; padding: 10px; outline: none; font-size: 14px; border-radius: 6px; }
+    button { background: #00ff41; color: #000; font-weight: bold; border: none; padding: 0 20px; margin-left: 10px; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+    button:hover { background: #00cc33; box-shadow: 0 0 8px rgba(0,255,65,0.4); }
   </style>
 </head>
 <body>
@@ -45,15 +49,15 @@
     </div>
     <div id="chat-box" class="chat-box"></div>
     <div class="input-container">
-      <input type="text" id="user-input" placeholder="اكتب رسالتك..." autofocus />
+      <input type="text" id="user-input" placeholder="اكتب رسالتك لـ أكاشا..." autofocus />
       <button id="send-btn">إرسال</button>
     </div>
   </div>
   <div class="logs-container" id="logs-view"></div>
 
   <script type="module">
+    import { AkashaEngine } from './src/core/akashaengine.js';
     import { AkashaRunner } from './src/core/akasharunner.js';
-    import { WebGPUBackend } from './src/core/webgpubackend.js';
     import { Tokenizer } from './src/core/tokenizer.js';
     import { AkashaGenerator } from './src/core/generator.js';
 
@@ -63,34 +67,27 @@
     const userInput = document.getElementById('user-input');
     const sendBtn = document.getElementById('send-btn');
 
-    // نظام السجل المتقدم
     const LOG_LEVELS = {
+      FATAL: 'fatal',
       ERROR: 'error',
       WARNING: 'warning',
       SUCCESS: 'success',
       INFO: 'info',
-      DEBUG: 'debug'
+      DEBUG: 'debug',
+      TRACE: 'trace'
     };
 
     let logCounter = 0;
-    const logHistory = [];
 
     function getTimestamp() {
       const now = new Date();
       return now.toLocaleTimeString('ar-EG', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
     }
 
+    // الـ Log الحديدي الجبار
     function printLog(tag, msg, level = LOG_LEVELS.INFO, details = null) {
       const timestamp = getTimestamp();
-      const logEntry = {
-        counter: ++logCounter,
-        timestamp,
-        tag,
-        msg,
-        level,
-        details
-      };
-      logHistory.push(logEntry);
+      logCounter++;
 
       const entry = document.createElement('div');
       entry.className = `log-step ${level}`;
@@ -98,145 +95,137 @@
       let detailsHtml = '';
       if (details) {
         if (typeof details === 'object') {
-          detailsHtml = `<br/><span class="log-stat">📊 ${JSON.stringify(details).substring(0, 150)}</span>`;
+          // تنسيق الكائنات البرمجية بشكل مصفوف ومقروء جداً (Pretty Print)
+          detailsHtml = `<div class="log-stat-block">🧬 [التحليل الداخلي]:\n${JSON.stringify(details, null, 2)}</div>`;
         } else {
-          detailsHtml = `<br/><span class="log-stat">📊 ${details}</span>`;
+          detailsHtml = `<div class="log-stat-block">📊 ${details}</div>`;
         }
       }
 
       entry.innerHTML = `
-        <span class="log-tag">[${logCounter}:${tag}]</span> 
+        <span class="log-time">${timestamp}</span>
+        <span class="log-tag">[#${logCounter} | ${tag}]</span> 
         <span>${msg}</span>
         ${detailsHtml}
-        <span class="log-time">(${timestamp})</span>
       `;
       logsView.appendChild(entry);
       logsView.scrollTop = logsView.scrollHeight;
     }
 
-    // تحليل مصفوفة البيانات وتأمين طباعة الإحصائيات الفردية
-    function analyzeTensor(data, name = 'Array') {
-      if (!data || data.length === 0) {
-        return {
-          name,
-          size: 0,
-          sum: 0,
-          mean: 0,
-          max: 0,
-          min: 0,
-          nonZeroCount: 0,
-          health: '0%',
-          isEmpty: true,
-          allZeros: true
-        };
+    // فحص الأمعاء والمصفوفات العميقة (Deep Medical Scan for Tensors)
+    function inspectArrayStructure(arrayOrTensor, name = 'Tensor') {
+      if (!arrayOrTensor) {
+        return { name, status: 'CRITICAL_NULL', error: 'المصفوفة غير موجودة في الذاكرة الحية' };
+      }
+
+      // استخراج البيانات الحقيقية سواء كان ممرر كـ Tensor Object أو مصفوفة صريحة
+      let rawData = arrayOrTensor.data !== undefined ? arrayOrTensor.data : arrayOrTensor;
+      let shape = arrayOrTensor.shape || (rawData ? [rawData.length] : ['Unknown']);
+
+      if (!rawData || rawData.length === 0) {
+        return { name, shape, size: 0, health: '0%', status: 'DEAD_EMPTY_BUFFER' };
       }
 
       let sum = 0;
-      let rawMax = -Infinity;
-      let rawMin = Infinity;
-      let nonZeros = 0;
+      let squareSum = 0;
+      let maxVal = -Infinity;
+      let minVal = Infinity;
+      let nonZeroCount = 0;
+      let nanCount = 0;
 
-      for (let v of data) {
-        sum += Math.abs(v);
-        if (v > rawMax) rawMax = v;
-        if (v < rawMin) rawMin = v;
-        if (v !== 0) nonZeros++;
+      for (let i = 0; i < rawData.length; i++) {
+        const v = rawData[i];
+        if (isNaN(v)) {
+          nanCount++;
+          continue;
+        }
+        sum += v;
+        squareSum += v * v;
+        if (v > maxVal) maxVal = v;
+        if (v < minVal) minVal = v;
+        if (v !== 0) nonZeroCount++;
       }
 
-      const mean = sum / data.length;
-      const health = ((nonZeros / data.length) * 100).toFixed(1);
-      const allZeros = nonZeros === 0;
+      const totalValid = rawData.length - nanCount;
+      const mean = totalValid > 0 ? sum / totalValid : 0;
+      // حساب الانحراف المعياري للتأكد من جودة تشتت توزيع الأوزان (Gaussian check)
+      const variance = totalValid > 0 ? (squareSum / totalValid) - (mean * mean) : 0;
+      const stdDev = Math.sqrt(Math.max(0, variance));
+      const signalDensity = ((nonZeroCount / rawData.length) * 100).toFixed(2);
 
-      // إصلاح الأمان: تحويل القيم الصافية إلى أرقام صريحة قبل استخدام toFixed منعا لأخطاء الـ Type Errors
-      const numMax = typeof rawMax === 'object' && rawMax.length ? Number(rawMax[0]) : Number(rawMax);
-      const numMin = typeof rawMin === 'object' && rawMin.length ? Number(rawMin[0]) : Number(rawMin);
+      let healthStatus = 'HEALTHY_SIGNAL';
+      if (nanCount > 0) healthStatus = 'POISONED_NAN_DETECTED';
+      else if (nonZeroCount === 0) healthStatus = 'BRAIN_DEAD_ALL_ZEROS';
+      else if (parseFloat(signalDensity) < 15.0) healthStatus = 'FADING_SIGNAL_WARNING';
 
       return {
-        name,
-        size: data.length,
-        sum: sum.toFixed(6),
-        mean: mean.toFixed(8),
-        max: numMax.toFixed(6),
-        min: numMin.toFixed(6),
-        nonZeroCount: nonZeros,
-        health: `${health}%`,
-        isEmpty: data.length === 0,
-        allZeros: allZeros,
-        sampleValues: Array.from(data.slice(0, 5)).map(v => typeof v === 'number' ? v.toFixed(4) : Number(v).toFixed(4))
+        tensorId: arrayOrTensor.id || 'Anonymous_Node',
+        shape: shape,
+        totalElements: rawData.length,
+        signalDensity: `${signalDensity}%`,
+        mathematicalMetrics: {
+          min: minVal === Infinity ? "0.00" : minVal.toFixed(6),
+          max: maxVal === -Infinity ? "0.00" : maxVal.toFixed(6),
+          mean: mean.toFixed(6),
+          stdDev: stdDev.toFixed(6)
+        },
+        internalStatus: healthStatus,
+        nanCount,
+        sampleSlice: Array.from(rawData.slice(0, 6)).map(v => typeof v === 'number' ? v.toFixed(5) : 'NaN')
       };
     }
 
-    let runner, generator;
+    let engine, runner, generator;
     const tokenizer = new Tokenizer(5000);
 
     async function init() {
-      printLog("CORE", "🚀 بدء تشغيل محرك أكاشا...", LOG_LEVELS.INFO);
+      printLog("CORE", "🚀 جاري تشغيل هندسة النظام الموحدة لمحرك أكاشا...", LOG_LEVELS.INFO);
       
       try {
-        // ✅ الخطوة 1: طلب WebGPU Adapter
-        printLog("GPU", "📍 طلب WebGPU Adapter...", LOG_LEVELS.DEBUG);
-        const adapter = await navigator.gpu?.requestAdapter();
-        if (!adapter) {
-          throw new Error("❌ WebGPU Adapter غير متاح - تحقق من متصفحك");
+        if (!navigator.gpu) {
+          throw new Error("بيئة تشغيل WebGPU غير مدعومة بالمتصفح، تأكد من تفعيل الأعلام أو استخدام متصفح حديث.");
         }
-        printLog("GPU", "✅ تم الحصول على GPU Adapter", LOG_LEVELS.SUCCESS, { type: adapter.constructor.name });
+        
+        printLog("GPU", "📍 جاري فحص والتقاط الـ WebGPU Adapter الحصري...", LOG_LEVELS.TRACE);
+        const adapter = await navigator.gpu.requestAdapter();
+        if (!adapter) throw new Error("فشل التقاط Adapter. الـ GPU قد يكون مشغولاً أو غير مدعوم.");
+        printLog("GPU", "✅ تم حجز الـ GPU Adapter بنجاح.", LOG_LEVELS.SUCCESS);
 
-        // ✅ الخطوة 2: طلب WebGPU Device
-        printLog("GPU", "📍 طلب WebGPU Device...", LOG_LEVELS.DEBUG);
         const device = await adapter.requestDevice();
-        if (!device) {
-          throw new Error("❌ WebGPU Device لم ينشأ");
-        }
-        printLog("GPU", "✅ تم إنشاء WebGPU Device بنجاح", LOG_LEVELS.SUCCESS, { deviceType: device.constructor.name });
+        printLog("GPU", "✅ تم إنشاء الـ GPUDevice وتخصيص قنوات التزامن.", LOG_LEVELS.SUCCESS);
 
-        // ✅ الخطوة 3: تهيئة Backend
-        printLog("BACKEND", "📍 تهيئة WebGPU Backend...", LOG_LEVELS.DEBUG);
-        const backend = new WebGPUBackend(device);
-        printLog("BACKEND", "✅ تم تهيئة Backend بنجاح", LOG_LEVELS.SUCCESS);
+        // التعديل الهيكلي الجوهري لمنع تكرار الـ Backends
+        printLog("COMPILER", "📍 تهيئة الـ Akasha Engine الموحد (The Orchestrator)...", LOG_LEVELS.TRACE);
+        engine = new AkashaEngine(device);
+        
+        printLog("RUNNER", "📍 جاري دمج الـ Akasha Runner بالـ Engine وتثبيت المعايير الحية...", LOG_LEVELS.TRACE);
+        runner = new AkashaRunner(engine, 2526); 
+        printLog("RUNNER", "✅ تم ربط الطبقات (Embedding, Attention, FFN) وتأمين الأوزان العشوائية.", LOG_LEVELS.SUCCESS);
 
-        // ✅ الخطوة 4: تهيئة Runner
-        printLog("RUNNER", "📍 تهيئة Akasha Runner...", LOG_LEVELS.DEBUG);
-        runner = new AkashaRunner(backend);
-        printLog("RUNNER", "✅ تم تهيئة Runner بنجاح", LOG_LEVELS.SUCCESS);
-
-        // ✅ الخطوة 5: تهيئة Generator
-        printLog("GENERATOR", "📍 تهيئة Akasha Generator...", LOG_LEVELS.DEBUG);
         generator = new AkashaGenerator(runner);
-        printLog("GENERATOR", "✅ تم تهيئة Generator بنجاح", LOG_LEVELS.SUCCESS);
 
-        // ✅ الخطوة 6: تحميل البيانات
-        printLog("DATA", "📍 جاري تحميل dataset.txt...", LOG_LEVELS.DEBUG);
+        printLog("DATA", "📍 جاري سحب الـ dataset.txt وتجهيز مصفوفة الوعي الفلسفي...", LOG_LEVELS.TRACE);
         const res = await fetch('./dataset.txt');
-        if (!res.ok) {
-          throw new Error(`❌ فشل تحميل dataset.txt - Status: ${res.status}`);
-        }
+        if (!res.ok) throw new Error(`فشل جلب ملف الداتا الحية المرجعية. كود: ${res.status}`);
         const text = await res.text();
-        printLog("DATA", `✅ تم تحميل البيانات (${text.length} حرف)`, LOG_LEVELS.SUCCESS, { fileSize: `${(text.length / 1024).toFixed(2)} KB` });
+        printLog("DATA", `✅ اتم تحميل الـ Dataset بسلام. الحجم الكلي: ${(text.length / 1024).toFixed(2)} KB`, LOG_LEVELS.SUCCESS);
 
-        // ✅ الخطوة 7: بناء القاموس
-        printLog("VOCAB", "📍 بناء القاموس من البيانات...", LOG_LEVELS.DEBUG);
+        printLog("VOCAB", "📍 جاري فك ضغط الكلمات وبناء القاموس والرموز التوكنز الحرة...", LOG_LEVELS.TRACE);
         await generator.buildVocabFromText(text);
-        printLog("VOCAB", `✅ تم بناء القاموس (${generator.vocab.length} كلمة)`, LOG_LEVELS.SUCCESS, { 
-          vocabSize: generator.vocab.length,
-          sampleWords: generator.vocab.slice(0, 5).join(', ')
-        });
-
-        // ✅ الخطوة 8: النظام جاهز
+        
         statusDot.classList.add('online');
-        printLog("READY", "🎯 النظام جاهز للعمل!", LOG_LEVELS.SUCCESS, {
-          components: ['GPU ✅', 'Backend ✅', 'Runner ✅', 'Generator ✅', 'Vocab ✅']
-        });
+        printLog("READY", "🎯 تم الربط الهيكلي الكامل! المحرك شغال على سلكة موحدة ومستعد للاحتراق والتعلم.", LOG_LEVELS.SUCCESS);
 
       } catch (err) {
         statusDot.classList.remove('online');
-        printLog("FATAL", `❌ خطأ في التهيئة: ${err.message}`, LOG_LEVELS.ERROR, { errorStack: err.stack });
+        printLog("FATAL", `💥 قفلة قاتلة في تهيئة النظام: ${err.message}`, LOG_LEVELS.FATAL, { stack: err.stack });
       }
     }
 
     sendBtn.onclick = async () => {
       const text = userInput.value.trim();
       if (!text || !generator) {
-        printLog("INPUT", "⚠️ إدخال فارغ أو النظام لم يتهيأ بعد", LOG_LEVELS.WARNING);
+        printLog("INPUT", "⚠️ مدخل فارغ أو الأمعاء البرمجية لم تكتمل تهيئتها بعد.", LOG_LEVELS.WARNING);
         return;
       }
 
@@ -244,72 +233,52 @@
       userInput.value = '';
       
       try {
-        printLog("EXEC", `═════════════════════════════════════`, LOG_LEVELS.DEBUG);
-        printLog("EXEC", `🔄 معالجة النص: "${text}"`, LOG_LEVELS.INFO);
+        printLog("EXEC", `⚡ [بداية نبضة معالجة جديدة] 💥💥💥💥💥💥💥💥💥💥💥💥💥`, LOG_LEVELS.INFO);
         
-        // الخطوة 1: تحويل النص لـ Token IDs
-        printLog("TOKENIZER", "📍 تحويل النص إلى Token IDs...", LOG_LEVELS.DEBUG);
+        printLog("TOKENIZER", `📍 تشفير النص المدخل: "${text}"`, LOG_LEVELS.TRACE);
         const tokenIds = tokenizer.encode(text);
-        printLog("TOKENIZER", `✅ تم التحويل (${tokenIds.length} tokens)`, LOG_LEVELS.SUCCESS, { 
-          tokens: tokenIds.slice(0, 10),
-          totalTokens: tokenIds.length 
-        });
+        printLog("TOKENIZER", `✅ عملية التوكنز تمت بنجاح. العدد: ${tokenIds.length} توكنز.`, LOG_LEVELS.SUCCESS, { IDs: tokenIds });
 
-        // الخطوة 2: استدعاء Generator
-        printLog("GENERATOR", "📍 جاري استدعاء Generator.generate()...", LOG_LEVELS.DEBUG);
-        const start = performance.now();
+        printLog("PIPELINE", "🚀 إطلاق الـ Feed-Forward ومراقبة التنسورز العميقة في قاع المصفوفات...", LOG_LEVELS.DEBUG);
+        
+        const startTime = performance.now();
+        // تشغيل الـ Runner الموحد والمصحح
         const result = await generator.generate(tokenIds);
-        const time = (performance.now() - start).toFixed(2);
-        
-        printLog("GENERATOR", `✅ اكتملت العملية في ${time}ms`, LOG_LEVELS.SUCCESS);
+        const executionTime = (performance.now() - startTime).toFixed(2);
 
-        // الخطوة 3: تحليل النتائج
-        printLog("ANALYSIS", "📍 تحليل النتائج...", LOG_LEVELS.DEBUG);
-        
-        if (!result) {
-          printLog("ANALYSIS", "❌ النتيجة فارغة!", LOG_LEVELS.ERROR);
-          return;
+        printLog("GPU_PERF", `⏱️ تم تنفيذ الحسابات على الـ GPU الشامل في غضون: ${executionTime}ms`, LOG_LEVELS.SUCCESS);
+
+        if (!result || !result.raw) {
+          throw new Error("الـ Pipeline أكمل دورتة لكن المخرج النهائي رجع Null أو غير معرف!");
         }
 
-        // تحليل الإحصائيات
-        const rawAnalysis = analyzeTensor(result.raw, 'Raw Output');
-        printLog("OUTPUT_STATS", `📊 إحصائيات المخرجات:`, LOG_LEVELS.INFO, rawAnalysis);
-
-        // الكشف عن الأصفار
-        if (rawAnalysis.allZeros) {
-          printLog("CRITICAL", "🚨 خطر حرج: جميع القيم أصفار! (موت الإشارة)", LOG_LEVELS.ERROR, {
-            health: result.stats?.health,
-            isDead: result.stats?.isDead,
-            meanSignal: result.stats?.mean
-          });
-        } else if (parseFloat(rawAnalysis.health) < 20) {
-          printLog("WARNING", "⚠️ تحذير: جودة الإشارة منخفضة جداً", LOG_LEVELS.WARNING, {
-            health: rawAnalysis.health,
-            nonZeros: rawAnalysis.nonZeroCount,
-            size: rawAnalysis.size
-          });
+        // الأشعة التشخيصية العميقة للأمعاء (Deep Inside Inspection)
+        printLog("DIAGNOSTIC", "🔮 جاري عمل فحص أشعة تشخيصية (X-Ray) لمصفوفة المخرجات الناتجة...", LOG_LEVELS.DEBUG);
+        const internalInspection = inspectArrayStructure(result.raw, 'Final Logits Output');
+        
+        if (internalInspection.internalStatus === 'BRAIN_DEAD_ALL_ZEROS') {
+          printLog("CRITICAL", "🚨 كارثة الأمعاء: إشارة ميتة تماماً (All Zeros)! الـ GPU رجع بفرز تالف أو لم يتم نقل البيانات بالـ mapAsync صح.", LOG_LEVELS.FATAL, internalInspection);
+        } else if (internalInspection.internalStatus === 'POISONED_NAN_DETECTED') {
+          printLog("CRITICAL", "🚨 انفجار رياضي: تم رصد قيم NaN! الـ Learning rate أو الـ Positional initialization طار في الهوا وعمل Overflow.", LOG_LEVELS.FATAL, internalInspection);
+        } else if (internalInspection.internalStatus === 'FADING_SIGNAL_WARNING') {
+          printLog("WARNING", "⚠️ تحذير طبي: الإشارة خاملة وباهتة جداً (توزيع متدني). راجع دالة الـ Attention scaling.", LOG_LEVELS.WARNING, internalInspection);
         } else {
-          printLog("SIGNAL", `✅ جودة الإشارة جيدة (${rawAnalysis.health})`, LOG_LEVELS.SUCCESS, {
-            health: rawAnalysis.health,
-            mean: rawAnalysis.mean,
-            max: rawAnalysis.max
-          });
+          printLog("SIGNAL_HEALTH", "✅ إشارة حية وصحية ممتازة واخترقت المصفوفات بنجاح!", LOG_LEVELS.SUCCESS, internalInspection);
         }
 
-        // النتيجة النهائية
-        printLog("RESULT", `🎯 الكلمة المتنبأ بها: "${result.word}"`, LOG_LEVELS.SUCCESS, {
-          confidence: result.confidence,
-          index: result.index,
-          stats: result.stats
+        // طباعة المخرج النهائي للـ UI
+        printLog("RESULT", `🎯 الكلمة المرجحة من الذكاء الاصطناعي: "${result.word}"`, LOG_LEVELS.SUCCESS, {
+          confidenceScore: result.confidence,
+          predictedIndex: result.index
         });
 
-        printLog("EXEC", `═════════════════════════════════════`, LOG_LEVELS.DEBUG);
-
+        printLog("EXEC", `⚡ [نهاية النبضة - الإشارة مستقرة] ═════════════════════════`, LOG_LEVELS.INFO);
         appendMessage('bot', result.word);
+
       } catch (err) {
-        printLog("ERROR", `❌ خطأ أثناء التنفيذ: ${err.message}`, LOG_LEVELS.ERROR, { 
+        printLog("EXEC_ERROR", `💥 انهيار الإشارة أثناء المعالجة: ${err.message}`, LOG_LEVELS.ERROR, {
           errorType: err.constructor.name,
-          stack: err.stack?.split('\n').slice(0, 3).join(' | ')
+          errorTrace: err.stack?.split('\n').slice(0, 4).join('\n')
         });
       }
     };
@@ -322,11 +291,9 @@
       chatBox.scrollTop = chatBox.scrollHeight;
     }
 
-    userInput.addEventListener('keypress', (e) => { 
-      if (e.key === 'Enter') sendBtn.click(); 
-    });
+    userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendBtn.click(); });
 
-    printLog("STARTUP", "🎬 بدء التطبيق...", LOG_LEVELS.INFO);
+    printLog("STARTUP", "🎬 جاري فحص البنية الأساسية للمتصفح واستدعاء الأجهزة الحيوية...", LOG_LEVELS.INFO);
     init();
   </script>
 </body>
