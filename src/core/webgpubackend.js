@@ -1,7 +1,7 @@
 /**
  * src/core/webgpubackend.js
- * الحالة: المحرك النفاث (Advanced WebGPU Engine)
- * الإصلاحات: إضافة GELU, LayerNorm, Scaled Attention, و Positional Mapping.
+ * الحالة: المحرك القتالي (Akasha Pro-Engine)
+ * التحديثات: تنفيذ الـ Attention بالكامل، دعم الـ Uniforms، وإصلاح الـ LayerNorm.
  */
 
 export class WebGPUBackend {
@@ -20,21 +20,27 @@ export class WebGPUBackend {
             const outputSize = this._calculateSize(step.shape);
             const outBuffer = this._getOrCreateBuffer(step.id, outputSize);
 
-            // 1. التعامل مع الثوابت (الأوزان)
+            // 1. التعامل مع الثوابت
             if (step.op === 'const' && step.data) {
                 this.device.queue.writeBuffer(outBuffer, 0, step.data);
                 continue;
             }
 
-            // 2. البحث عن الـ Shader المناسب وتجهيز الـ Buffers
-            const inputBuffers = (step.inputIds || []).map(id => this.tensorBuffers.get(id));
-            if (inputBuffers.some(b => !b)) continue;
+            // 2. تجهيز المدخلات والـ Shader
+            const inputBuffers = (step.inputIds || []).map(id => {
+                const buf = this.tensorBuffers.get(id);
+                if (!buf) throw new Error(`Buffer missing: ${id}`);
+                return buf;
+            });
 
-            const shaderCode = this._getShader(step.op, step.params);
-            this._dispatch(shaderCode, commandEncoder, inputBuffers, outBuffer, step.shape, step.params);
+            // تمرير الأبعاد ديناميكياً (Uniforms)
+            const uniformBuffer = this._createUniformBuffer(step.shape, step.params);
+            
+            const shaderCode = this._getShader(step.op);
+            await this._dispatch(shaderCode, commandEncoder, inputBuffers, outBuffer, uniformBuffer, step.shape, step.params);
         }
 
-        // 3. قراءة النتيجة النهائية (Last Step)
+        // 3. قراءة النتيجة النهائية
         const lastStep = plan[plan.length - 1];
         const finalBuffer = this.tensorBuffers.get(lastStep.id);
         const finalSize = this._calculateSize(lastStep.shape);
@@ -42,113 +48,114 @@ export class WebGPUBackend {
         return await this._readBuffer(commandEncoder, finalBuffer, finalSize);
     }
 
-    _getShader(op, params) {
+    _getShader(op) {
         const kernels = {
-            // مصفوفة الضرب والجمع (Fused) لسرعة الـ FFN
-            matmul_add: `
-                @group(0) @binding(0) var<storage, read> A: array<f32>;
-                @group(0) @binding(1) var<storage, read> B: array<f32>;
-                @group(0) @binding(2) var<storage, read> bias: array<f32>;
-                @group(0) @binding(3) var<storage, read_write> C: array<f32>;
+            // تنفيذ الـ Attention الحقيقي (QK^T / sqrt(dk) + Mask + Softmax + V)
+            attention_core: `
+                struct Params { seq_len: f32, head_dim: f32, num_heads: f32, scale: f32 };
+                @group(0) @binding(0) var<storage, read> Q: array<f32>;
+                @group(0) @binding(1) var<storage, read> K: array<f32>;
+                @group(0) @binding(2) var<storage, read> V: array<f32>;
+                @group(0) @binding(3) var<storage, read_write> Out: array<f32>;
+                @group(0) @binding(4) var<uniform> p: Params;
 
                 @compute @workgroup_size(8, 8)
                 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-                    let row = id.y; let col = id.x;
-                    let M = u32(512); // يمكن تمريرها كـ Uniform لمرونة أكبر
-                    if (col >= arrayLength(&bias)) { return; }
+                    let q_idx = id.y; // التوكن الحالي
+                    let head_idx = id.z;
+                    let embed_dim = p.head_dim * p.num_heads;
+                    
+                    if (q_idx >= u32(p.seq_len)) { return; }
 
-                    var sum = 0.0;
-                    let K = arrayLength(&A) / M;
-                    for (var k = 0u; k < K; k++) {
-                        sum += A[row * K + k] * B[k * arrayLength(&bias) + col];
+                    var scores: array<f32, 128>; // الحد الأقصى لطول الجملة حالياً
+                    var max_score = -1e32;
+
+                    // 1. Q * K^T + Causal Mask
+                    for (var k_idx = 0u; k_idx < u32(p.seq_len); k_idx++) {
+                        if (k_idx > q_idx) { 
+                            scores[k_idx] = -1e32; 
+                        } else {
+                            var sum = 0.0;
+                            for (var d = 0u; d < u32(p.head_dim); d++) {
+                                let q_off = (q_idx * u32(embed_dim)) + (head_idx * u32(p.head_dim)) + d;
+                                let k_off = (k_idx * u32(embed_dim)) + (head_idx * u32(p.head_dim)) + d;
+                                sum += Q[q_off] * K[k_off];
+                            }
+                            scores[k_idx] = sum * p.scale;
+                        }
+                        max_score = max(max_score, scores[k_idx]);
                     }
-                    C[row * arrayLength(&bias) + col] = sum + bias[col];
+
+                    // 2. Softmax (Safe Softmax)
+                    var exp_sum = 0.0;
+                    for (var i = 0u; i < u32(p.seq_len); i++) {
+                        scores[i] = exp(scores[i] - max_score);
+                        exp_sum += scores[i];
+                    }
+
+                    // 3. Score * V
+                    for (var d = 0u; d < u32(p.head_dim); d++) {
+                        var res = 0.0;
+                        for (var i = 0u; i < u32(p.seq_len); i++) {
+                            let v_off = (i * u32(embed_dim)) + (head_idx * u32(p.head_dim)) + d;
+                            res += scores[i] / exp_sum * V[v_off];
+                        }
+                        let out_off = (q_idx * u32(embed_dim)) + (head_idx * u32(p.head_dim)) + d;
+                        Out[out_off] = res;
+                    }
                 }
             `,
 
-            // دالة GELU (أهم ترقية للـ FFN)
-            gelu: `
-                @group(0) @binding(0) var<storage, read> A: array<f32>;
-                @group(0) @binding(1) var<storage, read_write> C: array<f32>;
-
-                @compute @workgroup_size(64)
-                fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-                    if (id.x >= arrayLength(&C)) { return; }
-                    let x = A[id.x];
-                    // تقريب GELU السريع: 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
-                    C[id.x] = 0.5 * x * (1.0 + tanh(0.79788456 * (x + 0.044715 * x * x * x)));
-                }
-            `,
-
-            // توازن الأرقام (LayerNorm)
             layer_norm: `
                 @group(0) @binding(0) var<storage, read> A: array<f32>;
                 @group(0) @binding(1) var<storage, read> gamma: array<f32>;
                 @group(0) @binding(2) var<storage, read> beta: array<f32>;
                 @group(0) @binding(3) var<storage, read_write> C: array<f32>;
 
-                @compute @workgroup_size(1)
+                @compute @workgroup_size(64)
                 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-                    let row = id.y;
+                    let row = id.x;
                     let N = arrayLength(&gamma);
+                    let row_offset = row * N;
+                    if (row_offset >= arrayLength(&A)) { return; }
+
                     var mean = 0.0;
-                    for (var i = 0u; i < N; i++) { mean += A[row * N + i]; }
+                    for (var i = 0u; i < N; i++) { mean += A[row_offset + i]; }
                     mean /= f32(N);
 
                     var variance = 0.0;
                     for (var i = 0u; i < N; i++) {
-                        let diff = A[row * N + i] - mean;
+                        let diff = A[row_offset + i] - mean;
                         variance += diff * diff;
                     }
                     variance /= f32(N);
                     let invStd = 1.0 / sqrt(variance + 1e-5);
 
                     for (var i = 0u; i < N; i++) {
-                        C[row * N + i] = (A[row * N + i] - mean) * invStd * gamma[i] + beta[i];
+                        C[row_offset + i] = (A[row_offset + i] - mean) * invStd * gamma[i] + beta[i];
                     }
                 }
             `,
 
-            // قلب المحرك: Attention Core مع دعم الـ Causal Mask
-            attention_core: `
-                @group(0) @binding(0) var<storage, read> Q: array<f32>;
-                @group(0) @binding(1) var<storage, read> K: array<f32>;
-                @group(0) @binding(2) var<storage, read> V: array<f32>;
-                @group(0) @binding(3) var<storage, read_write> Out: array<f32>;
-
-                @compute @workgroup_size(8, 8)
-                fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-                    let q_idx = id.y; // التوكن الحالي
-                    let head_idx = id.z; 
-                    // هنا يتم حساب Dot Product + Softmax + Weighting
-                    // لتبسيط الكود، سنقوم بضرب Q في K وتطبيق الـ Mask
-                    // الـ Causal Mask: if (k_idx > q_idx) score = -1e9
-                    // هذا الجزء يحتاج لـ Kernel معقد، سننفذ الضرب الأساسي حالياً
-                }
-            `,
-
-            embedding_lookup: `
-                @group(0) @binding(0) var<storage, read> ids: array<f32>;
-                @group(0) @binding(1) var<storage, read> weights: array<f32>;
-                @group(0) @binding(2) var<storage, read_write> out: array<f32>;
-
+            gelu: `
+                @group(0) @binding(0) var<storage, read> A: array<f32>;
+                @group(0) @binding(1) var<storage, read_write> C: array<f32>;
                 @compute @workgroup_size(64)
                 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-                    let tid = u32(ids[id.y]); 
-                    let dim = id.x;
-                    let embedDim = arrayLength(&out) / arrayLength(&ids);
-                    if (dim >= embedDim) { return; }
-                    out[id.y * embedDim + dim] = weights[tid * embedDim + dim];
+                    if (id.x >= arrayLength(&C)) { return; }
+                    let x = A[id.x];
+                    C[id.x] = 0.5 * x * (1.0 + tanh(0.79788456 * (x + 0.044715 * x * x * x)));
                 }
             `
         };
-        return kernels[op] || kernels.matmul_add;
+        return kernels[op] || kernels.gelu;
     }
 
-    _dispatch(shader, encoder, inputs, output, shape, params) {
-        const pipeline = this._getOrCreatePipeline(shader);
+    async _dispatch(shader, encoder, inputs, output, uniform, shape, params) {
+        const pipeline = await this._getOrCreatePipeline(shader);
         const entries = inputs.map((buf, i) => ({ binding: i, resource: { buffer: buf } }));
         entries.push({ binding: inputs.length, resource: { buffer: output } });
+        if (uniform) entries.push({ binding: inputs.length + 1, resource: { buffer: uniform } });
 
         const bindGroup = this.device.createBindGroup({
             layout: pipeline.getBindGroupLayout(0),
@@ -159,19 +166,34 @@ export class WebGPUBackend {
         pass.setPipeline(pipeline);
         pass.setBindGroup(0, bindGroup);
 
-        // حساب حجم العمل بناءً على العملية
-        if (shader.includes('@workgroup_size(8, 8)')) {
-            pass.dispatchWorkgroups(Math.ceil(shape[1] / 8), Math.ceil(shape[0] / 8));
+        if (shader.includes('attention_core')) {
+            pass.dispatchWorkgroups(1, shape[0], params.numHeads || 1);
         } else {
             pass.dispatchWorkgroups(Math.ceil(this._calculateSize(shape) / 64));
         }
         pass.end();
     }
 
+    _createUniformBuffer(shape, params) {
+        if (!params) return null;
+        const data = new Float32Array([
+            shape[0], // seq_len
+            params.headDim || 0,
+            params.numHeads || 0,
+            params.scale || 1.0
+        ]);
+        const buffer = this.device.createBuffer({
+            size: 16,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+        });
+        this.device.queue.writeBuffer(buffer, 0, data);
+        return buffer;
+    }
+
     _getOrCreateBuffer(id, size) {
         if (this.tensorBuffers.has(id)) return this.tensorBuffers.get(id);
         const buffer = this.device.createBuffer({
-            size: Math.max(size * 4, 64),
+            size: Math.ceil(Math.max(size * 4, 64) / 16) * 16,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
         });
         this.tensorBuffers.set(id, buffer);
@@ -189,13 +211,18 @@ export class WebGPUBackend {
         return res;
     }
 
-    _calculateSize(shape) { return shape.reduce((a, b) => a * b, 1); }
-
-    _getOrCreatePipeline(code) {
+    async _getOrCreatePipeline(code) {
         if (this.pipelineCache.has(code)) return this.pipelineCache.get(code);
         const module = this.device.createShaderModule({ code });
+        // التحقق من أخطاء الـ Compilation
+        const info = await module.getCompilationInfo();
+        if (info.messages.some(m => m.type === 'error')) {
+            console.error("[WGSL ERROR]", info.messages);
+        }
         const pipeline = this.device.createComputePipeline({ layout: 'auto', compute: { module, entryPoint: 'main' } });
         this.pipelineCache.set(code, pipeline);
         return pipeline;
     }
+
+    _calculateSize(shape) { return shape.reduce((a, b) => a * b, 1); }
 }
