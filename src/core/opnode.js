@@ -2,11 +2,12 @@
  * src/core/opnode.js
  * الحالة: تطوير هندسي شامل (Compiler-Ready)
  * الوظيفة: تعريف منطق العمليات وتحويلها إلى صيغ رياضية قابلة للتنفيذ على الـ GPU.
+ * تم التعديل لحقن العمليات السيادية (Softmax, LayerNorm, GELU) وتأمين الـ 3D Shapes.
  */
 
 export class OpNode {
     /**
-     * @param {string} type - نوع العملية (add, mul, matmul, relu, etc.)
+     * @param {string} type - نوع العملية (add, mul, matmul, relu, softmax, layernorm, etc.)
      * @param {Array} inputs - الـ Tensors الداخلة في العملية
      * @param {Object} attrs - خصائص إضافية
      */
@@ -18,18 +19,30 @@ export class OpNode {
     }
 
     /**
-     * قاموس العمليات: يحتوي على "الكود المصدري" لكل عملية رياضية.
-     * تم تصميمه ليدعم الـ Scalar Ops التي تُحقن مباشرة في الـ Shaders.
+     * قاموس العمليات الشامل والمحمي لمحرك أكاشا البنائي
      */
     static get DEFINITIONS() {
         return {
-            'add':  { symbol: '+', isElementWise: true,  identity: 0.0 },
-            'sub':  { symbol: '-', isElementWise: true,  identity: 0.0 },
-            'mul':  { symbol: '*', isElementWise: true,  identity: 1.0 },
-            'div':  { symbol: '/', isElementWise: true,  identity: 1.0 },
-            'relu': { 
+            'const': { isElementWise: false, customKernel: false }, // صمام أمان لعقد الثوابت
+            'add':   { symbol: '+', isElementWise: true,  identity: 0.0 },
+            'sub':   { symbol: '-', isElementWise: true,  identity: 0.0 },
+            'mul':   { symbol: '*', isElementWise: true,  identity: 1.0 },
+            'div':   { symbol: '/', isElementWise: true,  identity: 1.0 },
+            'relu':  { 
                 isElementWise: true, 
                 customFormula: (a) => `max(0.0, ${a})` 
+            },
+            'gelu':  {
+                isElementWise: true,
+                customFormula: (a) => `0.5 * ${a} * (1.0 + tanh(sqrt(2.0 / 3.14159) * (${a} + 0.044715 * pow(${a}, 3.0))))`
+            },
+            'softmax': { 
+                isElementWise: false, 
+                customKernel: true 
+            },
+            'layernorm': { 
+                isElementWise: false, 
+                customKernel: true 
             },
             'matmul': { 
                 isElementWise: false, 
@@ -39,8 +52,7 @@ export class OpNode {
     }
 
     /**
-     * توليد الصيغة الرياضية للعملية (التي ستوضع داخل الـ WGSL Shader)
-     * @param {Array<string>} inputVars - أسماء المتغيرات البرمجية للمدخلات (مثل val1, val2)
+     * توليد الصيغة الرياضية للعملية (داخل الـ WGSL Shader للعمليات المدمجة)
      */
     generateFormula(inputVars) {
         const def = OpNode.DEFINITIONS[this.type];
@@ -51,30 +63,30 @@ export class OpNode {
         }
 
         if (def.symbol) {
-            // دعم العمليات الثنائية مثل a + b
             return `(${inputVars[0]} ${def.symbol} ${inputVars[1]})`;
         }
 
-        return inputVars[0]; // Fallback
+        return inputVars[0]; 
     }
 
     /**
-     * التحقق الهندسي من الأبعاد (Shape Validation)
-     * يدعم الآن الـ Scalar Broadcasting (الجمع/الضرب في رقم واحد)
+     * التحقق الهندسي الشامل من الأبعاد وسلامة التدفق الرياضي
      */
     validateShapes() {
-        if (this.inputs.length === 0) return false;
+        if (this.inputs.length === 0) return true; // لعقد الثوابت
         
         const shapeA = this.inputs[0].shape;
         const def = OpNode.DEFINITIONS[this.type];
 
-        if (def && def.isElementWise && this.inputs.length === 2) {
+        if (!def) {
+            throw new Error(`Validation Error: Operation '${this.type}' is not defined in Akasha System.`);
+        }
+
+        if (def.isElementWise && this.inputs.length === 2) {
             const shapeB = this.inputs[1].shape;
             
-            // قاعدة الـ Broadcasting البسيطة:
-            // 1. الأبعاد متطابقة تماماً.
-            // 2. أو أحدهما طوله 1 (Scalar).
-            const isMatch = shapeA.every((val, i) => val === shapeB[i]);
+            // دعم الـ Broadcasting الذكي
+            const isMatch = shapeA.length === shapeB.length && shapeA.every((val, i) => val === shapeB[i]);
             const isScalarB = shapeB.length === 1 && shapeB[0] === 1;
             const isScalarA = shapeA.length === 1 && shapeA[0] === 1;
 
@@ -86,9 +98,13 @@ export class OpNode {
 
         if (this.type === 'matmul') {
             const shapeB = this.inputs[1].shape;
-            // قاعدة ضرب المصفوفات الكلاسيكية
-            if (shapeA[1] !== shapeB[0]) {
-                throw new Error(`MatMul Mismatch: Inner dimensions must match. Got ${shapeA[1]} and ${shapeB[0]}`);
+            
+            // استخراج الأبعاد الداخلية بغض النظر عن الـ Batch (دعم الأبعاد الثنائية والثلاثية)
+            const dimA = shapeA.length >= 2 ? shapeA[shapeA.length - 1] : shapeA[0];
+            const dimB = shapeB.length >= 2 ? shapeB[shapeB.length - 2] : shapeB[0];
+
+            if (dimA !== dimB) {
+                throw new Error(`MatMul Mismatch: Inner dimensions must match. Got trailing dim ${dimA} and leading dim ${dimB} from shapes ${shapeA} and ${shapeB}`);
             }
             return true;
         }
@@ -98,7 +114,6 @@ export class OpNode {
 
     /**
      * تحديد ما إذا كانت العملية قابلة للدمج (Fusion Eligible)
-     * دمج العمليات يقلل من استهلاك الـ GPU للكهرباء والوقت بنسبة تصل لـ 40%
      */
     isFusable() {
         const def = OpNode.DEFINITIONS[this.type];
