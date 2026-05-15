@@ -84,8 +84,15 @@
       return now.toLocaleTimeString('ar-EG', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
     }
 
-    // الـ Log الحديدي الجبار
+    // الـ Log الحديدي الجبار المفلتر للبيانات والمشاكل فقط
     function printLog(tag, msg, level = LOG_LEVELS.INFO, details = null) {
+      // حظر وتخطي أي لوجات عادية لا تحتوي على مشاكل أو داتا هيكلية حقيقية لتنظيف الشاشة
+      if (level === LOG_LEVELS.TRACE || level === LOG_LEVELS.INFO) {
+        if (!details && !msg.includes('✅') && !msg.includes('🎯')) {
+          return; 
+        }
+      }
+
       const timestamp = getTimestamp();
       logCounter++;
 
@@ -188,14 +195,11 @@
     const tokenizer = new Tokenizer(5000);
 
     async function init() {
-      printLog("CORE", "🚀 جاري تشغيل هندسة النظام الموحدة لمحرك أكاشا...", LOG_LEVELS.INFO);
-      
       try {
         if (!navigator.gpu) {
           throw new Error("بيئة تشغيل WebGPU غير مدعومة بالمتصفح، تأكد من تفعيل الأعلام أو استخدام متصفح حديث.");
         }
         
-        printLog("GPU", "📍 جاري فحص والتقاط الـ WebGPU Adapter الحصري...", LOG_LEVELS.TRACE);
         const adapter = await navigator.gpu.requestAdapter();
         if (!adapter) throw new Error("فشل التقاط Adapter. الـ GPU قد يكون مشغولاً أو غير مدعوم.");
         printLog("GPU", "✅ تم حجز الـ GPU Adapter بنجاح.", LOG_LEVELS.SUCCESS);
@@ -203,30 +207,30 @@
         const device = await adapter.requestDevice();
         printLog("GPU", "✅ تم إنشاء الـ GPUDevice وتخصيص قنوات التزامن.", LOG_LEVELS.SUCCESS);
 
-        printLog("COMPILER", "📍 تهيئة الـ Akasha Engine الموحد (The Orchestrator)...", LOG_LEVELS.TRACE);
         engine = new AkashaEngine(device);
-        
-        printLog("RUNNER", "📍 جاري دمج الـ Akasha Runner بالـ Engine وتثبيت المعايير الحية...", LOG_LEVELS.TRACE);
         runner = new AkashaRunner(engine, 2526); 
         printLog("RUNNER", "✅ تم ربط الطبقات (Embedding, Attention, FFN) وتأمين الأوزان العشوائية.", LOG_LEVELS.SUCCESS);
 
         generator = new AkashaGenerator(runner);
 
-        // 🛡️ [نظام حقن جواسيس التتبع الخارجي] 
-        // بنحقرن وظائف فحص حية جوه الأكواد بمجرد إنشائها لمراقبة الـ Data Flow لحظياً
         injectDataFlowTracers();
 
-        printLog("DATA", "📍 جاري سحب الـ dataset.txt وتجهيز مصفوفة الوعي الفلسفي...", LOG_LEVELS.TRACE);
         const res = await fetch('./dataset.txt');
         if (!res.ok) throw new Error(`فشل جلب ملف الداتا الحية المرجعية. كود: ${res.status}`);
         const text = await res.text();
         printLog("DATA", `✅ اتم تحميل الـ Dataset بسلام. الحجم الكلي: ${(text.length / 1024).toFixed(2)} KB`, LOG_LEVELS.SUCCESS);
 
-        printLog("VOCAB", "📍 جاري فك ضغط الكلمات وبناء القاموس والرموز التوكنز الحرة...", LOG_LEVELS.TRACE);
+        // شحن قاموس التوكنمايزر بالداتا الأصلية لمنع الخداع
+        if(runner.injectDatasetVocabulary) {
+           runner.injectDatasetVocabulary(text);
+        } else {
+           tokenizer.loadVocabularyFromDataset(text);
+        }
+        
         await generator.buildVocabFromText(text);
         
         statusDot.classList.add('online');
-        printLog("READY", "🎯 تم الربط الهيكلي الكامل! المحرك شغال على سلكة موحدة ومستعد للاحتراق والتعلم.", LOG_LEVELS.SUCCESS);
+        printLog("READY", "🎯 تم الِارتباط الهيكلي الكامل! المحرك شغال ومستعد للاحتراق والتعلم البصري الحقيقي.", LOG_LEVELS.SUCCESS);
 
       } catch (err) {
         statusDot.classList.remove('online');
@@ -234,24 +238,18 @@
       }
     }
 
-    // 🕵️ دالة الجاسوسية وحقن الـ Tracers لرصد محطات الأمعاء الأربعة بدون لمس ملفاتها
     function injectDataFlowTracers() {
       if (!runner || !engine) return;
 
-      // محطة 1 و 4: تتبع الـ Embedding والـ Const Propagation من خلال الـ Runner
       const originalForward = runner.forward || runner.execute;
       if (originalForward) {
         const wrappedForward = async function(...args) {
-          printLog("TRACER_INPUT", "📥 محطة (1): الـ Runner استلم نبضة التوكنز وبدأ فحص المدخلات...", LOG_LEVELS.DEBUG, { inputArgs: args });
-          
-          // فحص حالة أوزان الـ Embedding والأوزان المخزنة (Const Propagation) قبل التنفيذ
           if (this.embeddingWeights || this.weights) {
             const embWeights = this.embeddingWeights || this.weights;
             printLog("TRACER_CONST", "💾 محطة (4): فحص انتشار الأوزان (Const Propagation) في الذاكرة الحية...", LOG_LEVELS.TRACE, inspectArrayStructure(embWeights, 'Embedding/Weights Array'));
           }
 
           const result = await originalForward.apply(this, args);
-
           printLog("TRACER_EMBED", "🎫 محطة (1): ناتج عملية الـ Embedding Lookup بعد الفحص...", LOG_LEVELS.TRACE, inspectArrayStructure(result, 'Embedding Output Tensor'));
           return result;
         };
@@ -259,13 +257,11 @@
         else if (runner.execute) runner.execute = wrappedForward;
       }
 
-      // محطة 2: تتبع ضرب المصفوفات ومدخلات الـ Attention
       if (runner.attention || runner.attnBlock) {
         const tgt = runner.attention || runner.attnBlock;
         const originalAttn = tgt.forward || tgt.execute;
         if (originalAttn) {
           const wrappedAttn = async function(...args) {
-            printLog("TRACER_ATTN_IN", "🧠 محطة (2): دخول الخامات لطبقة الـ Attention (التحقق من Q, K, V)...", LOG_LEVELS.DEBUG);
             const attnResult = await originalAttn.apply(this, args);
             printLog("TRACER_ATTN_OUT", "💥 محطة (2): خروج الإشارة من الـ Attention.. هل ركبها الـ Softmax؟", LOG_LEVELS.TRACE, inspectArrayStructure(attnResult, 'Attention Out Vector'));
             return attnResult;
@@ -275,14 +271,12 @@
         }
       }
 
-      // محطة 3: فحص الـ Plan Builder وحجز الـ Buffers جوه الـ Engine
       const originalSetBuffer = engine.setBuffer || engine.registerTensor || engine.writeBuffer;
       if (originalSetBuffer) {
         engine.setBuffer = function(tensorId, buffer, ...args) {
-          printLog("TRACER_PLAN", `📋 محطة (3): الـ Plan Builder يحجز ويحور Tensor حقيقي في الـ GPU`, LOG_LEVELS.TRACE, {
-            tensorId: tensorId,
-            bufferSizeLength: buffer ? buffer.size : 'No Buffer Object'
-          });
+          if (!buffer) {
+             printLog("TRACER_PLAN", `📋 محطة (3): تحذير! محاولة حجز بفر فارغ لـ Tensor`, LOG_LEVELS.WARNING, { tensorId: tensorId });
+          }
           return originalSetBuffer.apply(this, [tensorId, buffer, ...args]);
         };
       }
@@ -299,15 +293,11 @@
       userInput.value = '';
       
       try {
-        printLog("EXEC", `⚡ [بداية نبضة معالجة جديدة] 💥💥💥💥💥💥💥💥💥💥💥💥💥`, LOG_LEVELS.INFO);
-        
-        printLog("TOKENIZER", `📍 تشفير النص المدخل: "${text}"`, LOG_LEVELS.TRACE);
         const tokenIds = tokenizer.encode(text);
-        printLog("TOKENIZER", `✅ عملية التوكنز تمت بنجاح. العدد: ${tokenIds.length} توكنز.`, LOG_LEVELS.SUCCESS, { IDs: tokenIds });
+        printLog("TOKENIZER", `✅ عملية التوكنز تمت بنجاح. العدد: ${tokenIds.length} توكنز.`, LOG_LEVELS.SUCCESS, { IDs: Object.fromEntries(Object.entries(tokenIds)) });
 
-        printLog("PIPELINE", "🚀 إطلاق الـ Feed-Forward ومراقبة التنسورز العميقة في قاع المصفوفات...", LOG_LEVELS.DEBUG);
-        
         const startTime = performance.now();
+        // تمرير النص مباشرة للـ runner المحدث، أو الـ IDs الصافية
         const result = await generator.generate(tokenIds);
         const executionTime = (performance.now() - startTime).toFixed(2);
 
@@ -317,7 +307,6 @@
           throw new Error("الـ Pipeline أكمل دورتة لكن المخرج النهائي رجع Null أو غير معرف!");
         }
 
-        printLog("DIAGNOSTIC", "🔮 جاري عمل فحص أشعة تشخيصية (X-Ray) لمصفوفة المخرجات الناتجة...", LOG_LEVELS.DEBUG);
         const internalInspection = inspectArrayStructure(result.raw, 'Final Logits Output');
         
         if (internalInspection.internalStatus === 'BRAIN_DEAD_ALL_ZEROS') {
@@ -335,7 +324,6 @@
           predictedIndex: result.index
         });
 
-        printLog("EXEC", `⚡ [نهاية النبضة - الإشارة مستقرة] ═════════════════════════`, LOG_LEVELS.INFO);
         appendMessage('bot', result.word);
 
       } catch (err) {
@@ -355,8 +343,6 @@
     }
 
     userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendBtn.click(); });
-
-    printLog("STARTUP", "🎬 جاري فحص البنية الأساسية للمتصفح واستدعاء الأجهزة الحيوية...", LOG_LEVELS.INFO);
     init();
   </script>
 </body>
