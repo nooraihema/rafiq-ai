@@ -1,7 +1,7 @@
 /**
  * src/core/tensor.js
- * الحالة: النسخة الفولاذية المحدثة (Residual Support + Unique Tracing + Safety Guards)
- * الوظيفة: الهيكل الرياضي الأساسي الذي يدعم "الكباري" (Residual Connections) والعمليات المتقاطعة.
+ * الحالة: النسخة الفولاذية المحدثة والمطهرة (Auto-Sizing + Residual Support + Unique Tracing)
+ * الوظيفة: الهيكل الرياضي الأساسي لـ رفيق-AI. تم إصلاح فخ الأبعاد الأحادية تلقائياً.
  */
 
 export class Tensor {
@@ -9,14 +9,21 @@ export class Tensor {
         // 1. معالجة البيانات الأولية (Float32 لضمان التوافق مع الـ GPU)
         this.data = this._processData(data);
         
-        // 2. إدارة الأبعاد (Shape Management) - تأمين عدم تمرير مصفوفات فارغة أو مشوهة
-        this.shape = options.shape || (this.data ? [this.data.length] : [0]);
+        // 2. إدارة الأبعاد الذكية (Smart Shape Management) 
+        // 🛡️ صمام أمان: لو مفيش Shape، بنبني بعد ثنائي تلقائي [1, Length] بدل أحادي لحماية الـ Transformer
+        if (options.shape) {
+            this.shape = options.shape;
+        } else if (this.data) {
+            this.shape = [1, this.data.length]; // 🔥 تصحيح فوري: تحويل التوكنز تلقائياً لـ [1, N] لمنع الانهيار
+        } else {
+            this.shape = [0];
+        }
+
         if (!Array.isArray(this.shape)) {
             this.shape = typeof this.shape === 'number' ? [this.shape] : [0];
         }
         
         // 3. الهوية والرسم البياني (Graph Identity)
-        // أضفنا Timestamp وعشوائية للـ ID لضمان عدم تداخل Buffers الـ GPU
         const randomId = Math.random().toString(36).substr(2, 6);
         this.op = options.op || 'const'; 
         this.id = options.id || `t_${this.op}_${randomId}_${Date.now()}`;
@@ -36,7 +43,6 @@ export class Tensor {
         return null;
     }
 
-    // مصفحة بالكامل لمنع أي ضربة في الـ reduce لو استدعيت خارجياً
     get size() {
         if (!this.shape || !Array.isArray(this.shape) || this.shape.length === 0) return 0;
         return this.shape.reduce((a, b) => {
@@ -113,8 +119,6 @@ export class Tensor {
             isComputed: false
         });
     }
-
-    // --- أدوات المساعدة لبناء الرسم البياني ---
 
     _binaryOp(type, other) {
         const otherTensor = this._toTensor(other);
