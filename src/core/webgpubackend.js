@@ -1,7 +1,7 @@
 /**
  * src/core/webgpubackend.js
- * الحالة: المحرك القتالي (Akasha Pro-Engine)
- * التحديثات: تنفيذ الـ Attention بالكامل، دعم الـ Uniforms، وإصلاح الـ LayerNorm.
+ * الحالة: المحرك القتالي مع نظام التتبع (Diagnostic Pro-Engine)
+ * التحديث: إضافة Logging عميق وفحص سلامة الـ Buffers وكشف الأوزان الصفرية.
  */
 
 export class WebGPUBackend {
@@ -9,10 +9,14 @@ export class WebGPUBackend {
         this.device = device;
         this.pipelineCache = new Map();
         this.tensorBuffers = new Map();
+        console.log("%c[WebGPU] Backend Initialized", "color: #00ff41; font-weight: bold;");
     }
 
     async execute(plan) {
-        if (!this.device) return new Float32Array(512).fill(0);
+        if (!this.device) {
+            console.error("[WebGPU] No device found! Check initialization.");
+            return new Float32Array(512).fill(0);
+        }
 
         const commandEncoder = this.device.createCommandEncoder();
 
@@ -20,37 +24,54 @@ export class WebGPUBackend {
             const outputSize = this._calculateSize(step.shape);
             const outBuffer = this._getOrCreateBuffer(step.id, outputSize);
 
-            // 1. التعامل مع الثوابت
+            // 1. التعامل مع الثوابت (الأوزان)
             if (step.op === 'const' && step.data) {
+                // فحص سريع: هل بنبعت أصفار؟
+                const isAllZeros = step.data.every(v => v === 0);
+                if (isAllZeros) {
+                    console.warn(`%c[DATA WARNING] Step ${step.id} (op: const) is sending ONLY ZEROS!`, "color: #ff4d4d");
+                }
+                
                 this.device.queue.writeBuffer(outBuffer, 0, step.data);
+                console.log(`[EXEC] Step: ${step.id} | Type: Const | Size: ${step.data.length}`);
                 continue;
             }
 
-            // 2. تجهيز المدخلات والـ Shader
+            // 2. تجهيز المدخلات
             const inputBuffers = (step.inputIds || []).map(id => {
                 const buf = this.tensorBuffers.get(id);
-                if (!buf) throw new Error(`Buffer missing: ${id}`);
+                if (!buf) {
+                    console.error(`[EXEC ERROR] Buffer missing for ID: ${id} in step: ${step.id}`);
+                    throw new Error(`Buffer missing: ${id}`);
+                }
                 return buf;
             });
 
-            // تمرير الأبعاد ديناميكياً (Uniforms)
+            // تمرير الأبعاد ديناميكياً
             const uniformBuffer = this._createUniformBuffer(step.shape, step.params);
-            
             const shaderCode = this._getShader(step.op);
+
+            console.log(`[EXEC] Step: ${step.id} | Op: ${step.op} | Inputs: ${step.inputIds.length}`);
+            
             await this._dispatch(shaderCode, commandEncoder, inputBuffers, outBuffer, uniformBuffer, step.shape, step.params);
         }
 
         // 3. قراءة النتيجة النهائية
         const lastStep = plan[plan.length - 1];
+        if (!lastStep) {
+            console.error("[EXEC ERROR] Execution plan is empty!");
+            return new Float32Array(0);
+        }
+
         const finalBuffer = this.tensorBuffers.get(lastStep.id);
         const finalSize = this._calculateSize(lastStep.shape);
 
+        console.log(`[READBACK] Final Step: ${lastStep.id} | Requesting: ${finalSize} elements`);
         return await this._readBuffer(commandEncoder, finalBuffer, finalSize);
     }
 
     _getShader(op) {
         const kernels = {
-            // تنفيذ الـ Attention الحقيقي (QK^T / sqrt(dk) + Mask + Softmax + V)
             attention_core: `
                 struct Params { seq_len: f32, head_dim: f32, num_heads: f32, scale: f32 };
                 @group(0) @binding(0) var<storage, read> Q: array<f32>;
@@ -61,16 +82,15 @@ export class WebGPUBackend {
 
                 @compute @workgroup_size(8, 8)
                 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-                    let q_idx = id.y; // التوكن الحالي
+                    let q_idx = id.y; 
                     let head_idx = id.z;
                     let embed_dim = p.head_dim * p.num_heads;
                     
                     if (q_idx >= u32(p.seq_len)) { return; }
 
-                    var scores: array<f32, 128>; // الحد الأقصى لطول الجملة حالياً
+                    var scores: array<f32, 128>; 
                     var max_score = -1e32;
 
-                    // 1. Q * K^T + Causal Mask
                     for (var k_idx = 0u; k_idx < u32(p.seq_len); k_idx++) {
                         if (k_idx > q_idx) { 
                             scores[k_idx] = -1e32; 
@@ -86,14 +106,12 @@ export class WebGPUBackend {
                         max_score = max(max_score, scores[k_idx]);
                     }
 
-                    // 2. Softmax (Safe Softmax)
                     var exp_sum = 0.0;
                     for (var i = 0u; i < u32(p.seq_len); i++) {
                         scores[i] = exp(scores[i] - max_score);
                         exp_sum += scores[i];
                     }
 
-                    // 3. Score * V
                     for (var d = 0u; d < u32(p.head_dim); d++) {
                         var res = 0.0;
                         for (var i = 0u; i < u32(p.seq_len); i++) {
@@ -105,7 +123,6 @@ export class WebGPUBackend {
                     }
                 }
             `,
-
             layer_norm: `
                 @group(0) @binding(0) var<storage, read> A: array<f32>;
                 @group(0) @binding(1) var<storage, read> gamma: array<f32>;
@@ -136,7 +153,6 @@ export class WebGPUBackend {
                     }
                 }
             `,
-
             gelu: `
                 @group(0) @binding(0) var<storage, read> A: array<f32>;
                 @group(0) @binding(1) var<storage, read_write> C: array<f32>;
@@ -205,16 +221,25 @@ export class WebGPUBackend {
         const staging = this.device.createBuffer({ size, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
         encoder.copyBufferToBuffer(gpuBuffer, 0, staging, 0, size);
         this.device.queue.submit([encoder.finish()]);
+        
         await staging.mapAsync(GPUMapMode.READ);
         const res = new Float32Array(staging.getMappedRange().slice(0));
         staging.unmap(); staging.destroy();
+        
+        // فحص النتيجة النهائية قبل إرجاعها للـ Runner
+        const hasSignal = res.some(v => v !== 0);
+        if (!hasSignal) {
+            console.error("%c[CRITICAL] GPU returned a Zero-Filled Array!", "background: #ff0000; color: #fff; padding: 5px;");
+        } else {
+            console.log("%c[SUCCESS] GPU Result contains non-zero data.", "color: #00ff41;");
+        }
+        
         return res;
     }
 
     async _getOrCreatePipeline(code) {
         if (this.pipelineCache.has(code)) return this.pipelineCache.get(code);
         const module = this.device.createShaderModule({ code });
-        // التحقق من أخطاء الـ Compilation
         const info = await module.getCompilationInfo();
         if (info.messages.some(m => m.type === 'error')) {
             console.error("[WGSL ERROR]", info.messages);
