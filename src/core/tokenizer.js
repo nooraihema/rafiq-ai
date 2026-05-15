@@ -1,7 +1,7 @@
 /**
  * src/core/tokenizer.js
- * الوظيفة: تحويل النص البشري إلى معرفات رقمية (Token IDs) مع معالجة ذكية للغة العربية
- * الحالة: إصدار التطهير والتوافق اللغوي لـ رفيق-AI
+ * الوظيفة: تحويل النص البشري بناءً على القاموس الديناميكي المستخرج من الـ Dataset الحقيقية
+ * الحماية المطلقة: إبراهيم شحات (مشروع رفيق-AI)
  */
 
 export class Tokenizer {
@@ -10,38 +10,52 @@ export class Tokenizer {
         this.vocab = new Map();
         this.inverseVocab = new Map();
         this.nextId = 1; // 0 محجوز للـ Padding/Unknown
-
-        // تسجيل الكلمات الأساسية بالصيغة القياسية (المعالجة)
-        this._prefillVocab([
-            "انا", "اشعر", "بالسعاده", "بالوحده", "غضب", "اكتئاب", "شك", "تجربه"
-        ]);
+        this.isLoadedFromDataset = false;
     }
 
     /**
-     * دالة سحرية لتطهير النص العربي وتوحيد الحروف لمنع اختلاف الـ IDs
+     * دالة التطهير والتوحيد اللغوي
      */
     _normalize(text) {
         if (!text) return "";
         return text
             .trim()
             .toLowerCase()
-            // إزالة التشكيل (الفتحة، الضمة، الكسرة، التنوين)
-            .replace(/[\u064B-\u0652]/g, "")
-            // توحيد الألفات (أ، إ، آ -> ا)
-            .replace(/[أإآ]/g, "ا")
-            // توحيد التاء المربوطة والهاء (ة -> ه)
-            .replace(/ة/g, "ه")
-            // توحيد الياء (ى -> ي)
-            .replace(/ى/g, "ي")
-            // تنظيف علامات الترقيم
-            .replace(/[.,!؟?()\[\]-]/g, " ");
+            .replace(/[\u064B-\u0652]/g, "") // إزالة التشكيل
+            .replace(/[أإآ]/g, "ا")          // توحيد الألف
+            .replace(/ة/g, "ه")            // توحيد الهاء والتاء المربوطة
+            .replace(/ى/g, "ي")            // توحيد الياء
+            .replace(/[.,!؟?()\[\]-]/g, " ");// تنظيف الرموز
     }
 
-    _prefillVocab(words) {
-        words.forEach(word => {
-            const cleanWord = this._normalize(word);
-            this.getOrCreateId(cleanWord);
+    /**
+     * 🔥 الدالة السحرية الجديدة: بناء القاموس من ملف الـ Dataset الحقيقي لمنع الخداع
+     * استدعي هذه الدالة فوراً في الـ Runner أو الـ Core بعد تحميل الـ dataset.txt بنجاح
+     */
+    loadVocabularyFromDataset(datasetText) {
+        if (!datasetText) return;
+        
+        console.log("%c🔮 [Tokenizer] جاري فحص الـ Dataset وبناء مصفوفة الرموز الحرة...", "color: #00ffff; font-weight: bold;");
+        
+        // تنظيف النص بالكامل وتقسيمه لكلمات فريدة
+        const cleanDataset = this._normalize(datasetText);
+        const uniqueWords = Array.from(new Set(cleanDataset.split(/\s+/))).filter(Boolean);
+        
+        // إعادة تهيئة القاموس بالكامل بناءً على داتا التدريب الحقيقية
+        this.vocab.clear();
+        this.inverseVocab.clear();
+        this.nextId = 1;
+
+        uniqueWords.forEach(word => {
+            if (this.nextId < this.vocabSize) {
+                this.vocab.set(word, this.nextId);
+                this.inverseVocab.set(this.nextId, word);
+                this.nextId++;
+            }
         });
+
+        this.isLoadedFromDataset = true;
+        console.log(`%c🎯 [Tokenizer Complete] تم بناء القاموس الحقيقي بنجاح! عدد الكلمات النشطة: ${this.vocab.size}`, "color: #00ff00; font-weight: bold;");
     }
 
     getOrCreateId(word) {
@@ -51,29 +65,26 @@ export class Tokenizer {
         if (this.vocab.has(cleanWord)) {
             return this.vocab.get(cleanWord);
         }
-        if (this.nextId < this.vocabSize) {
+
+        // لو القاموس مش محمل من الـ Dataset، بنخليه يسجل تتابعي مؤقتاً
+        if (!this.isLoadedFromDataset && this.nextId < this.vocabSize) {
             const id = this.nextId++;
             this.vocab.set(cleanWord, id);
             this.inverseVocab.set(id, cleanWord);
             return id;
         }
-        return 0; 
+
+        return 0; // رجع 0 (Unknown) لو الكلمة مش في الـ Dataset الأصلية لحماية الأوزان من الأصفار
     }
 
-    /**
-     * تحويل الجملة لـ Uint32Array مع حماية الحروف
-     */
     encode(text) {
         const cleanText = this._normalize(text);
-        // تقسيم النص بناءً على المسافات
         const words = cleanText.split(/\s+/).filter(Boolean);
         
         const ids = words.map(word => this.getOrCreateId(word));
         
-        console.log("%c📝 [Tokenizer Debug] تفاصيل التشفير اللغوي الحالية:", "color: #00aaaa; font-weight: bold;");
-        console.log(`   -> النص الأصلي: "${text}"`);
-        console.log(`   -> النص بعد التوحيد: "${cleanText}"`);
-        console.log(`   -> الـ IDs الناتجة: [${ids.join(", ")}]`);
+        console.log("%c📝 [Tokenizer Encode]", "color: #aa00aa;");
+        console.log(`   -> النص: "${text}" | الـ IDs الحقيقية: [${ids.join(", ")}]`);
         
         return new Uint32Array(ids);
     }
