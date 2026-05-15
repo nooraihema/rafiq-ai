@@ -1,7 +1,7 @@
 /**
  * src/core/webgpubackend.js
  * الحالة: النسخة الذرية المصححة بالكامل والمصفحة أمنياً (Akasha Hyper-Engine + Safety Guards)
- * التحديث: إصلاح الـ Uniform Alignment ومطابقة الـ Memory Layout، مع تأمين حساب الأبعاد (Shape Support)
+ * التحديث: معالجة إنهيار [object Object] وتأمين وتطهير الـ OP المتغير مع الـ Uniform Alignment الكامل
  */
 
 export class WebGPUBackend {
@@ -21,34 +21,40 @@ export class WebGPUBackend {
             const outputSize = this._calculateSize(step.shape);
             const outBuffer = this._getOrCreateBuffer(step.id, outputSize);
 
+            // 🛡️ تأمين وتطهير الـ op المتوقع في حال وصوله كـ Object من الـ Graph
+            let currentOp = step.op;
+            if (typeof currentOp === 'object' && currentOp !== null) {
+                currentOp = currentOp.op || currentOp.type || currentOp.name || 'add';
+            }
+
             // معالجة الثوابت والمدخلات وتمريرها بأمان
-            if ((step.op === 'const' || step.op === 'input') && step.data) {
+            if ((currentOp === 'const' || currentOp === 'input') && step.data) {
                 const data = step.data instanceof Float32Array ? step.data : new Float32Array(step.data);
                 
                 const hasSignal = data.some(v => v !== 0);
-                if (!hasSignal && step.op === 'const') {
+                if (!hasSignal && currentOp === 'const') {
                     console.warn(`⚠️ WARNING: Buffer ${step.id} is completely dead (all zeros).`);
                 }
                 
                 this.device.queue.writeBuffer(outBuffer, 0, data);
-                console.log(`[EXEC] Step: ${step.id} | Type: ${step.op} | Size: ${data.length}`);
+                console.log(`[EXEC] Step: ${step.id} | Type: ${currentOp} | Size: ${data.length}`);
                 continue;
             }
 
             const inputBuffers = (step.inputIds || []).map(id => {
                 const b = this.tensorBuffers.get(id);
                 if (!b) {
-                    console.error(`[CRITICAL ERROR] Missing Buffer: ${id} for Op: ${step.op}`);
-                    throw new Error(`Missing Buffer: ${id} for Op: ${step.op}`);
+                    console.error(`[CRITICAL ERROR] Missing Buffer: ${id} for Op: ${currentOp}`);
+                    throw new Error(`Missing Buffer: ${id} for Op: ${currentOp}`);
                 }
                 return b;
             });
 
-            const shaderCode = this._getShader(step.op);
-            // تمرير الـ op عشان نعمل خريطة دقيقة للـ Uniforms
-            const uniformBuffer = this._createUniformBuffer(step.op, step.shape, step.params);
+            // استدعاء الشيدر وبناء الـ Uniform بناءً على الـ Op النقي الصريح
+            const shaderCode = this._getShader(currentOp);
+            const uniformBuffer = this._createUniformBuffer(currentOp, step.shape, step.params);
             
-            console.log(`[EXEC] Step: ${step.id} | Op: ${step.op} | Inputs: ${inputBuffers.length} | Shape: [${step.shape}]`);
+            console.log(`[EXEC] Step: ${step.id} | Op: ${currentOp} | Inputs: ${inputBuffers.length} | Shape: [${step.shape}]`);
             
             await this._dispatch(shaderCode, commandEncoder, inputBuffers, outBuffer, uniformBuffer, step.shape, step.params);
         }
@@ -76,6 +82,11 @@ export class WebGPUBackend {
     }
 
     _getShader(op) {
+        // 🛡️ حماية داخلية إضافية: لو مر الكائن من الفلتر الخارجي بأي طريقة
+        if (typeof op === 'object' && op !== null) {
+            op = op.op || op.type || op.name || 'add'; 
+        }
+
         const kernels = {
             embedding_lookup: `
                 struct EmbeddingParams { seq_len: u32, embed_dim: u32, vocab_size: u32, pad: u32 };
@@ -89,7 +100,6 @@ export class WebGPUBackend {
                     let idx = id.x;
                     if (idx >= p.seq_len) { return; }
                     
-                    // استخدام round وتأمين الـ Indexing لمنع قراءة الأصفار المفاجئة
                     let token_id = u32(round(input_ids[idx]));
                     if (token_id >= p.vocab_size) { return; }
                     
@@ -293,7 +303,6 @@ export class WebGPUBackend {
             `
         };
 
-        // الـ Ops البسيطة (add, sub, mul, div, relu) بتشترك في نفس الهيكل العادي
         const basicOps = ['add', 'sub', 'mul', 'div', 'relu'];
         if (basicOps.includes(op)) {
             return `
@@ -347,7 +356,6 @@ export class WebGPUBackend {
     }
 
     _createUniformBuffer(op, shape, params) {
-        // حجز مساحة آمنة ومطابقة تماماً لـ 16-Byte Structure (4 عناصر 32-bit)
         const buffer = this.device.createBuffer({ 
             size: 16, 
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST 
@@ -356,20 +364,20 @@ export class WebGPUBackend {
         const view = new DataView(new ArrayBuffer(16));
 
         if (op === 'embedding_lookup') {
-            view.setUint32(0, (shape && shape[0]) ? shape[0] : 1, true);       // seq_len
-            view.setUint32(4, params?.embedDim || 512, true); // embed_dim
-            view.setUint32(8, params?.vocabSize || 2526, true); // vocab_size
-            view.setUint32(12, 0, true);                  // padding
+            view.setUint32(0, (shape && shape[0]) ? shape[0] : 1, true);       
+            view.setUint32(4, params?.embedDim || 512, true); 
+            view.setUint32(8, params?.vocabSize || 2526, true); 
+            view.setUint32(12, 0, true);                  
         } else if (op === 'mul_scalar') {
-            view.setUint32(0, this._calculateSize(shape), true); // size
+            view.setUint32(0, this._calculateSize(shape), true); 
             view.setUint32(4, 0, true);
             view.setUint32(8, 0, true);
-            view.setFloat32(12, params?.factor || 1.0, true);  // factor فلوت في الآخر
+            view.setFloat32(12, params?.factor || 1.0, true);  
         } else if (op === 'attention_core') {
-            view.setUint32(0, (shape && shape[0]) ? shape[0] : 1, true);       // seq_len
-            view.setUint32(4, params?.headDim || 64, true);  // head_dim
-            view.setUint32(8, params?.numHeads || 8, true);  // num_heads
-            view.setFloat32(12, params?.scale || 1.0, true); // scale
+            view.setUint32(0, (shape && shape[0]) ? shape[0] : 1, true);       
+            view.setUint32(4, params?.headDim || 64, true);  
+            view.setUint32(8, params?.numHeads || 8, true);  
+            view.setFloat32(12, params?.scale || 1.0, true); 
         } else if (op.includes('matmul')) {
             const M = (shape && shape[0]) ? shape[0] : 1;
             const N = params?.N || (shape ? shape[shape.length - 1] : 512) || 512;
@@ -379,8 +387,7 @@ export class WebGPUBackend {
             view.setUint32(8, K, true);
             view.setUint32(12, 0, true);
         } else {
-            // للعمليات الأساسية والـ Softmax
-            view.setUint32(0, this._calculateSize(shape), true); // size
+            view.setUint32(0, this._calculateSize(shape), true); 
             view.setUint32(4, 0, true);
             view.setUint32(8, 0, true);
             view.setUint32(12, 0, true);
