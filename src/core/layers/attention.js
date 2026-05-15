@@ -1,45 +1,46 @@
 /**
  * src/core/layers/attention.js
- * النسخة المحدثة: محرك الانتباه الفولاذي (Optimized Multi-Head)
- * الحالة: ترقية شاملة لنظام الـ Tracing والـ Projections
+ * النسخة السيادية (Causal & Normalized)
+ * تم الإصلاح بناءً على تقييم "إبراهيم شحات"
  */
 
 import { Tensor } from '../tensor.js';
 
 export class MultiHeadAttention {
     constructor({ embedDim, numHeads }) {
-        if (embedDim % numHeads !== 0) {
-            throw new Error("Dimension Error: embedDim must be divisible by numHeads");
-        }
-
         this.embedDim = embedDim;
         this.numHeads = numHeads;
         this.headDim = embedDim / numHeads;
-        this.scale = 1.0 / Math.sqrt(this.headDim); // عامل الاستقرار الرياضي
+        this.scale = 1.0 / Math.sqrt(this.headDim);
 
-        // أوزان منفصلة لتعلم أدق (Xavier Initialization)
-        this.queryWeights = this._initWeight(embedDim, embedDim, 'Wq');
-        this.keyWeights = this._initWeight(embedDim, embedDim, 'Wk');
-        this.valueWeights = this._initWeight(embedDim, embedDim, 'Wv');
-        this.outputWeights = this._initWeight(embedDim, embedDim, 'Wo');
+        // 1. تثبيت الأسماء (Fixed IDs) لحل مشكلة الحفظ والتحميل
+        this.queryWeights = this._initWeight(embedDim, embedDim, 'query');
+        this.keyWeights = this._initWeight(embedDim, embedDim, 'key');
+        this.valueWeights = this._initWeight(embedDim, embedDim, 'value');
+        this.outputWeights = this._initWeight(embedDim, embedDim, 'out_proj');
+        
+        // أوزان الـ LayerNorm (Gamma & Beta)
+        this.ln_gamma = new Tensor(new Float32Array(embedDim).fill(1.0), { shape: [embedDim], op: 'const', id: 'attn_ln_gamma' });
+        this.ln_beta = new Tensor(new Float32Array(embedDim).fill(0.0), { shape: [embedDim], op: 'const', id: 'attn_ln_beta' });
     }
 
     _initWeight(rows, cols, name) {
         const data = new Float32Array(rows * cols);
-        // Kaiming/Xavier Initialization لمنع تلاشي الأرقام
         const std = Math.sqrt(2.0 / (rows + cols));
         for (let i = 0; i < data.length; i++) {
-            data[i] = this._truncatedNormal() * std;
+            // تنفيذ Truncated Normal حقيقي (قص القيم أبعد من 2 انحراف معياري)
+            let val = this._gaussianRandom();
+            while (Math.abs(val) > 2) val = this._gaussianRandom(); 
+            data[i] = val * std;
         }
         return new Tensor(data, { 
             shape: [rows, cols], 
             op: 'const',
-            id: `weight_${name}_${Math.random().toString(36).substr(2, 4)}` 
+            id: `weight_attn_${name}` // اسم ثابت
         });
     }
 
-    // لتوليد أرقام عشوائية أكثر استقراراً من Math.random العادي
-    _truncatedNormal() {
+    _gaussianRandom() {
         let u = 0, v = 0;
         while(u === 0) u = Math.random();
         while(v === 0) v = Math.random();
@@ -47,32 +48,12 @@ export class MultiHeadAttention {
     }
 
     forward(x) {
-        /**
-         * بناء خريطة الـ Attention:
-         * x: [SeqLen, EmbedDim]
-         */
+        // 1. Projections
+        const Q = new Tensor(null, { op: 'matmul', inputs: [x, this.queryWeights], shape: x.shape });
+        const K = new Tensor(null, { op: 'matmul', inputs: [x, this.keyWeights], shape: x.shape });
+        const V = new Tensor(null, { op: 'matmul', inputs: [x, this.valueWeights], shape: x.shape });
 
-        // 1. Projections: تحويل المدخلات لثلاث فضاءات (Q, K, V)
-        const Q = new Tensor(null, {
-            op: 'matmul',
-            inputs: [x, this.queryWeights],
-            shape: x.shape
-        });
-
-        const K = new Tensor(null, {
-            op: 'matmul',
-            inputs: [x, this.keyWeights],
-            shape: x.shape
-        });
-
-        const V = new Tensor(null, {
-            op: 'matmul',
-            inputs: [x, this.valueWeights],
-            shape: x.shape
-        });
-
-        // 2. Attention Core: العملية اللي بتخلي الموديل "يركز"
-        // إرسال الـ scale كبارامتر أساسي لضمان عدم انفجار الأرقام
+        // 2. Attention Core مع إضافة الـ Mask والـ Scale
         const attentionContext = new Tensor(null, {
             op: 'attention_core',
             inputs: [Q, K, V],
@@ -80,22 +61,29 @@ export class MultiHeadAttention {
             params: { 
                 numHeads: this.numHeads, 
                 headDim: this.headDim,
-                scale: this.scale 
+                scale: this.scale,
+                causal: true // منع رؤية المستقبل
             }
         });
 
-        // 3. Output Projection: دمج نتائج الرؤوس المتعددة
+        // 3. Output Projection
         const attentionOut = new Tensor(null, {
             op: 'matmul',
             inputs: [attentionContext, this.outputWeights],
             shape: x.shape
         });
 
-        // 4. Residual Connection & Layer Norm (السر في ثبات الموديل)
-        // بنجمع المخرج مع المدخل الأصلي عشان الموديل ميفقدش سياق الجملة
-        return new Tensor(null, {
+        // 4. Residual Connection
+        const residual = new Tensor(null, {
             op: 'add',
             inputs: [x, attentionOut],
+            shape: x.shape
+        });
+
+        // 5. Layer Normalization (إضافة فعلية مش مجرد تعليق)
+        return new Tensor(null, {
+            op: 'layer_norm',
+            inputs: [residual, this.ln_gamma, this.ln_beta],
             shape: x.shape
         });
     }
