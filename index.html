@@ -28,11 +28,11 @@
     .log-step.success { border-left-color: #00ff41; color: #00ff41; }
     .log-step.info { border-left-color: #00d2ff; color: #00d2ff; }
     .log-step.debug { border-left-color: #bd93f9; color: #bd93f9; }
-    .log-step.trace { border-left-color: #ff79c6; color: #ff79c6; opacity: 0.85; }
+    .log-step.trace { border-left-color: #ff79c6; color: #ff79c6; }
     
     .log-tag { color: #f1c40f; font-weight: bold; margin-right: 4px; }
     .log-val { color: #50fa7b; }
-    .log-stat-block { background: #09090e; border: 1px solid #1a1a24; padding: 6px; border-radius: 4px; margin: 4px 0; color: #ff79c6; display: block; font-size: 10.5px; white-space: pre-wrap; }
+    .log-stat-block { background: #09090e; border: 1px solid #1a1a24; padding: 6px; border-radius: 4px; margin: 4px 0; color: #ff79c6; display: block; font-size: 10.5px; white-wrap: pre-wrap; white-space: pre-wrap; }
     .log-time { color: #6272a4; font-size: 9px; float: left; margin-top: 2px; }
 
     .input-container { display: flex; padding: 10px; background: #18181c; border-top: 1px solid #222; }
@@ -84,15 +84,9 @@
       return now.toLocaleTimeString('ar-EG', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
     }
 
-    // الـ Log الحديدي الجبار المفلتر للبيانات والمشاكل فقط
+    // الـ Log المطور الحيوى - يسمح بمرور كافة البيانات بدون فلاتر صامتة
     function printLog(tag, msg, level = LOG_LEVELS.INFO, details = null) {
-      // حظر وتخطي أي لوجات عادية لا تحتوي على مشاكل أو داتا هيكلية حقيقية لتنظيف الشاشة
-      if (level === LOG_LEVELS.TRACE || level === LOG_LEVELS.INFO) {
-        if (!details && !msg.includes('✅') && !msg.includes('🎯')) {
-          return; 
-        }
-      }
-
+      // 🔓 تم إزالة صمام الحجب البرمجي القديم للسماح لكافة اللوجات المتقدمة بالظهور فوراً
       const timestamp = getTimestamp();
       logCounter++;
 
@@ -117,6 +111,31 @@
       logsView.appendChild(entry);
       logsView.scrollTop = logsView.scrollHeight;
     }
+
+    // 💥 اختطاف وتوجيه الـ console.log والـ console.warn والـ console.error الأصليين للواجهة حياً
+    const originalConsoleLog = console.log;
+    const originalConsoleWarn = console.warn;
+    const originalConsoleError = console.error;
+
+    console.log = function(...args) {
+      originalConsoleLog.apply(console, args);
+      const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
+      // تحويل استدعاءات المحرك الملونة %c إلى لوجات مقروءة بداخل لوحة أكاشا
+      const cleanMessage = message.replace(/%c/g, '');
+      printLog("CORE_LOG", cleanMessage, LOG_LEVELS.INFO);
+    };
+
+    console.warn = function(...args) {
+      originalConsoleWarn.apply(console, args);
+      const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
+      printLog("CORE_WARN", message, LOG_LEVELS.WARNING);
+    };
+
+    console.error = function(...args) {
+      originalConsoleError.apply(console, args);
+      const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
+      printLog("CORE_ERR", message, LOG_LEVELS.ERROR);
+    };
 
     // فحص الأمعاء والمصفوفات العميقة (Deep Medical Scan for Tensors)
     function inspectArrayStructure(arrayOrTensor, name = 'Tensor') {
@@ -297,7 +316,6 @@
         printLog("TOKENIZER", `✅ عملية التوكنز تمت بنجاح. العدد: ${tokenIds.length} توكنز.`, LOG_LEVELS.SUCCESS, { IDs: Object.fromEntries(Object.entries(tokenIds)) });
 
         const startTime = performance.now();
-        // تمرير النص مباشرة للـ runner المحدث، أو الـ IDs الصافية
         const result = await generator.generate(tokenIds);
         const executionTime = (performance.now() - startTime).toFixed(2);
 
