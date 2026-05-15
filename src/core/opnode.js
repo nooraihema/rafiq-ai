@@ -3,7 +3,7 @@
  * الحالة: تطوير هندسي شامل (Compiler-Ready)
  * الوظيفة: تعريف منطق العمليات وتحويلها إلى صيغ رياضية قابلة للتنفيذ على الـ GPU.
  * تم التعديل لحقن العمليات السيادية (Softmax, LayerNorm, GELU) وتأمين الـ 3D Shapes.
- * صمام أمان إضافي: دعم التسمية الثنائية لـ layernorm و layer_norm لضمان استقرار الخطة البنائية.
+ * التحديث الأخير: إصلاح نظام الـ Broadcasting الشامل ليدعم جمع الـ Vectors [2048] على المصفوفات [2, 2048].
  */
 
 export class OpNode {
@@ -90,12 +90,25 @@ export class OpNode {
         if (def.isElementWise && this.inputs.length === 2) {
             const shapeB = this.inputs[1].shape;
             
-            // دعم الـ Broadcasting الذكي
+            // 1. تطابق كامل في الأبعاد
             const isMatch = shapeA.length === shapeB.length && shapeA.every((val, i) => val === shapeB[i]);
+            // 2. أحد الطرفين سكيب صريح (رقم واحد)
             const isScalarB = shapeB.length === 1 && shapeB[0] === 1;
             const isScalarA = shapeA.length === 1 && shapeA[0] === 1;
+            
+            // 3. ذكاء الـ الـ Vector Broadcasting (مثل مصفوفة [2, 2048] مع فيكتور [2048])
+            let isVectorBroadcast = false;
+            if (!isMatch && !isScalarA && !isScalarB) {
+                const longShape = shapeA.length >= shapeB.length ? shapeA : shapeB;
+                const shortShape = shapeA.length < shapeB.length ? shapeA : shapeB;
+                
+                // لو القصير عبارة عن بُعد واحد وبيطابق البُعد الأخير في المصفوفة الكبيرة (Row-level broadcast)
+                if (shortShape.length === 1 && longShape[longShape.length - 1] === shortShape[0]) {
+                    isVectorBroadcast = true;
+                }
+            }
 
-            if (!isMatch && !isScalarB && !isScalarA) {
+            if (!isMatch && !isScalarB && !isScalarA && !isVectorBroadcast) {
                 throw new Error(`Shape Mismatch: ${this.type} requires compatible shapes. Got ${shapeA} and ${shapeB}`);
             }
             return true;
