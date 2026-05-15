@@ -1,7 +1,7 @@
 /**
  * src/core/webgpubackend.js
- * الحالة: النسخة الكاملة النهائية (Full Akasha Pro-Engine)
- * التحديث: دمج الـ Attention مع الـ MatMul والـ Embedding Lookup والـ Operations الناقصة
+ * الحالة: النسخة الكاملة المصححة النهائية (Full Akasha Pro-Engine - Fixed)
+ * التحديث: إصلاح تمرير البيانات والأوزان للـ GPU بشكل صحيح
  */
 
 export class WebGPUBackend {
@@ -21,28 +21,62 @@ export class WebGPUBackend {
             const outputSize = this._calculateSize(step.shape);
             const outBuffer = this._getOrCreateBuffer(step.id, outputSize);
 
+            // معالجة الثوابت والمدخلات (تمرير البيانات الفعلية للـ GPU)
             if ((step.op === 'const' || step.op === 'input') && step.data) {
-                this.device.queue.writeBuffer(outBuffer, 0, step.data);
+                const data = step.data instanceof Float32Array ? step.data : new Float32Array(step.data);
+                
+                // تحقق من أن البيانات ليست كل أصفار
+                const hasSignal = data.some(v => v !== 0);
+                if (!hasSignal && step.op === 'const') {
+                    console.warn(`⚠️ WARNING: Buffer ${step.id} contains only zeros!`);
+                }
+                
+                this.device.queue.writeBuffer(outBuffer, 0, data);
+                console.log(`[EXEC] Step: ${step.id} | Type: ${step.op} | Size: ${data.length}`);
                 continue;
             }
 
+            // جمع المدخلات من الـ Buffers السابقة
             const inputBuffers = (step.inputIds || []).map(id => {
                 const b = this.tensorBuffers.get(id);
-                if (!b) throw new Error(`Missing Buffer: ${id} for Op: ${step.op}`);
+                if (!b) {
+                    console.error(`[CRITICAL ERROR] Missing Buffer: ${id} for Op: ${step.op}`);
+                    throw new Error(`Missing Buffer: ${id} for Op: ${step.op}`);
+                }
                 return b;
             });
 
+            // الحصول على Shader والـ Uniform Buffer
             const shaderCode = this._getShader(step.op);
             const uniformBuffer = this._createUniformBuffer(step.shape, step.params);
+            
+            console.log(`[EXEC] Step: ${step.id} | Op: ${step.op} | Inputs: ${inputBuffers.length} | Shape: [${step.shape}]`);
             
             await this._dispatch(shaderCode, commandEncoder, inputBuffers, outBuffer, uniformBuffer, step.shape, step.params);
         }
 
+        // قراءة النتيجة النهائية من الـ GPU
         const lastStep = plan[plan.length - 1];
+        if (!lastStep) {
+            console.error("[CRITICAL ERROR] Execution plan is empty!");
+            return new Float32Array(0);
+        }
+        
         const finalBuffer = this.tensorBuffers.get(lastStep.id);
         const finalSize = this._calculateSize(lastStep.shape);
 
-        return await this._readBuffer(commandEncoder, finalBuffer, finalSize);
+        console.log(`[READBACK] Final Step: ${lastStep.id} | Size: ${finalSize}`);
+        const result = await this._readBuffer(commandEncoder, finalBuffer, finalSize);
+        
+        // فحص النتيجة النهائية
+        const hasSignal = result.some(v => v !== 0);
+        if (!hasSignal) {
+            console.error("%c[CRITICAL] GPU returned ZERO-FILLED output! Check shader execution!", "background: #ff0000; color: white; padding: 8px;");
+        } else {
+            console.log("%c[SUCCESS] GPU output contains valid data!", "background: #00ff41; color: black; padding: 8px;");
+        }
+        
+        return result;
     }
 
     _getShader(op) {
@@ -61,7 +95,9 @@ export class WebGPUBackend {
                     let token_id = u32(input_ids[idx]);
                     let start = token_id * u32(p.embed_dim);
                     for (var i = 0u; i < u32(p.embed_dim); i++) {
-                        output[idx * u32(p.embed_dim) + i] = weights[start + i];
+                        if ((start + i) < arrayLength(&weights) && (idx * u32(p.embed_dim) + i) < arrayLength(&output)) {
+                            output[idx * u32(p.embed_dim) + i] = weights[start + i];
+                        }
                     }
                 }
             `,
@@ -90,7 +126,8 @@ export class WebGPUBackend {
                 @compute @workgroup_size(64)
                 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
                     let idx = id.x;
-                    if (idx >= u32(p.seq_len) * u32(p.embed_dim)) { return; }
+                    let total_size = u32(p.seq_len) * u32(p.embed_dim);
+                    if (idx >= total_size) { return; }
                     output[idx] = embedded[idx] + pos_encoding[idx];
                 }
             `,
@@ -109,9 +146,13 @@ export class WebGPUBackend {
                     if (row >= u32(p.M) || col >= u32(p.N)) { return; }
                     var sum = 0.0;
                     for (var k = 0u; k < u32(p.K); k++) {
-                        sum += A[row * u32(p.K) + k] * B[k * u32(p.N) + col];
+                        if ((row * u32(p.K) + k) < arrayLength(&A) && (k * u32(p.N) + col) < arrayLength(&B)) {
+                            sum += A[row * u32(p.K) + k] * B[k * u32(p.N) + col];
+                        }
                     }
-                    C[row * u32(p.N) + col] = sum;
+                    if ((row * u32(p.N) + col) < arrayLength(&C)) {
+                        C[row * u32(p.N) + col] = sum;
+                    }
                 }
             `,
 
@@ -130,9 +171,13 @@ export class WebGPUBackend {
                     if (row >= u32(p.M) || col >= u32(p.N)) { return; }
                     var sum = 0.0;
                     for (var k = 0u; k < u32(p.K); k++) {
-                        sum += A[row * u32(p.K) + k] * B[k * u32(p.N) + col];
+                        if ((row * u32(p.K) + k) < arrayLength(&A) && (k * u32(p.N) + col) < arrayLength(&B)) {
+                            sum += A[row * u32(p.K) + k] * B[k * u32(p.N) + col];
+                        }
                     }
-                    C[row * u32(p.N) + col] = sum + bias[col];
+                    if (col < arrayLength(&bias) && (row * u32(p.N) + col) < arrayLength(&C)) {
+                        C[row * u32(p.N) + col] = sum + bias[col];
+                    }
                 }
             `,
 
@@ -160,7 +205,9 @@ export class WebGPUBackend {
                             for (var d = 0u; d < u32(p.head_dim); d++) {
                                 let q_off = (q_idx * u32(embed_dim)) + (head_idx * u32(p.head_dim)) + d;
                                 let k_off = (k_idx * u32(embed_dim)) + (head_idx * u32(p.head_dim)) + d;
-                                sum += Q[q_off] * K[k_off];
+                                if (q_off < arrayLength(&Q) && k_off < arrayLength(&K)) {
+                                    sum += Q[q_off] * K[k_off];
+                                }
                             }
                             scores[k_idx] = sum * p.scale;
                         }
@@ -175,10 +222,14 @@ export class WebGPUBackend {
                         var res = 0.0;
                         for (var i = 0u; i < u32(p.seq_len); i++) {
                             let v_off = (i * u32(embed_dim)) + (head_idx * u32(p.head_dim)) + d;
-                            res += scores[i] / exp_sum * V[v_off];
+                            if (v_off < arrayLength(&V)) {
+                                res += scores[i] / exp_sum * V[v_off];
+                            }
                         }
                         let out_off = (q_idx * u32(embed_dim)) + (head_idx * u32(p.head_dim)) + d;
-                        Out[out_off] = res;
+                        if (out_off < arrayLength(&Out)) {
+                            Out[out_off] = res;
+                        }
                     }
                 }
             `,
@@ -363,9 +414,9 @@ export class WebGPUBackend {
         pass.setBindGroup(0, bindGroup);
 
         if (shader.includes('attention_core')) {
-            pass.dispatchWorkgroups(1, shape[0], params?.numHeads || 1);
+            pass.dispatchWorkgroups(1, Math.ceil(shape[0]/8), params?.numHeads || 1);
         } else if (shader.includes('matmul')) {
-            pass.dispatchWorkgroups(Math.ceil(shape[0]/8), Math.ceil((params?.N || 512)/8));
+            pass.dispatchWorkgroups(Math.ceil(shape[0]/8), Math.ceil((params?.N || shape[shape.length-1] || 512)/8));
         } else {
             pass.dispatchWorkgroups(Math.ceil(this._calculateSize(shape) / 64));
         }
@@ -374,9 +425,9 @@ export class WebGPUBackend {
 
     _createUniformBuffer(shape, params) {
         const data = new Float32Array(4);
-        data[0] = shape[0]; 
-        data[1] = params?.N || params?.headDim || params?.embedDim || params?.factor || params?.seqLen || 512;
-        data[2] = params?.K || params?.numHeads || params?.offset || 512;
+        data[0] = shape[0] || 1;
+        data[1] = params?.N || params?.headDim || params?.embedDim || params?.factor || params?.seqLen || shape[shape.length - 1] || 512;
+        data[2] = params?.K || params?.numHeads || params?.offset || shape[shape.length - 2] || 512;
         data[3] = params?.scale || 1.0;
 
         const buffer = this.device.createBuffer({ 
@@ -415,12 +466,17 @@ export class WebGPUBackend {
     async _getOrCreatePipeline(code) {
         if (this.pipelineCache.has(code)) return this.pipelineCache.get(code);
         const module = this.device.createShaderModule({ code });
-        const pipeline = await this.device.createComputePipelineAsync({ 
-            layout: 'auto', 
-            compute: { module, entryPoint: 'main' } 
-        });
-        this.pipelineCache.set(code, pipeline);
-        return pipeline;
+        try {
+            const pipeline = await this.device.createComputePipelineAsync({ 
+                layout: 'auto', 
+                compute: { module, entryPoint: 'main' } 
+            });
+            this.pipelineCache.set(code, pipeline);
+            return pipeline;
+        } catch (err) {
+            console.error("[SHADER COMPILATION ERROR]", err);
+            throw err;
+        }
     }
 
     _calculateSize(shape) { 
