@@ -1,7 +1,7 @@
 /**
  * src/core/webgpubackend.js
  * الحالة: النسخة الكاملة النهائية (Full Akasha Pro-Engine)
- * التحديث: دمج الـ Attention مع الـ MatMul والـ Embedding Lookup
+ * التحديث: دمج الـ Attention مع الـ MatMul والـ Embedding Lookup والـ Operations الناقصة
  */
 
 export class WebGPUBackend {
@@ -66,6 +66,35 @@ export class WebGPUBackend {
                 }
             `,
 
+            mul_scalar: `
+                struct Params { size: f32, factor: f32, unused1: f32, unused2: f32 };
+                @group(0) @binding(0) var<storage, read> input: array<f32>;
+                @group(0) @binding(1) var<storage, read_write> output: array<f32>;
+                @group(0) @binding(2) var<uniform> p: Params;
+
+                @compute @workgroup_size(64)
+                fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+                    let idx = id.x;
+                    if (idx >= u32(p.size)) { return; }
+                    output[idx] = input[idx] * p.factor;
+                }
+            `,
+
+            add_pos_encoding: `
+                struct Params { seq_len: f32, embed_dim: f32, offset: f32, unused: f32 };
+                @group(0) @binding(0) var<storage, read> embedded: array<f32>;
+                @group(0) @binding(1) var<storage, read> pos_encoding: array<f32>;
+                @group(0) @binding(2) var<storage, read_write> output: array<f32>;
+                @group(0) @binding(3) var<uniform> p: Params;
+
+                @compute @workgroup_size(64)
+                fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+                    let idx = id.x;
+                    if (idx >= u32(p.seq_len) * u32(p.embed_dim)) { return; }
+                    output[idx] = embedded[idx] + pos_encoding[idx];
+                }
+            `,
+
             matmul: `
                 struct Params { M: f32, N: f32, K: f32, unused: f32 };
                 @group(0) @binding(0) var<storage, read> A: array<f32>;
@@ -75,13 +104,35 @@ export class WebGPUBackend {
 
                 @compute @workgroup_size(8, 8)
                 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-                    let row = id.x; let col = id.y;
+                    let row = id.x; 
+                    let col = id.y;
                     if (row >= u32(p.M) || col >= u32(p.N)) { return; }
                     var sum = 0.0;
                     for (var k = 0u; k < u32(p.K); k++) {
                         sum += A[row * u32(p.K) + k] * B[k * u32(p.N) + col];
                     }
                     C[row * u32(p.N) + col] = sum;
+                }
+            `,
+
+            matmul_add: `
+                struct Params { M: f32, N: f32, K: f32, unused: f32 };
+                @group(0) @binding(0) var<storage, read> A: array<f32>;
+                @group(0) @binding(1) var<storage, read> B: array<f32>;
+                @group(0) @binding(2) var<storage, read> bias: array<f32>;
+                @group(0) @binding(3) var<storage, read_write> C: array<f32>;
+                @group(0) @binding(4) var<uniform> p: Params;
+
+                @compute @workgroup_size(8, 8)
+                fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+                    let row = id.x; 
+                    let col = id.y;
+                    if (row >= u32(p.M) || col >= u32(p.N)) { return; }
+                    var sum = 0.0;
+                    for (var k = 0u; k < u32(p.K); k++) {
+                        sum += A[row * u32(p.K) + k] * B[k * u32(p.N) + col];
+                    }
+                    C[row * u32(p.N) + col] = sum + bias[col];
                 }
             `,
 
@@ -95,13 +146,16 @@ export class WebGPUBackend {
 
                 @compute @workgroup_size(8, 8)
                 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-                    let q_idx = id.y; let head_idx = id.z;
+                    let q_idx = id.y; 
+                    let head_idx = id.z;
                     let embed_dim = p.head_dim * p.num_heads;
                     if (q_idx >= u32(p.seq_len)) { return; }
-                    var scores: array<f32, 128>; var max_score = -1e32;
+                    var scores: array<f32, 128>; 
+                    var max_score = -1e32;
                     for (var k_idx = 0u; k_idx < u32(p.seq_len); k_idx++) {
-                        if (k_idx > q_idx) { scores[k_idx] = -1e32; } 
-                        else {
+                        if (k_idx > q_idx) { 
+                            scores[k_idx] = -1e32; 
+                        } else {
                             var sum = 0.0;
                             for (var d = 0u; d < u32(p.head_dim); d++) {
                                 let q_off = (q_idx * u32(embed_dim)) + (head_idx * u32(p.head_dim)) + d;
@@ -134,30 +188,166 @@ export class WebGPUBackend {
                 @group(0) @binding(1) var<storage, read> gamma: array<f32>;
                 @group(0) @binding(2) var<storage, read> beta: array<f32>;
                 @group(0) @binding(3) var<storage, read_write> C: array<f32>;
+
                 @compute @workgroup_size(64)
                 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-                    let row = id.x; let N = arrayLength(&gamma); let row_off = row * N;
+                    let row = id.x;
+                    let N = arrayLength(&gamma);
+                    let row_off = row * N;
                     if (row_off >= arrayLength(&A)) { return; }
-                    var m = 0.0; for(var i=0u; i<N; i++){ m += A[row_off+i]; } m /= f32(N);
-                    var v = 0.0; for(var i=0u; i<N; i++){ let d = A[row_off+i]-m; v += d*d; } v /= f32(N);
+                    var m = 0.0;
+                    for (var i = 0u; i < N; i++) {
+                        m += A[row_off + i];
+                    }
+                    m /= f32(N);
+                    var v = 0.0;
+                    for (var i = 0u; i < N; i++) {
+                        let d = A[row_off + i] - m;
+                        v += d * d;
+                    }
+                    v /= f32(N);
                     let inv = 1.0 / sqrt(v + 1e-5);
-                    for(var i=0u; i<N; i++){ C[row_off+i] = (A[row_off+i]-m)*inv*gamma[i] + beta[i]; }
+                    for (var i = 0u; i < N; i++) {
+                        C[row_off + i] = (A[row_off + i] - m) * inv * gamma[i] + beta[i];
+                    }
                 }
             `,
 
             gelu: `
                 @group(0) @binding(0) var<storage, read> A: array<f32>;
                 @group(0) @binding(1) var<storage, read_write> C: array<f32>;
+
                 @compute @workgroup_size(64)
                 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
                     if (id.x >= arrayLength(&C)) { return; }
                     let x = A[id.x];
                     C[id.x] = 0.5 * x * (1.0 + tanh(0.79788456 * (x + 0.044715 * x * x * x)));
                 }
+            `,
+
+            softmax: `
+                struct Params { size: f32, unused1: f32, unused2: f32, unused3: f32 };
+                @group(0) @binding(0) var<storage, read> input: array<f32>;
+                @group(0) @binding(1) var<storage, read_write> output: array<f32>;
+                @group(0) @binding(2) var<uniform> p: Params;
+
+                @compute @workgroup_size(64)
+                fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+                    let idx = id.x;
+                    if (idx >= u32(p.size)) { return; }
+                    
+                    var max_val = -1e32;
+                    for (var i = 0u; i < u32(p.size); i++) {
+                        max_val = max(max_val, input[i]);
+                    }
+                    
+                    var sum = 0.0;
+                    for (var i = 0u; i < u32(p.size); i++) {
+                        sum += exp(input[i] - max_val);
+                    }
+                    
+                    output[idx] = exp(input[idx] - max_val) / sum;
+                }
+            `,
+
+            add: `
+                struct Params { size: f32, unused1: f32, unused2: f32, unused3: f32 };
+                @group(0) @binding(0) var<storage, read> A: array<f32>;
+                @group(0) @binding(1) var<storage, read> B: array<f32>;
+                @group(0) @binding(2) var<storage, read_write> C: array<f32>;
+                @group(0) @binding(3) var<uniform> p: Params;
+
+                @compute @workgroup_size(64)
+                fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+                    let idx = id.x;
+                    if (idx >= u32(p.size)) { return; }
+                    C[idx] = A[idx] + B[idx];
+                }
+            `,
+
+            sub: `
+                struct Params { size: f32, unused1: f32, unused2: f32, unused3: f32 };
+                @group(0) @binding(0) var<storage, read> A: array<f32>;
+                @group(0) @binding(1) var<storage, read> B: array<f32>;
+                @group(0) @binding(2) var<storage, read_write> C: array<f32>;
+                @group(0) @binding(3) var<uniform> p: Params;
+
+                @compute @workgroup_size(64)
+                fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+                    let idx = id.x;
+                    if (idx >= u32(p.size)) { return; }
+                    C[idx] = A[idx] - B[idx];
+                }
+            `,
+
+            mul: `
+                struct Params { size: f32, unused1: f32, unused2: f32, unused3: f32 };
+                @group(0) @binding(0) var<storage, read> A: array<f32>;
+                @group(0) @binding(1) var<storage, read> B: array<f32>;
+                @group(0) @binding(2) var<storage, read_write> C: array<f32>;
+                @group(0) @binding(3) var<uniform> p: Params;
+
+                @compute @workgroup_size(64)
+                fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+                    let idx = id.x;
+                    if (idx >= u32(p.size)) { return; }
+                    C[idx] = A[idx] * B[idx];
+                }
+            `,
+
+            div: `
+                struct Params { size: f32, unused1: f32, unused2: f32, unused3: f32 };
+                @group(0) @binding(0) var<storage, read> A: array<f32>;
+                @group(0) @binding(1) var<storage, read> B: array<f32>;
+                @group(0) @binding(2) var<storage, read_write> C: array<f32>;
+                @group(0) @binding(3) var<uniform> p: Params;
+
+                @compute @workgroup_size(64)
+                fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+                    let idx = id.x;
+                    if (idx >= u32(p.size)) { return; }
+                    if (B[idx] != 0.0) {
+                        C[idx] = A[idx] / B[idx];
+                    } else {
+                        C[idx] = 0.0;
+                    }
+                }
+            `,
+
+            relu: `
+                struct Params { size: f32, unused1: f32, unused2: f32, unused3: f32 };
+                @group(0) @binding(0) var<storage, read> A: array<f32>;
+                @group(0) @binding(1) var<storage, read_write> C: array<f32>;
+                @group(0) @binding(2) var<uniform> p: Params;
+
+                @compute @workgroup_size(64)
+                fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+                    let idx = id.x;
+                    if (idx >= u32(p.size)) { return; }
+                    C[idx] = max(0.0, A[idx]);
+                }
+            `,
+
+            transpose: `
+                struct Params { M: f32, N: f32, unused1: f32, unused2: f32 };
+                @group(0) @binding(0) var<storage, read> A: array<f32>;
+                @group(0) @binding(1) var<storage, read_write> C: array<f32>;
+                @group(0) @binding(2) var<uniform> p: Params;
+
+                @compute @workgroup_size(8, 8)
+                fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+                    let row = id.x;
+                    let col = id.y;
+                    if (row >= u32(p.M) || col >= u32(p.N)) { return; }
+                    C[col * u32(p.M) + row] = A[row * u32(p.N) + col];
+                }
             `
         };
 
-        if (!kernels[op]) throw new Error(`Missing Shader: ${op}`);
+        if (!kernels[op]) {
+            console.error(`[SHADER ERROR] Operation '${op}' is not implemented!`);
+            throw new Error(`Missing shader implementation for: ${op}`);
+        }
         return kernels[op];
     }
 
@@ -185,11 +375,14 @@ export class WebGPUBackend {
     _createUniformBuffer(shape, params) {
         const data = new Float32Array(4);
         data[0] = shape[0]; 
-        data[1] = params?.N || params?.headDim || params?.embedDim || 512;
-        data[2] = params?.K || params?.numHeads || 512;
+        data[1] = params?.N || params?.headDim || params?.embedDim || params?.factor || params?.seqLen || 512;
+        data[2] = params?.K || params?.numHeads || params?.offset || 512;
         data[3] = params?.scale || 1.0;
 
-        const buffer = this.device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+        const buffer = this.device.createBuffer({ 
+            size: 16, 
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST 
+        });
         this.device.queue.writeBuffer(buffer, 0, data);
         return buffer;
     }
@@ -206,22 +399,31 @@ export class WebGPUBackend {
 
     async _readBuffer(encoder, gpuBuffer, elements) {
         const size = elements * 4;
-        const staging = this.device.createBuffer({ size, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+        const staging = this.device.createBuffer({ 
+            size, 
+            usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST 
+        });
         encoder.copyBufferToBuffer(gpuBuffer, 0, staging, 0, size);
         this.device.queue.submit([encoder.finish()]);
         await staging.mapAsync(GPUMapMode.READ);
         const res = new Float32Array(staging.getMappedRange().slice(0));
-        staging.unmap(); staging.destroy();
+        staging.unmap();
+        staging.destroy();
         return res;
     }
 
     async _getOrCreatePipeline(code) {
         if (this.pipelineCache.has(code)) return this.pipelineCache.get(code);
         const module = this.device.createShaderModule({ code });
-        const pipeline = await this.device.createComputePipelineAsync({ layout: 'auto', compute: { module, entryPoint: 'main' } });
+        const pipeline = await this.device.createComputePipelineAsync({ 
+            layout: 'auto', 
+            compute: { module, entryPoint: 'main' } 
+        });
         this.pipelineCache.set(code, pipeline);
         return pipeline;
     }
 
-    _calculateSize(shape) { return shape.reduce((a, b) => a * b, 1); }
+    _calculateSize(shape) { 
+        return shape.reduce((a, b) => a * b, 1); 
+    }
 }
