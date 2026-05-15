@@ -1,7 +1,7 @@
 /**
  * src/core/webgpubackend.js
- * الحالة: النسخة الذرية المصححة بالكامل (Akasha Hyper-Engine)
- * التحديث: إصلاح الـ Uniform Alignment ومطابقة الـ Memory Layout بين الـ JS والـ WGSL
+ * الحالة: النسخة الذرية المصححة بالكامل والمصفحة أمنياً (Akasha Hyper-Engine + Safety Guards)
+ * التحديث: إصلاح الـ Uniform Alignment ومطابقة الـ Memory Layout، مع تأمين حساب الأبعاد (Shape Support)
  */
 
 export class WebGPUBackend {
@@ -335,10 +335,10 @@ export class WebGPUBackend {
         pass.setBindGroup(0, bindGroup);
 
         if (shader.includes('attention_core')) {
-            pass.dispatchWorkgroups(1, Math.ceil(shape[0]/8), params?.numHeads || 1);
+            pass.dispatchWorkgroups(1, Math.ceil((shape ? shape[0] : 1)/8), params?.numHeads || 1);
         } else if (shader.includes('matmul')) {
-            const M = shape[0] || 1;
-            const N = params?.N || shape[shape.length - 1] || 512;
+            const M = (shape && shape[0]) ? shape[0] : 1;
+            const N = params?.N || (shape ? shape[shape.length - 1] : 512) || 512;
             pass.dispatchWorkgroups(Math.ceil(M/8), Math.ceil(N/8));
         } else {
             pass.dispatchWorkgroups(Math.ceil(this._calculateSize(shape) / 64));
@@ -356,7 +356,7 @@ export class WebGPUBackend {
         const view = new DataView(new ArrayBuffer(16));
 
         if (op === 'embedding_lookup') {
-            view.setUint32(0, shape[0] || 1, true);       // seq_len
+            view.setUint32(0, (shape && shape[0]) ? shape[0] : 1, true);       // seq_len
             view.setUint32(4, params?.embedDim || 512, true); // embed_dim
             view.setUint32(8, params?.vocabSize || 2526, true); // vocab_size
             view.setUint32(12, 0, true);                  // padding
@@ -366,13 +366,13 @@ export class WebGPUBackend {
             view.setUint32(8, 0, true);
             view.setFloat32(12, params?.factor || 1.0, true);  // factor فلوت في الآخر
         } else if (op === 'attention_core') {
-            view.setUint32(0, shape[0] || 1, true);       // seq_len
+            view.setUint32(0, (shape && shape[0]) ? shape[0] : 1, true);       // seq_len
             view.setUint32(4, params?.headDim || 64, true);  // head_dim
             view.setUint32(8, params?.numHeads || 8, true);  // num_heads
             view.setFloat32(12, params?.scale || 1.0, true); // scale
         } else if (op.includes('matmul')) {
-            const M = shape[0] || 1;
-            const N = params?.N || shape[shape.length - 1] || 512;
+            const M = (shape && shape[0]) ? shape[0] : 1;
+            const N = params?.N || (shape ? shape[shape.length - 1] : 512) || 512;
             const K = params?.K || 512;
             view.setUint32(0, M, true);
             view.setUint32(4, N, true);
@@ -432,6 +432,23 @@ export class WebGPUBackend {
     }
 
     _calculateSize(shape) { 
-        return shape.reduce((a, b) => a * b, 1); 
+        if (shape === undefined || shape === null) {
+            console.warn("%c[Backend Scan] Warning: Received undefined or null shape in _calculateSize! Defaulting to 1.", "color: #ffb800; font-weight: bold;");
+            return 1;
+        }
+        
+        if (typeof shape === 'number') {
+            return shape > 0 ? shape : 1;
+        }
+        
+        if (!Array.isArray(shape) || shape.length === 0) {
+            return 1;
+        }
+
+        return shape.reduce((a, b) => {
+            const val = typeof b === 'number' ? b : Number(b);
+            if (isNaN(val) || val === 0) return a; 
+            return a * val;
+        }, 1);
     }
 }
