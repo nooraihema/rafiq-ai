@@ -1,20 +1,23 @@
 /**
  * src/core/akasharunner.js
- * الحالة: المايسترو الموحد والمصحح (Unified Pipeline)
- * الإصلاح: دمج الـ Runner مع الـ Engine لضمان تحديث الذاكرة ومنع الأصفار
+ * الحالة: المايسترو الموحد والمصحح (Unified Pipeline) - إصدار التطهير اللغوي لـ رفيق-AI
+ * الإصلاح: دمج الـ Tokenizer ديناميكياً داخل الـ Runner لمنع خداع الأصفار وحماية الإشارة.
  */
 
 import { Embedding } from './layers/embedding.js';
 import { MultiHeadAttention } from './layers/attention.js';
 import { FeedForward } from './layers/ffn.js';
 import { Tensor } from './tensor.js';
+import { Tokenizer } from './tokenizer.js'; // 🔥 استدعاء التوكنمايزر هنا لحمايته
 
 export class AkashaRunner {
     constructor(engine, vocabSize = 2526) {
-        // نربط الـ Runner بالـ Engine الموحد اللي جاي من بره ومبنعملش Backend جديد!
         this.engine = engine; 
         
         console.log(`%c[Akasha Runner] Hooked to Unified Engine. Vocab Size: ${vocabSize}`, "color: #00ff41; font-weight: bold;");
+
+        // 1. تهيئة الـ Tokenizer مدمجاً جوه الـ Runner لحمايته من الهلوسة اللغوية
+        this.tokenizer = new Tokenizer(vocabSize);
 
         // تهيئة الطبقات
         this.embedding = new Embedding(vocabSize, 512, 128); 
@@ -28,13 +31,22 @@ export class AkashaRunner {
     }
 
     /**
-     * دالة لتسجيل أوزان الطبقات الحية جوه الـ Backend الموحد للـ Engine
+     * 🔥 دالة حقن الـ Dataset الحقيقية لبناء القاموس الديناميكي الأصلي ومنع الأصفار
+     * استدعيها فوراً في ملف الـ UI أو الـ Setup الخارجي بعد تحميل الـ dataset.txt بنجاح
      */
+    injectDatasetVocabulary(datasetText) {
+        if (this.tokenizer && typeof this.tokenizer.loadVocabularyFromDataset === 'function') {
+            this.tokenizer.loadVocabularyFromDataset(datasetText);
+            console.log("%c🔮 [Runner Integrity] تم ربط الـ Tokenizer بالـ Dataset الأصلية الحية بنجاح.", "color: #ff00ff; font-weight: bold;");
+        } else {
+            console.warn("⚠️ [Runner Warning] دالة loadVocabularyFromDataset غير موجودة في التوكنمايزر الحالي.");
+        }
+    }
+
     _registerLayerWeights(layer) {
         for (let key in layer) {
             if (layer[key] && layer[key] instanceof Tensor && layer[key].op === 'const') {
                 const tensor = layer[key];
-                // نكتب الأوزان اللي اتولدت في الـ Embedding جوه الـ Backend الموحد فوراً
                 this.engine.backend._getOrCreateBuffer(tensor.id, tensor.data.length);
                 this.engine.device.queue.writeBuffer(
                     this.engine.backend.tensorBuffers.get(tensor.id), 
@@ -46,8 +58,21 @@ export class AkashaRunner {
         }
     }
 
-    async run(tokenIds) {
+    /**
+     * تعديل دالة الـ run لتصبح ذكية: تقبل مصفوفة الأرقام أو النص البشري مباشرة!
+     */
+    async run(input) {
         try {
+            let tokenIds = [];
+
+            // 🛡️ صمام أمان مطور: لو المدخل نص بشري حر، الـ Runner هيعمله Tokenization بنفسه بالقاموس الحقيقي!
+            if (typeof input === 'string') {
+                console.log(`%c📝 [Runner Processing] جاري معالجة نص بشري حر مباشرة: "${input}"`, "color: #ffff00;");
+                tokenIds = Array.from(this.tokenizer.encode(input));
+            } else if (input instanceof Uint32Array || Array.isArray(input)) {
+                tokenIds = Array.from(input);
+            }
+
             if (tokenIds.length === 0) return new Float32Array(this.engine.backend._calculateSize([2526])).fill(0);
 
             // 1. تحويل التوكنز لـ Tensor مدخلات
@@ -71,7 +96,6 @@ export class AkashaRunner {
             x = this.ffn.forward(x);
 
             // 3. اللحظة الحاسمة: نخلي الـ Engine يحسب الـ Tensor النهائي!
-            // دالة compute هتعمل trace وتحسب الداتا وتحدث الـ Tensor وترجع مصفوفة حية
             const finalData = await this.engine.compute(x);
 
             return finalData;
