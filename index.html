@@ -120,9 +120,15 @@
 
       // استخراج البيانات الحقيقية سواء كان ممرر كـ Tensor Object أو مصفوفة صريحة
       let rawData = arrayOrTensor.data !== undefined ? arrayOrTensor.data : arrayOrTensor;
+      
+      // حماية إضافية لو الـ rawData كائن وليس مصفوفة مسطحة
+      if (rawData && typeof rawData === 'object' && !ArrayBuffer.isView(rawData) && !Array.isArray(rawData)) {
+        rawData = rawData.data || Object.values(rawData);
+      }
+
       let shape = arrayOrTensor.shape || (rawData ? [rawData.length] : ['Unknown']);
 
-      if (!rawData || rawData.length === 0) {
+      if (!rawData || !rawData.length || rawData.length === 0) {
         return { name, shape, size: 0, health: '0%', status: 'DEAD_EMPTY_BUFFER' };
       }
 
@@ -135,7 +141,7 @@
 
       for (let i = 0; i < rawData.length; i++) {
         const v = rawData[i];
-        if (isNaN(v)) {
+        if (isNaN(v) || v === undefined || v === null) {
           nanCount++;
           continue;
         }
@@ -158,20 +164,28 @@
       else if (nonZeroCount === 0) healthStatus = 'BRAIN_DEAD_ALL_ZEROS';
       else if (parseFloat(signalDensity) < 15.0) healthStatus = 'FADING_SIGNAL_WARNING';
 
+      // 🛡️ المصفحة الأمنية: معالجة شاملة لمنع السقوط في فخ toFixed is not a function
+      const safeToFixed = (val, digits = 6) => {
+        if (typeof val === 'number' && !isNaN(val) && isFinite(val)) {
+          return val.toFixed(digits);
+        }
+        return "0.000000";
+      };
+
       return {
         tensorId: arrayOrTensor.id || 'Anonymous_Node',
         shape: shape,
         totalElements: rawData.length,
         signalDensity: `${signalDensity}%`,
         mathematicalMetrics: {
-          min: minVal === Infinity ? "0.00" : minVal.toFixed(6),
-          max: maxVal === -Infinity ? "0.00" : maxVal.toFixed(6),
-          mean: mean.toFixed(6),
-          stdDev: stdDev.toFixed(6)
+          min: minVal === Infinity ? "0.000000" : safeToFixed(minVal),
+          max: maxVal === -Infinity ? "0.000000" : safeToFixed(maxVal),
+          mean: safeToFixed(mean),
+          stdDev: safeToFixed(stdDev)
         },
         internalStatus: healthStatus,
         nanCount,
-        sampleSlice: Array.from(rawData.slice(0, 6)).map(v => typeof v === 'number' ? v.toFixed(5) : 'NaN')
+        sampleSlice: Array.from(rawData.slice(0, 6)).map(v => (typeof v === 'number' && !isNaN(v)) ? v.toFixed(5) : 'NaN')
       };
     }
 
