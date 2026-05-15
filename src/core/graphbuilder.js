@@ -1,7 +1,7 @@
 /**
  * src/core/graphbuilder.js
- * * الوظيفة: المهندس المعماري (The Architect).
- * مسؤول عن بناء مسار العمليات والتأكد من توافق الأبعاد الرياضية.
+ * الوظيفة: المهندس المعماري (The Architect).
+ * تم التعديل لتسجيل العقد الثابتة (Constants) وتأمين الـ Data Flow للـ Memory Planner.
  */
 
 import { OpNode } from './opnode.js';
@@ -13,16 +13,21 @@ export class GraphBuilder {
     }
 
     /**
-     * تتبع مسار العمليات وبناء تسلسل التنفيذ
+     * تتبع مسار العمليات وبناء تسلسل التنفيذ الشامل
      */
     trace(rootTensor) {
         this.nodes.clear();
         this.executionOrder = [];
         const visited = new Set();
         
-        // دالة Walk لزيارة كل الـ Tensors المرتبطة
         const walk = (tensor) => {
-            if (!tensor || visited.has(tensor.id)) return;
+            if (!tensor) return;
+            // صمام أمان: لو التنسور ملوش ID (تجنباً للمشاكل) بنسجل له واحد تلقائي
+            if (!tensor.id) {
+                tensor.id = `tensor_auto_${Math.random().toString(36).substr(2, 9)}`;
+            }
+
+            if (visited.has(tensor.id)) return;
             
             // إذا كان التنسور ناتج عن عملية (وليس ثابت)
             if (tensor.inputs && tensor.inputs.length > 0) {
@@ -34,22 +39,33 @@ export class GraphBuilder {
                 // بناء العقدة البرمجية للعملية
                 const opNode = new OpNode(tensor.op, tensor.inputs);
                 
-                // التحقق من الأبعاد قبل الإضافة
                 try {
                     opNode.validateShapes();
                 } catch (err) {
-                    // تحويل الخطأ ليكون أوضح في الـ Logs
                     throw new Error(`Graph Construction Failed: ${err.message} at tensor ${tensor.id}`);
                 }
 
                 visited.add(tensor.id);
                 this.nodes.set(tensor.id, opNode);
                 
-                // إضافة العملية لترتيب التنفيذ
                 this.executionOrder.push({
                     outputId: tensor.id,
                     op: opNode,
-                    shape: tensor.shape
+                    shape: tensor.shape,
+                    tensor: tensor // تمرير المرجع الحقيقي للتنسور عشان الـ Engine يعرف يشحنه
+                });
+            } else {
+                // 🔥 صمام أمان إبراهيم شحات: تسجيل العُقد الثابتة والمدخلات (Constants/Inputs)
+                // عشان الـ Memory Planner والـ Backend يشوفوا البفرات دي ويحجزوا لها مساحة حقيقية بالأوزان
+                const constNode = new OpNode('const', []);
+                visited.add(tensor.id);
+                this.nodes.set(tensor.id, constNode);
+                
+                this.executionOrder.unshift({ // بنحطها في أول الطابور لأنها خامات ابتدائية
+                    outputId: tensor.id,
+                    op: constNode,
+                    shape: tensor.shape,
+                    tensor: tensor
                 });
             }
         };
@@ -60,20 +76,27 @@ export class GraphBuilder {
 
     /**
      * تجميع العمليات التي يمكن دمجها (Kernel Fusion)
-     * ميزة احترافية لتقليل حركات الذاكرة في الـ GPU
      */
     getFusableGroups() {
         const groups = [];
         let currentGroup = [];
 
         for (const step of this.executionOrder) {
-            const def = step.op.getOpDefinition();
+            // تجاهل عقد الثوابت من الـ Fusion لأنها داتا مش عمليات
+            if (step.op.type === 'const') {
+                if (currentGroup.length > 0) {
+                    groups.push(currentGroup);
+                    currentGroup = [];
+                }
+                groups.push([step]);
+                continue;
+            }
+
+            const def = step.op.getOpDefinition?.() || null;
             
-            // إذا كانت العملية بسيطة (مثل جمع أو ضرب) ندمجها
             if (def && def.isElementWise) {
                 currentGroup.push(step);
             } else {
-                // لو عملية معقدة (مثل Matrix Multiply) تقفل المجموعة وتبدأ جديدة
                 if (currentGroup.length > 0) groups.push(currentGroup);
                 groups.push([step]);
                 currentGroup = [];
@@ -91,7 +114,7 @@ export class GraphBuilder {
         if (this.executionOrder.length === 0) return "Graph is empty.";
         
         return this.executionOrder.map((step, index) => {
-            const inputs = step.op.inputs.map(i => i.id).join(', ');
+            const inputs = step.op.inputs ? step.op.inputs.map(i => i.id).join(', ') : 'none';
             return `${index}: [${step.outputId}] Shape(${step.shape}) = ${step.op.type}(${inputs})`;
         }).join('\n');
     }
