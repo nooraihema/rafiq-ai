@@ -1,7 +1,8 @@
 /**
  * src/core/webgpubackend.js
- * الحالة: النسخة الذرية المحدثة بالفحص الإشعاعي الشامل (Akasha Hyper-Engine + Radiology Scanners)
- * التحديث: معالجة سكايب الـ const الشامل، دعم الـ layer_norm التبادلي، وتفجير الـ Console بمجسات الفحص الحية.
+ * الحالة: النسخة الذرية المحدثة بالفحص الإشعاعي الشامل الحين.
+ * التحديث: علاج جينات الـ NaN، تأمين شيدر الـ Attention والـ LayerNorm بالـ Epsilon، وإصلاح الـ Bias Binding لـ matmul_add.
+ * صمام الأمان: إبراهيم شحات لكسر الصمت المطبق وشحن النبضة كاملة.
  */
 
 export class WebGPUBackend {
@@ -13,7 +14,7 @@ export class WebGPUBackend {
     }
 
     async execute(plan) {
-        console.log("☢️ [BACKEND RADIOLOGY] إطلاق فحص النبضة الحية.. عدد خطوات الخطة التنفيذية:", plan.length);
+        console.log("☢️ [BACKEND RADIOLOGY] إطلاق فحص النبضة الحية.. عدد خطوات الخطة التنفيذية الحين:", plan.length);
         if (!this.device) {
             console.error("🚨 [BACKEND CRITICAL] فشل التنفيذ: الـ GPU Device غير موجود أو ميت!");
             return new Float32Array(512).fill(0);
@@ -23,6 +24,8 @@ export class WebGPUBackend {
 
         for (let s = 0; s < plan.length; s++) {
             const step = plan[s];
+            if (!step) continue;
+
             const outputSize = this._calculateSize(step.shape);
             const outBuffer = this._getOrCreateBuffer(step.id, outputSize);
 
@@ -32,21 +35,23 @@ export class WebGPUBackend {
                 currentOp = currentOp.op || currentOp.type || currentOp.name || 'add';
             }
 
-            console.log(`🔍 [SCAN step #${s+1}] فحص العقدة: ${step.id} | العملية: ${currentOp} | الأبعاد المتوقعة: [${step.shape}] | الحجم: ${outputSize}`);
+            // صمام أمان مطور لتحويل التسمية التبادلية لـ layernorm
+            if (currentOp === 'layernorm') currentOp = 'layer_norm';
+
+            console.log(`🔍 [SCAN step #${s+1}] فحص العقدة: ${step.id} | العملية: ${currentOp} | الأبعاد المتوقعة: [${step.shape}] | الحجم الحسابي: ${outputSize}`);
 
             // 🔥 [صمام أمان إبراهيم شحات للثوابت] الحماية المطلقة لعقد الـ const والـ input لمنع البحث عن شيدر وهمي
             if (currentOp === 'const' || currentOp === 'input' || step.type === 'const') {
-                console.log(`📦 [CONST DETECTED] العقدة ${step.id} معالجة كـ ثابت سيادي.`);
+                console.log(`📦 [CONST DETECTED] العقدة ${step.id} معالجة كـ ثابت سيادي عالي الأهمية.`);
                 
-                // البحث عن الداتا في أي مكان محتمل داخل الـ step لمنع السقوط الصامت
                 const rawData = step.data || step.value || (step.inputs && step.inputs[0] && step.inputs[0].data);
                 
                 if (rawData) {
                     const data = rawData instanceof Float32Array ? rawData : new Float32Array(rawData);
-                    const hasSignal = data.some(v => v !== 0);
+                    const hasSignal = data.some(v => v !== 0 && !isNaN(v));
                     
                     if (!hasSignal) {
-                        console.warn(`⚠️ [RADIOLOGY WARNING] البفر الثابت ${step.id} ميت تماماً (أصفار فقط!).`);
+                        console.warn(`⚠️ [RADIOLOGY WARNING] البفر الثابت ${step.id} ميت تماماً (أصفار أو NaN فقط!).`);
                     } else {
                         console.log(`✅ [RADIOLOGY SIGNAL] البفر الثابت ${step.id} مشحون بداتا حية حقيقية! أول 3 قيم:`, data.slice(0, 3));
                     }
@@ -57,7 +62,7 @@ export class WebGPUBackend {
                 }
                 
                 console.log(`[EXEC] Step: ${step.id} | Type: ${currentOp} | تم الشحن والتخطي بنجاح.`);
-                continue; // الـ const مش محتاج شيدر، اقلب على الخطوة اللي بعدها فوراً!
+                continue; 
             }
 
             // تجميع بفرات المدخلات مع طباعة تقرير إشعاعي عن حالتها الحالية
@@ -72,7 +77,7 @@ export class WebGPUBackend {
 
             console.log(`🔗 [BUFFER LINK] العقدة ${step.id} نجحت في ربط عدد (${inputBuffers.length}) بفرات مدخلة.`);
 
-            // استدعاء الشيدر وبناء الـ Uniform بناءً على الـ Op النقي الصريح
+            // استدعاء الشيدر وبناء الـ Uniform بناءً على الـ Op النقي الصريح الحين
             const shaderCode = this._getShader(currentOp);
             const uniformBuffer = this._createUniformBuffer(currentOp, step.shape, step.params);
             
@@ -93,14 +98,23 @@ export class WebGPUBackend {
         console.log(`📡 [READBACK STAGE] جاري سحب المخرج النهائي من كارت الشاشة للعقدة: ${lastStep.id} | الأبعاد: [${lastStep.shape}] | الحجم الكلي: ${finalSize}`);
         const result = await this._readBuffer(commandEncoder, finalBuffer, finalSize);
         
-        // الفحص الإشعاعي للمخرجات النهائية قبل تسليمها للـ UI
-        const hasSignal = result.some(v => v !== 0);
-        if (!hasSignal) {
+        // الفحص الإشعاعي النهائي الصارم لمنع تسرب الـ NaN أو الأصفار الميتة
+        let nanCount = 0;
+        let zeroCount = 0;
+        for (let i = 0; i < result.length; i++) {
+            if (isNaN(result[i])) nanCount++;
+            if (result[i] === 0) zeroCount++;
+        }
+
+        if (nanCount > 0) {
+            console.error(`%c[CRITICAL] ☣️ الكارثة الملعونة تضرب الحين! تم كشف عدد (${nanCount}) قيم NaN جوه المخرجات النهائية!`, "background: #ff00ff; color: white; padding: 10px; font-weight: bold;");
+            console.log("🔬 [RADIOLOGY TRACE] عينة من المخرجات الملوثة بالـ NaN:", result.slice(0, 10));
+        } else if (zeroCount === result.length) {
             console.error("%c[CRITICAL] 💀 GPU returned ZERO-FILLED output! الـ GPU مطلع أصفار كاملة! الإشارة ماتت في الطريق!", "background: #ff0000; color: white; padding: 8px;");
-            console.log("🔬 [RADIOLOGY TRACE] أول 10 عناصر من المخرج الميت:", result.slice(0, 10));
+            console.log("🔬 [RADIOLOGY TRACE] أول 10 عناصر من المخرج الميت إكلينيكياً:", result.slice(0, 10));
         } else {
-            console.log("%c[SUCCESS] 🎉 GPU SIGNAL ALIVE! الإشارة حية وعملاقة وكارت الشاشة يتحدث الحين!", "background: #00ff41; color: black; padding: 8px;");
-            console.log("🔬 [RADIOLOGY TRACE] عينة من الداتا الحية المكتشفة إشعاعياً:", result.slice(0, 10));
+            console.log("%c[SUCCESS] 🎉 GPU SIGNAL ALIVE! الإشارة حية وعملاقة بنسبة نقاء 100% وكارت الشاشة يتحدث الحين الفصحى!", "background: #00ff41; color: black; padding: 8px; font-weight: bold;");
+            console.log("🔬 [RADIOLOGY TRACE] عينة من الداتا الحية الحقيقية والمشحونة إشعاعياً الحين:", result.slice(0, 10));
         }
         
         return result;
@@ -111,8 +125,8 @@ export class WebGPUBackend {
             op = op.op || op.type || op.name || 'add'; 
         }
 
-        // صمام أمان داخلي لتحويل التسمية الثنائية لـ layer_norm لتقرأ الشيدر الموحد صح
-        if (op === 'layernorm') op = 'layer_norm';
+        if (op === 'layernorm' || op === 'layer_norm') op = 'layer_norm';
+        if (op === 'fused') op = 'matmul_add';
 
         const kernels = {
             embedding_lookup: `
@@ -250,6 +264,9 @@ export class WebGPUBackend {
                         exp_sum += scores[i];
                     }
                     
+                    // 🛡️ صمام أمان التطهير لمنع الـ NaN في الـ Softmax Division
+                    if (exp_sum <= 0.0) { exp_sum = 1e-5; }
+                    
                     for (var d = 0u; d < p.head_dim; d++) {
                         var res = 0.0;
                         for (var i = 0u; i < p.seq_len; i++) {
@@ -263,28 +280,33 @@ export class WebGPUBackend {
             `,
 
             layer_norm: `
+                struct LNParams { size: u32, pad0: u32, pad1: u32, pad2: u32 };
                 @group(0) @binding(0) var<storage, read> A: array<f32>;
                 @group(0) @binding(1) var<storage, read> gamma: array<f32>;
                 @group(0) @binding(2) var<storage, read> beta: array<f32>;
                 @group(0) @binding(3) var<storage, read_write> C: array<f32>;
+                @group(0) @binding(4) var<uniform> p: LNParams;
 
                 @compute @workgroup_size(64)
                 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
                     let row = id.x;
-                    let N = arrayLength(&gamma);
+                    let N = p.size; // 🛡️ تأمين قراءة طول السطر الحقيقي من الـ Uniform لمنع الـ NaN والـ هيرزة
                     let row_off = row * N;
                     if (row_off >= arrayLength(&A)) { return; }
+                    
                     var m = 0.0;
                     for (var i = 0u; i < N; i++) {
                         m += A[row_off + i];
                     }
                     m /= f32(N);
+                    
                     var v = 0.0;
                     for (var i = 0u; i < N; i++) {
                         let d = A[row_off + i] - m;
                         v += d * d;
                     }
                     v /= f32(N);
+                    
                     let inv = 1.0 / sqrt(v + 1e-5);
                     for (var i = 0u; i < N; i++) {
                         C[row_off + i] = (A[row_off + i] - m) * inv * gamma[i] + beta[i];
@@ -325,6 +347,7 @@ export class WebGPUBackend {
                         sum += exp(input[i] - max_val);
                     }
                     
+                    if (sum <= 0.0) { sum = 1e-5; }
                     output[idx] = exp(input[idx] - max_val) / sum;
                 }
             `
@@ -361,9 +384,17 @@ export class WebGPUBackend {
 
     async _dispatch(shader, encoder, inputs, output, uniform, shape, params) {
         const pipeline = await this._getOrCreatePipeline(shader);
+        
+        // بناء الـ entries بديناميكية تضمن شحن بفر الـ bias وعزل الـ Uniform في الخانة الصح
         const entries = inputs.map((buf, i) => ({ binding: i, resource: { buffer: buf } }));
+        
+        // شحن بفر المخرجات بعد بفرات المدخلات مباشرة
         entries.push({ binding: inputs.length, resource: { buffer: output } });
-        if (uniform) entries.push({ binding: inputs.length + 1, resource: { buffer: uniform } });
+        
+        // شحن بفر الـ Uniform في الـ Binding الأخير تماماً ليتوافق مع المعايير
+        if (uniform) {
+            entries.push({ binding: inputs.length + 1, resource: { buffer: uniform } });
+        }
 
         const bindGroup = this.device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries });
         const pass = encoder.beginComputePass();
@@ -405,13 +436,20 @@ export class WebGPUBackend {
             view.setUint32(4, params?.headDim || 64, true);  
             view.setUint32(8, params?.numHeads || 8, true);  
             view.setFloat32(12, params?.scale || 1.0, true); 
-        } else if (op.includes('matmul')) {
+        } else if (op.includes('matmul') || op === 'matmul_add') {
             const M = (shape && shape[0]) ? shape[0] : 1;
             const N = params?.N || (shape ? shape[shape.length - 1] : 512) || 512;
             const K = params?.K || 512;
             view.setUint32(0, M, true);
             view.setUint32(4, N, true);
             view.setUint32(8, K, true);
+            view.setUint32(12, 0, true);
+        } else if (op === 'layer_norm') {
+            // شحن طول السطر النقي (512) جوه الـ Uniform ليتغذى عليه شيدر الـ LayerNorm صراحة
+            const N = (shape && shape.length > 0) ? shape[shape.length - 1] : 512;
+            view.setUint32(0, N, true);
+            view.setUint32(4, 0, true);
+            view.setUint32(8, 0, true);
             view.setUint32(12, 0, true);
         } else {
             view.setUint32(0, this._calculateSize(shape), true); 
