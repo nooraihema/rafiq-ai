@@ -3,6 +3,7 @@
  * الحالة: تطوير هندسي شامل (Compiler-Ready)
  * الوظيفة: تعريف منطق العمليات وتحويلها إلى صيغ رياضية قابلة للتنفيذ على الـ GPU.
  * تم التعديل لحقن العمليات السيادية (Softmax, LayerNorm, GELU) وتأمين الـ 3D Shapes.
+ * صمام أمان إضافي: دعم التسمية الثنائية لـ layernorm و layer_norm لضمان استقرار الخطة البنائية.
  */
 
 export class OpNode {
@@ -41,6 +42,10 @@ export class OpNode {
                 customKernel: true 
             },
             'layernorm': { 
+                isElementWise: false, 
+                customKernel: true 
+            },
+            'layer_norm': { 
                 isElementWise: false, 
                 customKernel: true 
             },
