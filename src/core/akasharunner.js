@@ -1,14 +1,14 @@
 /**
  * src/core/akasharunner.js
  * الحالة: المايسترو الموحد والمصحح (Unified Pipeline) - إصدار التطهير اللغوي لـ رفيق-AI
- * الإصلاح: دمج الـ Tokenizer ديناميكياً داخل الـ Runner لمنع خداع الأصفار وحماية الإشارة.
+ * الإصلاح: ضبط أبعاد التنسور لـ [1, N] وتأمين تدفق الإشارة الحية لمنع فخ الأصفار.
  */
 
 import { Embedding } from './layers/embedding.js';
 import { MultiHeadAttention } from './layers/attention.js';
 import { FeedForward } from './layers/ffn.js';
 import { Tensor } from './tensor.js';
-import { Tokenizer } from './tokenizer.js'; // 🔥 استدعاء التوكنمايزر هنا لحمايته
+import { Tokenizer } from './tokenizer.js'; 
 
 export class AkashaRunner {
     constructor(engine, vocabSize = 2526) {
@@ -32,7 +32,6 @@ export class AkashaRunner {
 
     /**
      * 🔥 دالة حقن الـ Dataset الحقيقية لبناء القاموس الديناميكي الأصلي ومنع الأصفار
-     * استدعيها فوراً في ملف الـ UI أو الـ Setup الخارجي بعد تحميل الـ dataset.txt بنجاح
      */
     injectDatasetVocabulary(datasetText) {
         if (this.tokenizer && typeof this.tokenizer.loadVocabularyFromDataset === 'function') {
@@ -59,13 +58,13 @@ export class AkashaRunner {
     }
 
     /**
-     * تعديل دالة الـ run لتصبح ذكية: تقبل مصفوفة الأرقام أو النص البشري مباشرة!
+     * دالة الـ run الذكية والمصححة هندسياً
      */
     async run(input) {
         try {
             let tokenIds = [];
 
-            // 🛡️ صمام أمان مطور: لو المدخل نص بشري حر، الـ Runner هيعمله Tokenization بنفسه بالقاموس الحقيقي!
+            // 🛡️ صمام أمان مطور: معالجة النص البشري الحر
             if (typeof input === 'string') {
                 console.log(`%c📝 [Runner Processing] جاري معالجة نص بشري حر مباشرة: "${input}"`, "color: #ffff00;");
                 tokenIds = Array.from(this.tokenizer.encode(input));
@@ -73,16 +72,18 @@ export class AkashaRunner {
                 tokenIds = Array.from(input);
             }
 
-            if (tokenIds.length === 0) return new Float32Array(this.engine.backend._calculateSize([2526])).fill(0);
+            if (tokenIds.length === 0) {
+                return new Float32Array(this.engine.backend._calculateSize([2526])).fill(0);
+            }
 
-            // 1. تحويل التوكنز لـ Tensor مدخلات
+            // 🎯 الإصلاح الأول: تحويل الأبعاد إلى ثنائية [1, Sequence_Length] لمنع انهيار الـ MatMul
             const inputTensor = new Tensor(new Float32Array(tokenIds), { 
-                shape: [tokenIds.length], 
+                shape: [1, tokenIds.length], // 🔥 تم التعديل من [N] إلى [1, N]
                 op: 'input',
                 id: 'input_ids'
             });
 
-            // تسجيل الـ Input يدوياً في الـ Backend الموحد
+            // تسجيل الـ Input في الـ Backend وتحديث بفر الذاكرة بالبيانات الحية
             this.engine.backend._getOrCreateBuffer(inputTensor.id, inputTensor.data.length);
             this.engine.device.queue.writeBuffer(
                 this.engine.backend.tensorBuffers.get(inputTensor.id), 
@@ -90,12 +91,18 @@ export class AkashaRunner {
                 inputTensor.data
             );
 
-            // 2. تتبع العمليات وبناء الـ Graph الحقيقي على الـ Engine
+            // ⚡ بناء الـ Computational Graph خطوة بخطوة بالترتيب الصحيح
             let x = this.embedding.forward(inputTensor);
             x = this.attention.forward(x);
             x = this.ffn.forward(x);
 
-            // 3. اللحظة الحاسمة: نخلي الـ Engine يحسب الـ Tensor النهائي!
+            // 🎯 الإصلاح الثاني: إعلام المحرك بالمدخل الرئيسي (inputTensor) بجانب العقدة الأخيرة (x) 
+            // لضمان أن الـ Tracing يربط السلسلة كاملة من الـ Embedding للـ FFN
+            if (typeof this.engine.setInput === 'function') {
+                this.engine.setInput(inputTensor); 
+            }
+
+            // اللحظة الحاسمة: تشغيل التفجير الحسابي الحقيقي على الـ Graph المتصل
             const finalData = await this.engine.compute(x);
 
             return finalData;
