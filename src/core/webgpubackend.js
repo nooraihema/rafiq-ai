@@ -1,169 +1,136 @@
 /**
  * src/core/webgpubackend.js
- * الحالة: النسخة الفولاذية المحدثة (دعم الـ Residual والـ Leaky ReLU)
- * الوظيفة: تنفيذ الحسابات على الـ GPU مع حماية صارمة من بيانات الـ Null.
+ * الحالة: محرك الـ Graph الشامل (Dynamic Execution)
+ * الوظيفة: تنفيذ الخطة بناءً على ربط الـ IDs الفعلي.
  */
 
 export class WebGPUBackend {
     constructor(device) {
         this.device = device;
         this.pipelineCache = new Map();
-        this.bufferCache = new Map();
-        
-        this.config = {
-            workgroupSize: 8,
-            maxElements: 512 * 512 
-        };
+        this.tensorBuffers = new Map(); // مخزن لكل Tensor ID على الـ GPU
     }
 
     async execute(plan) {
-        if (!this.device) return await this._executeOnCPU(plan);
-        return await this._executeOnGPU(plan);
+        if (!this.device) return new Float32Array(512).fill(0);
+
+        const commandEncoder = this.device.createCommandEncoder();
+
+        for (const step of plan) {
+            // 1. تحضير Buffer لكل نود في الخطة إذا لم يوجد
+            const outputSize = this._calculateSize(step.shape);
+            const outBuffer = this._getOrCreateBuffer(step.id, outputSize);
+
+            // 2. إذا كانت العملية 'const' (أوزان)، نرفعها للـ GPU فوراً
+            if (step.op === 'const' && step.data) {
+                this.device.queue.writeBuffer(outBuffer, 0, step.data);
+                continue;
+            }
+
+            // 3. إذا كانت عملية حسابية (matmul, add, relu)
+            if (step.inputIds && step.inputIds.length > 0) {
+                const shaderCode = this._getShader(step.op);
+                const inputBuffers = step.inputIds.map(id => this.tensorBuffers.get(id));
+                
+                // التأكد أن كل المدخلات موجودة في ذاكرة الـ GPU
+                if (inputBuffers.every(buf => buf !== undefined)) {
+                    this._dispatch(shaderCode, commandEncoder, inputBuffers, outBuffer, step.shape);
+                }
+            }
+        }
+
+        // 4. استخراج النتيجة النهائية (آخر Tensor في الخطة)
+        const lastStep = plan[plan.length - 1];
+        return await this._readBuffer(commandEncoder, this.tensorBuffers.get(lastStep.id), 512);
     }
 
-    get _kernels() {
-        return {
-            matmul: `
-                @group(0) @binding(0) var<storage, read> A: array<f32>;
-                @group(0) @binding(1) var<storage, read_write> C: array<f32>;
-
-                @compute @workgroup_size(8, 8)
-                fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-                    let row = global_id.y;
-                    let col = global_id.x;
-                    let dim = 512u; 
-
-                    if (row >= dim || col >= dim) { return; }
-
-                    var sum = 0.0;
-                    for (var k = 0u; k < dim; k = k + 1u) {
-                        sum = sum + A[row * dim + k] * A[col * dim + k]; 
-                    }
-                    C[row * dim + col] = sum / 22.627; 
-                }
-            `,
+    _getShader(op) {
+        const kernels = {
             add: `
                 @group(0) @binding(0) var<storage, read> A: array<f32>;
-                @group(0) @binding(1) var<storage, read_write> C: array<f32>;
-
+                @group(0) @binding(1) var<storage, read> B: array<f32>;
+                @group(0) @binding(2) var<storage, read_write> C: array<f32>;
                 @compute @workgroup_size(64)
-                fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-                    let i = global_id.x;
-                    if (i >= arrayLength(&C)) { return; }
-                    C[i] = C[i] + A[i];
+                fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+                    if (id.x >= arrayLength(&C)) { return; }
+                    C[id.x] = A[id.x] + B[id.x];
                 }
             `,
-            // شيدر مطور لدعم Leaky ReLU منعاً للأصفار
-            standard: (formula) => `
-                @group(0) @binding(0) var<storage, read> in: array<f32>;
-                @group(0) @binding(1) var<storage, read_write> out: array<f32>;
-
+            relu: `
+                @group(0) @binding(0) var<storage, read> A: array<f32>;
+                @group(0) @binding(1) var<storage, read_write> C: array<f32>;
                 @compute @workgroup_size(64)
-                fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-                    let i = global_id.x;
-                    if (i >= arrayLength(&out)) { return; }
-                    var x = in[i];
-                    out[i] = ${formula};
+                fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+                    if (id.x >= arrayLength(&C)) { return; }
+                    C[id.x] = max(0.0, A[id.x]);
+                }
+            `,
+            matmul: `
+                @group(0) @binding(0) var<storage, read> A: array<f32>;
+                @group(0) @binding(1) var<storage, read> B: array<f32>;
+                @group(0) @binding(2) var<storage, read_write> C: array<f32>;
+                @compute @workgroup_size(8, 8)
+                fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+                    let row = id.y; let col = id.x;
+                    // ضرب مصفوفات مبسط لـ [1xN] * [NxM]
+                    var sum = 0.0;
+                    for (var k = 0u; k < 512u; k++) {
+                        sum += A[k] * B[k * 512u + col];
+                    }
+                    C[col] = sum;
                 }
             `
         };
+        return kernels[op] || kernels.add;
     }
 
-    async _executeOnGPU(plan) {
-        const commandEncoder = this.device.createCommandEncoder();
-        const size = this.config.maxElements * 4;
+    _dispatch(shader, encoder, inputs, output, shape) {
+        const pipeline = this._getOrCreatePipeline(shader);
+        const entries = inputs.map((buf, i) => ({ binding: i, resource: { buffer: buf } }));
+        entries.push({ binding: inputs.length, resource: { buffer: output } });
 
-        const inputBuffer = this._getOrCreateBuffer('input', size, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC);
-        const outputBuffer = this._getOrCreateBuffer('output', size, GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST);
-        
-        // --- نظام حماية البيانات (Fix for length error) ---
-        const firstStep = plan[0];
-        let initialData = null;
-
-        if (firstStep) {
-            // فحص كل الأماكن المحتملة لوجود البيانات الأولية
-            initialData = firstStep.inputTensorData || (firstStep.opNode && firstStep.opNode.data) || (firstStep.data);
-        }
-
-        if (initialData && initialData.length > 0) {
-            this.device.queue.writeBuffer(inputBuffer, 0, initialData);
-        } else {
-            // لو مفيش بيانات، املأ بـ 0.01 بدل Null لمنع انهيار الـ length
-            this.device.queue.writeBuffer(inputBuffer, 0, new Float32Array(512).fill(0.01));
-        }
-
-        for (const step of plan) {
-            let shaderCode;
-            // دعم الـ Leaky ReLU المباشر في الشيدر
-            if (step.op === 'leaky_relu_manual' || step.op === 'relu') {
-                shaderCode = this._kernels.standard("select(x * 0.01, x, x > 0.0)");
-            } else {
-                switch(step.op) {
-                    case 'matmul': shaderCode = this._kernels.matmul; break;
-                    case 'add':    shaderCode = this._kernels.add; break;
-                    default:       shaderCode = this._kernels.standard("x");
-                }
-            }
-            this._dispatch(shaderCode, commandEncoder, inputBuffer, outputBuffer);
-        }
-
-        const stagingBuffer = this.device.createBuffer({
-            size: size,
-            usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST
-        });
-
-        commandEncoder.copyBufferToBuffer(outputBuffer, 0, stagingBuffer, 0, size);
-        this.device.queue.submit([commandEncoder.finish()]);
-
-        await stagingBuffer.mapAsync(GPUMapMode.READ);
-        const result = new Float32Array(stagingBuffer.getMappedRange().slice(0)).slice(0, 512);
-        
-        stagingBuffer.unmap();
-        stagingBuffer.destroy();
-        return result;
-    }
-
-    _dispatch(shaderCode, encoder, inBuf, outBuf) {
-        const pipeline = this._getOrCreatePipeline(shaderCode);
         const bindGroup = this.device.createBindGroup({
             layout: pipeline.getBindGroupLayout(0),
-            entries: [
-                { binding: 0, resource: { buffer: inBuf } },
-                { binding: 1, resource: { buffer: outBuf } }
-            ]
+            entries: entries
         });
 
         const pass = encoder.beginComputePass();
         pass.setPipeline(pipeline);
         pass.setBindGroup(0, bindGroup);
-        
-        if (shaderCode.includes('@workgroup_size(8, 8)')) {
-            pass.dispatchWorkgroups(64, 64); 
-        } else {
-            pass.dispatchWorkgroups(Math.ceil(this.config.maxElements / 64));
-        }
+        pass.dispatchWorkgroups(Math.ceil(this._calculateSize(shape) / 64));
         pass.end();
     }
 
-    _getOrCreateBuffer(name, size, usage) {
-        if (this.bufferCache.has(name)) return this.bufferCache.get(name);
-        const buffer = this.device.createBuffer({ size, usage });
-        this.bufferCache.set(name, buffer);
+    _getOrCreateBuffer(id, size) {
+        if (this.tensorBuffers.has(id)) return this.tensorBuffers.get(id);
+        const buffer = this.device.createBuffer({
+            size: Math.max(size * 4, 16), // minimum 16 bytes
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
+        });
+        this.tensorBuffers.set(id, buffer);
         return buffer;
+    }
+
+    _calculateSize(shape) {
+        return shape.reduce((a, b) => a * b, 1);
+    }
+
+    async _readBuffer(encoder, gpuBuffer, elements) {
+        const size = elements * 4;
+        const staging = this.device.createBuffer({ size, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+        encoder.copyBufferToBuffer(gpuBuffer, 0, staging, 0, size);
+        this.device.queue.submit([encoder.finish()]);
+        await staging.mapAsync(GPUMapMode.READ);
+        const res = new Float32Array(staging.getMappedRange().slice(0));
+        staging.unmap();
+        return res;
     }
 
     _getOrCreatePipeline(code) {
         if (this.pipelineCache.has(code)) return this.pipelineCache.get(code);
         const module = this.device.createShaderModule({ code });
-        const pipeline = this.device.createComputePipeline({
-            layout: 'auto',
-            compute: { module, entryPoint: 'main' }
-        });
+        const pipeline = this.device.createComputePipeline({ layout: 'auto', compute: { module, entryPoint: 'main' } });
         this.pipelineCache.set(code, pipeline);
         return pipeline;
-    }
-
-    async _executeOnCPU(plan) {
-        return new Float32Array(512).fill(0.01);
     }
 }
