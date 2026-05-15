@@ -1,7 +1,8 @@
 /**
  * src/core/layers/attention.js
- * النسخة السيادية (Causal & Normalized)
- * تم الإصلاح والتأمين الشامل ضد فراغ البفرات وعيوب الـ Data Flow
+ * النسخة السيادية المصححة (Causal & Normalized) - رفيق-AI
+ * تم الإصلاح والتأمين الشامل ضد عيوب تداخل خلايا الذاكرة وانفجار الـ NaN
+ * صمام الأمان: إبراهيم شحات لضبط زوايا ضرب المصفوفات الموحدة
  */
 
 import { Tensor } from '../tensor.js';
@@ -50,22 +51,49 @@ export class MultiHeadAttention {
         // توليد رقم فريد للنبضة الحالية لمنع تداخل بفرات العُقد (Node ID Collision)
         const pulseId = Date.now() + '_' + Math.floor(Math.random() * 1000);
 
-        // 1. Projections مع حسم الهوية برمجياً للـ Plan Builder
-        const Q = new Tensor(null, { op: 'matmul', inputs: [x, this.queryWeights], shape: [...x.shape], id: `attn_q_${pulseId}` });
-        const K = new Tensor(null, { op: 'matmul', inputs: [x, this.keyWeights], shape: [...x.shape], id: `attn_k_${pulseId}` });
-        const V = new Tensor(null, { op: 'matmul', inputs: [x, this.valueWeights], shape: [...x.shape], id: `attn_v_${pulseId}` });
+        // تأمين قراءة الـ Shape بشكل صارم وديناميكي
+        const batchSize = x.shape.length === 3 ? x.shape[0] : 1;
+        const seqLen = x.shape.length === 3 ? x.shape[1] : x.shape[0];
+        const embedDim = x.shape.length === 3 ? x.shape[2] : x.shape[1];
 
-        // 2. Attention Core مع تفجير الـ Mask والـ Scale
+        // 1. Projections مع حسم الهوية برمجياً وتمرير بارامتر الأبعاد للـ Plan Builder والـ Shaders
+        const Q = new Tensor(null, { 
+            op: 'matmul', 
+            inputs: [x, this.queryWeights], 
+            shape: [seqLen, this.embedDim], 
+            id: `attn_q_${pulseId}`,
+            params: { rows: seqLen, cols: this.embedDim }
+        });
+
+        const K = new Tensor(null, { 
+            op: 'matmul', 
+            inputs: [x, this.keyWeights], 
+            shape: [seqLen, this.embedDim], 
+            id: `attn_k_${pulseId}`,
+            params: { rows: seqLen, cols: this.embedDim }
+        });
+
+        const V = new Tensor(null, { 
+            op: 'matmul', 
+            inputs: [x, this.valueWeights], 
+            shape: [seqLen, this.embedDim], 
+            id: `attn_v_${pulseId}`,
+            params: { rows: seqLen, cols: this.embedDim }
+        });
+
+        // 2. Attention Core مع تفجير الـ Mask والـ Scale وتوجيه الخيوط الحسابية في الـ GPU
         const attentionContext = new Tensor(null, {
             op: 'attention_core',
             inputs: [Q, K, V],
-            shape: [...x.shape],
+            shape: [seqLen, this.embedDim],
             id: `attn_core_ctx_${pulseId}`,
             params: { 
                 numHeads: this.numHeads, 
                 headDim: this.headDim,
                 scale: this.scale,
-                causal: true 
+                causal: true,
+                seqLen: seqLen,
+                embedDim: this.embedDim
             }
         });
 
@@ -73,15 +101,16 @@ export class MultiHeadAttention {
         const attentionOut = new Tensor(null, {
             op: 'matmul',
             inputs: [attentionContext, this.outputWeights],
-            shape: [...x.shape],
-            id: `attn_out_proj_${pulseId}`
+            shape: [seqLen, this.embedDim],
+            id: `attn_out_proj_${pulseId}`,
+            params: { rows: seqLen, cols: this.embedDim }
         });
 
         // 4. Residual Connection
         const residual = new Tensor(null, {
             op: 'add',
             inputs: [x, attentionOut],
-            shape: [...x.shape],
+            shape: [seqLen, this.embedDim],
             id: `attn_residual_${pulseId}`
         });
 
@@ -89,14 +118,14 @@ export class MultiHeadAttention {
         const finalAttnOut = new Tensor(null, {
             op: 'layer_norm',
             inputs: [residual, this.ln_gamma, this.ln_beta],
-            shape: [...x.shape],
-            id: `attn_final_ln_${pulseId}`
+            shape: [seqLen, this.embedDim],
+            id: `attn_final_ln_${pulseId}`,
+            params: { scope: this.embedDim }
         });
 
-        // حماية أمنية: لو المحرك شغال بنظام الـ Dynamic Allocation، بنأكد حجز الـ Data والـ ArrayReferences
+        // حماية أمنية: كسر حلقة الـ Empty Buffer الافتراضية عبر تجهيز وعاء الاستقبال الموحد
         if (!finalAttnOut.data) {
-            // كسر حلقة الـ Empty Buffer الافتراضية عبر تجهيز وعاء الاستقبال
-            finalAttnOut.data = new Float32Array(x.shape[0] * x.shape[1]);
+            finalAttnOut.data = new Float32Array(seqLen * this.embedDim);
         }
 
         return finalAttnOut;
