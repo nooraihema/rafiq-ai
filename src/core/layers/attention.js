@@ -1,7 +1,7 @@
 /**
  * src/core/layers/attention.js
  * النسخة السيادية (Causal & Normalized)
- * تم الإصلاح بناءً على تقييم "إبراهيم شحات"
+ * تم الإصلاح والتأمين الشامل ضد فراغ البفرات وعيوب الـ Data Flow
  */
 
 import { Tensor } from '../tensor.js';
@@ -28,7 +28,6 @@ export class MultiHeadAttention {
         const data = new Float32Array(rows * cols);
         const std = Math.sqrt(2.0 / (rows + cols));
         for (let i = 0; i < data.length; i++) {
-            // تنفيذ Truncated Normal حقيقي (قص القيم أبعد من 2 انحراف معياري)
             let val = this._gaussianRandom();
             while (Math.abs(val) > 2) val = this._gaussianRandom(); 
             data[i] = val * std;
@@ -36,7 +35,7 @@ export class MultiHeadAttention {
         return new Tensor(data, { 
             shape: [rows, cols], 
             op: 'const',
-            id: `weight_attn_${name}` // اسم ثابت
+            id: `weight_attn_${name}` 
         });
     }
 
@@ -48,21 +47,25 @@ export class MultiHeadAttention {
     }
 
     forward(x) {
-        // 1. Projections
-        const Q = new Tensor(null, { op: 'matmul', inputs: [x, this.queryWeights], shape: x.shape });
-        const K = new Tensor(null, { op: 'matmul', inputs: [x, this.keyWeights], shape: x.shape });
-        const V = new Tensor(null, { op: 'matmul', inputs: [x, this.valueWeights], shape: x.shape });
+        // توليد رقم فريد للنبضة الحالية لمنع تداخل بفرات العُقد (Node ID Collision)
+        const pulseId = Date.now() + '_' + Math.floor(Math.random() * 1000);
 
-        // 2. Attention Core مع إضافة الـ Mask والـ Scale
+        // 1. Projections مع حسم الهوية برمجياً للـ Plan Builder
+        const Q = new Tensor(null, { op: 'matmul', inputs: [x, this.queryWeights], shape: [...x.shape], id: `attn_q_${pulseId}` });
+        const K = new Tensor(null, { op: 'matmul', inputs: [x, this.keyWeights], shape: [...x.shape], id: `attn_k_${pulseId}` });
+        const V = new Tensor(null, { op: 'matmul', inputs: [x, this.valueWeights], shape: [...x.shape], id: `attn_v_${pulseId}` });
+
+        // 2. Attention Core مع تفجير الـ Mask والـ Scale
         const attentionContext = new Tensor(null, {
             op: 'attention_core',
             inputs: [Q, K, V],
-            shape: x.shape,
+            shape: [...x.shape],
+            id: `attn_core_ctx_${pulseId}`,
             params: { 
                 numHeads: this.numHeads, 
                 headDim: this.headDim,
                 scale: this.scale,
-                causal: true // منع رؤية المستقبل
+                causal: true 
             }
         });
 
@@ -70,21 +73,32 @@ export class MultiHeadAttention {
         const attentionOut = new Tensor(null, {
             op: 'matmul',
             inputs: [attentionContext, this.outputWeights],
-            shape: x.shape
+            shape: [...x.shape],
+            id: `attn_out_proj_${pulseId}`
         });
 
         // 4. Residual Connection
         const residual = new Tensor(null, {
             op: 'add',
             inputs: [x, attentionOut],
-            shape: x.shape
+            shape: [...x.shape],
+            id: `attn_residual_${pulseId}`
         });
 
-        // 5. Layer Normalization (إضافة فعلية مش مجرد تعليق)
-        return new Tensor(null, {
+        // 5. Layer Normalization الضامنة لمرور الإشارة للأمعاء الدليلة (FFN)
+        const finalAttnOut = new Tensor(null, {
             op: 'layer_norm',
             inputs: [residual, this.ln_gamma, this.ln_beta],
-            shape: x.shape
+            shape: [...x.shape],
+            id: `attn_final_ln_${pulseId}`
         });
+
+        // حماية أمنية: لو المحرك شغال بنظام الـ Dynamic Allocation، بنأكد حجز الـ Data والـ ArrayReferences
+        if (!finalAttnOut.data) {
+            // كسر حلقة الـ Empty Buffer الافتراضية عبر تجهيز وعاء الاستقبال
+            finalAttnOut.data = new Float32Array(x.shape[0] * x.shape[1]);
+        }
+
+        return finalAttnOut;
     }
 }
