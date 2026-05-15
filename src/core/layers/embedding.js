@@ -1,7 +1,7 @@
 /**
  * src/core/layers/embedding.js
  * النسخة: الوعي المكاني المصحح (Safe Slicing Version)
- * الإصلاحات: تم معالجة تطابق الأبعاد والتحقق من الحدود بناءً على ملاحظات إبراهيم.
+ * الإصلاحات: تمرير الـ IDs بدلاً من الـ Objects لضمان قراءة الـ GPU للـ Buffers
  */
 
 import { Tensor } from '../tensor.js';
@@ -12,10 +12,10 @@ export class Embedding {
         this.embedDim = embedDim;
         this.maxSeqLen = maxSeqLen;
         
-        // أوزان الكلمات
+        // 1. أوزان الكلمات (Word Embeddings)
         this.weights = this._initWeights(vocabSize, embedDim, 'word_embeddings');
 
-        // مصفوفة الترميز الموضعي (الثابتة)
+        // 2. مصفوفة الترميز الموضعي (Positional Encoding)
         this.posWeights = this._initPositionalEncoding(maxSeqLen, embedDim);
     }
 
@@ -27,6 +27,7 @@ export class Embedding {
             while (Math.abs(val) > 2) val = this._gaussianRandom(); 
             data[i] = val * std;
         }
+        // تأكد أن الـ Tensor يأخذ ID فريد ليتم تخزينه في الـ GPU Backend
         return new Tensor(data, { shape: [rows, cols], op: 'const', id: `weight_${name}` });
     }
 
@@ -50,6 +51,7 @@ export class Embedding {
     }
 
     forward(inputIds) {
+        // تأكد أن inputIds هو Tensor وله ID
         const seqLen = inputIds.shape[0];
 
         // 1. التحقق من الحدود (Safety Check)
@@ -57,30 +59,36 @@ export class Embedding {
             throw new Error(`[Akasha Error] Sequence length ${seqLen} exceeds max limit ${this.maxSeqLen}`);
         }
 
-        // 2. Embedding Lookup
+        // 2. Embedding Lookup 
+        // التعديل الجوهري: نمرر IDs المدخلات والأوزان
         const embedded = new Tensor(null, {
             shape: [seqLen, this.embedDim],
             op: 'embedding_lookup',
-            inputs: [inputIds, this.weights]
+            inputIds: [inputIds.id, this.weights.id], 
+            params: { 
+                seqLen: seqLen, 
+                embedDim: this.embedDim,
+                vocabSize: this.vocabSize 
+            }
         });
 
-        // 3. Scaling الـ Embeddings (تحسين إضافي لتقوية الإشارة)
-        // بنضرب في جذر أبعاد المدخلات عشان نحافظ على توازن القيم قبل الجمع
+        // 3. Scaling (لتقوية الإشارة قبل الجمع مع الـ Positional)
         const scaledEmbedded = new Tensor(null, {
             shape: embedded.shape,
             op: 'mul_scalar',
-            inputs: [embedded],
-            params: { factor: Math.sqrt(this.embedDim) }
+            inputIds: [embedded.id],
+            params: { factor: Math.sqrt(this.embedDim), size: seqLen * this.embedDim }
         });
 
-        // 4. دمج المكان مع عمل Slice داخلي (Logical Slice)
-        // بنبعت للـ Backend بارامتر offset عشان يعرف ياخد أول seqLen بس من posWeights
+        // 4. دمج المكان (Positional Encoding Addition)
+        // بنبعت للـ Backend الـ IDs والبارامترات اللازمة للـ Shader
         return new Tensor(null, {
             shape: scaledEmbedded.shape,
             op: 'add_pos_encoding', 
-            inputs: [scaledEmbedded, this.posWeights],
+            inputIds: [scaledEmbedded.id, this.posWeights.id],
             params: { 
                 seqLen: seqLen,
+                embedDim: this.embedDim,
                 offset: 0 
             }
         });
