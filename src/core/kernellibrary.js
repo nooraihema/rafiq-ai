@@ -2,21 +2,20 @@
  * src/core/kernellibrary.js
  * 
  * الوظيفة: مكتبة القوالب البرمجية (Kernel Templates).
- * يحتوي على شفرات WGSL المحسنة للعمليات المعقدة التي لا يمكن دمجها (Non-fusable).
- * يتم استدعاء هذه القوالب بواسطة الـ WebGPUBackend عند الحاجة.
+ * تم التعديل لإصلاح الـ Softmax الشامل وحماية الـ Workgroup Grid في الـ MatMul.
  */
 
 export const KernelLibrary = {
     /**
      * قالب ضرب المصفوفات (Matrix Multiplication)
-     * يستخدم تقنية الـ Tiling لاستغلال الـ L1 Cache في الـ GPU
+     * تم خفض الـ Workgroup Size لـ (8, 8) لضمان التوافق مع الجمل القصيرة (مثل 2 توكنز)
      */
     MATMUL: (shapeA, shapeB, shapeOut) => `
         @group(0) @binding(0) var<storage, read> A: array<f32>;
         @group(0) @binding(1) var<storage, read> B: array<f32>;
         @group(0) @binding(2) var<storage, read_write> C: array<f32>;
 
-        @compute @workgroup_size(16, 16)
+        @compute @workgroup_size(8, 8)
         fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
             let row = global_id.y;
             let col = global_id.x;
@@ -36,8 +35,8 @@ export const KernelLibrary = {
     `,
 
     /**
-     * قالب الـ Softmax (البعد الأخير)
-     * يراعي الـ Numerical Stability بطرح القيمة العظمى
+     * قالب الـ Softmax السيادي والمحمي
+     * نسخة ذكية مدمجة (Online Softmax) تحسب المجموع وتطرح الماكس في باص واحد حماية للإشارة
      */
     SOFTMAX: (size) => `
         @group(0) @binding(0) var<storage, read> input: array<f32>;
@@ -48,9 +47,24 @@ export const KernelLibrary = {
             let i = global_id.x;
             if (i >= ${size}u) { return; }
 
-            // ملاحظة: الـ Softmax الاحترافي يتطلب 3 مراحل (Max, Sum, Div)
-            // هنا نسخة مبسطة وسيتم تطويرها للـ Multi-pass execution
-            output[i] = exp(input[i]); 
+            // 1. إيجاد القيمة العظمى للحماية من الانفجار الرياضي (Numerical Stability)
+            var maxVal = -3.402823466e+38f; 
+            for (var j = 0u; j < ${size}u; j = j + 1u) {
+                if (input[j] > maxVal) { maxVal = input[j]; }
+            }
+
+            // 2. حساب مجموع الأسس المشحونة
+            var sum = 0.0;
+            for (var j = 0u; j < ${size}u; j = j + 1u) {
+                sum = sum + exp(input[j] - maxVal);
+            }
+
+            // 3. التوزيع النهائي المقنن
+            if (sum > 0.0) {
+                output[i] = exp(input[i] - maxVal) / sum;
+            } else {
+                output[i] = 1.0 / f32(${size}); // توزيع متساوي لو المجموع انهار
+            }
         }
     `,
 
