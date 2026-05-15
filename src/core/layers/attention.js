@@ -1,135 +1,66 @@
 /**
  * src/core/layers/attention.js
- *
- * 🧠 AKASHA Multi-Head Attention v2.0
- *
- * الوظيفة:
- * - إنشاء Query / Key / Value projections
- * - حساب Attention Scores
- * - تطبيق Scaling
- * - تطبيق Softmax
- * - تجميع السياق
- * - Projection نهائي
- * - Residual Connection
- *
- * الملاحظات:
- * - هذا الإصدار مبسط (بدون Split فعلي للرؤوس)
- * - لكنه يحافظ على البنية الرياضية الصحيحة
- * - مناسب جدًا كبداية مستقرة قبل إضافة Multi-Head الحقيقي
+ * الوظيفة: نظام الانتباه المتعدد (Multi-Head Attention) - نسخة التتبع
+ * الحالة: جاهز للربط مع الـ WebGPU Backend
  */
 
 import { Tensor } from '../tensor.js';
 
 export class MultiHeadAttention {
-    constructor(config) {
-        this.embedDim = config.embedDim;   // مثال: 512
-        this.numHeads = config.numHeads;   // مثال: 8
+    constructor({ embedDim, numHeads }) {
+        this.embedDim = embedDim;
+        this.numHeads = numHeads;
+        this.headDim = embedDim / numHeads;
 
-        if (this.embedDim % this.numHeads !== 0) {
-            throw new Error(
-                `embedDim (${this.embedDim}) must be divisible by numHeads (${this.numHeads})`
-            );
-        }
-
-        this.headDim = this.embedDim / this.numHeads;
-
-        // Projection matrices
-        this.weights = {
-            q: this._initWeight(this.embedDim, this.embedDim),
-            k: this._initWeight(this.embedDim, this.embedDim),
-            v: this._initWeight(this.embedDim, this.embedDim),
-            o: this._initWeight(this.embedDim, this.embedDim)
-        };
+        // أوزان الاستعلام (Query)، المفتاح (Key)، والقيمة (Value)
+        // بنعملهم كـ Const Tensors عشان الـ GPU يشيلهم مرة واحدة
+        this.qkvWeights = this._initWeight(embedDim, embedDim * 3);
+        this.outputWeights = this._initWeight(embedDim, embedDim);
     }
 
-    /**
-     * Xavier/Glorot Uniform Initialization
-     */
     _initWeight(rows, cols) {
         const data = new Float32Array(rows * cols);
-        const limit = Math.sqrt(6.0 / (rows + cols));
-
+        const scale = Math.sqrt(2.0 / rows);
         for (let i = 0; i < data.length; i++) {
-            data[i] = (Math.random() * 2 - 1) * limit;
+            data[i] = (Math.random() - 0.5) * scale;
         }
+        return new Tensor(data, { shape: [rows, cols], op: 'const' });
+    }
 
-        return new Tensor(data, {
-            shape: [rows, cols],
-            op: 'const',
-            requiresGrad: true,
-            isParameter: true
+    forward(x) {
+        /**
+         * Tracing Mode:
+         * هنا إحنا مش بنحسب، إحنا بنرسم "خريطة المعركة" للـ GPU
+         */
+        
+        // 1. عملية الإسقاط (Linear Projection لـ Q, K, V)
+        const qkv = new Tensor(null, {
+            shape: [x.shape[0], this.embedDim * 3],
+            op: 'matmul',
+            inputs: [x, this.qkvWeights]
         });
-    }
 
-    /**
-     * Forward Pass
-     *
-     * inputTensor shape: [seqLen, embedDim]
-     *
-     * returns: [seqLen, embedDim]
-     */
-    forward(inputTensor) {
-        // =====================================================
-        // 1. Linear Projections
-        // =====================================================
-        const q = inputTensor.matmul(this.weights.q); // [seqLen, embedDim]
-        const k = inputTensor.matmul(this.weights.k); // [seqLen, embedDim]
-        const v = inputTensor.matmul(this.weights.v); // [seqLen, embedDim]
+        // 2. عملية حساب الانتباه (Scaled Dot-Product Attention)
+        // بنسجلها كعملية 'attention_core' والـ Backend هو اللي هيفك شفرتها
+        const attentionScore = new Tensor(null, {
+            shape: x.shape,
+            op: 'attention_core',
+            inputs: [qkv],
+            params: { numHeads: this.numHeads, headDim: this.headDim }
+        });
 
-        // =====================================================
-        // 2. Attention Scores = Q × Kᵀ
-        // =====================================================
-        const scores = q.matmul(k.transpose()); // [seqLen, seqLen]
+        // 3. طبقة الإخراج النهائية
+        const output = new Tensor(null, {
+            shape: x.shape,
+            op: 'matmul',
+            inputs: [attentionScore, this.outputWeights]
+        });
 
-        // =====================================================
-        // 3. Scaling
-        // =====================================================
-        const scale = 1.0 / Math.sqrt(this.headDim);
-        const scaledScores = scores.mul(scale);
-
-        // =====================================================
-        // 4. Softmax
-        // =====================================================
-        const attentionWeights = scaledScores.softmax();
-
-        // =====================================================
-        // 5. Context = Attention × V
-        // =====================================================
-        const context = attentionWeights.matmul(v); // [seqLen, embedDim]
-
-        // =====================================================
-        // 6. Output Projection
-        // =====================================================
-        const projected = context.matmul(this.weights.o);
-
-        // =====================================================
-        // 7. Residual Connection
-        // =====================================================
-        const output = projected.add(inputTensor);
-
-        return output;
-    }
-
-    /**
-     * إرجاع جميع البارامترات للتدريب
-     */
-    parameters() {
-        return [
-            this.weights.q,
-            this.weights.k,
-            this.weights.v,
-            this.weights.o
-        ];
-    }
-
-    /**
-     * تنظيف الموارد
-     */
-    dispose() {
-        for (const param of this.parameters()) {
-            if (typeof param.dispose === 'function') {
-                param.dispose();
-            }
-        }
+        // إضافة Residual Connection (الجمع بين المدخل والمخرج لعدم فقدان البيانات)
+        return new Tensor(null, {
+            shape: x.shape,
+            op: 'add',
+            inputs: [x, output]
+        });
     }
 }
