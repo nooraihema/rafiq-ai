@@ -1,7 +1,7 @@
 /**
  * src/core/layers/embedding.js
- * الحالة: نظام المعرفات الثابتة (Fixed Token Mapping)
- * الوظيفة: تحويل الكلمة (Token ID) لمتجه كثيف (Dense Vector) بدون فقدان الهوية.
+ * الحالة: نظام التتبع (Tracing Compatible)
+ * الوظيفة: إنشاء "نود" في الرسم البياني لعملية الـ Embedding لتنفيذها على الـ GPU.
  */
 
 import { Tensor } from '../tensor.js';
@@ -11,7 +11,7 @@ export class Embedding {
         this.vocabSize = vocabSize;
         this.embedDim = embedDim;
         
-        // الأوزان: مصفوفة ضخمة [القاموس × الأبعاد]
+        // الأوزان: مصفوفة [القاموس × الأبعاد]
         this.weights = this._initWeights();
     }
 
@@ -20,35 +20,28 @@ export class Embedding {
         const data = new Float32Array(size);
         const scale = Math.sqrt(2.0 / this.embedDim);
         
+        // تعبئة الأوزان مبدئياً بقيم عشوائية منظمة (Xavier Initialization)
         for (let i = 0; i < size; i++) {
             data[i] = (Math.random() - 0.5) * scale;
         }
+        // نحدد العملية كـ 'const' لأنها بيانات ثابتة (الأوزان)
         return new Tensor(data, { shape: [this.vocabSize, this.embedDim], op: 'const' });
     }
 
     /**
-     * @param {Uint32Array} tokenIds - مصفوفة أرقام صحيحة حقيقية صادر من Tokenizer
+     * @param {Uint32Array | Tensor} tokenIds - المعرفات
      */
     forward(tokenIds) {
-        const seqLen = tokenIds.length;
-        const outputData = new Float32Array(seqLen * this.embedDim);
+        // إذا كانت المدخلات مصفوفة عادية، نحولها لتنسور أولاً
+        const inputTensor = (tokenIds instanceof Tensor) ? tokenIds : 
+            new Tensor(new Float32Array(tokenIds), { shape: [tokenIds.length], op: 'input' });
 
-        for (let i = 0; i < seqLen; i++) {
-            const tokenId = tokenIds[i];
-            
-            // حماية القاموس: التأكد أن المعرف داخل النطاق
-            if (tokenId >= this.vocabSize) {
-                console.warn(`Token ID ${tokenId} خارج نطاق القاموس!`);
-                continue; 
-            }
-
-            const startIdx = tokenId * this.embedDim;
-            
-            // بدلاً من slice() المكلفة، نستخدم subarray() أو نسخ مباشر سريع
-            const vector = this.weights.data.subarray(startIdx, startIdx + this.embedDim);
-            outputData.set(vector, i * this.embedDim);
-        }
-
-        return new Tensor(outputData, { shape: [seqLen, this.embedDim], op: 'embedding_out' });
+        // بدلاً من الحساب هنا، نرجع تنسور جديد يمثل "وعداً" بالعملية
+        // هذا هو الـ Tracing الذي تكلمنا عنه في الـ Runner
+        return new Tensor(null, { 
+            shape: [inputTensor.shape[0], this.embedDim], 
+            op: 'embedding', 
+            inputs: [inputTensor, this.weights] // نربط المدخلات بالأوزان
+        });
     }
 }
