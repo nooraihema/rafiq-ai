@@ -1,6 +1,6 @@
 /**
  * src/core/tensor.js
- * الحالة: النسخة الفولاذية المحدثة (Residual Support)
+ * الحالة: النسخة الفولاذية المحدثة (Residual Support + Unique Tracing)
  * الوظيفة: الهيكل الرياضي الأساسي الذي يدعم "الكباري" (Residual Connections) والعمليات المتقاطعة.
  */
 
@@ -13,9 +13,10 @@ export class Tensor {
         this.shape = options.shape || (this.data ? [this.data.length] : [0]);
         
         // 3. الهوية والرسم البياني (Graph Identity)
-        // أضفنا "المدخلات" لتمثيل شجرة الحسابات
-        this.id = options.id || `t_${Math.random().toString(36).substr(2, 6)}`;
+        // أضفنا Timestamp وعشوائية للـ ID لضمان عدم تداخل Buffers الـ GPU
+        const randomId = Math.random().toString(36).substr(2, 6);
         this.op = options.op || 'const'; 
+        this.id = options.id || `t_${this.op}_${randomId}_${Date.now()}`;
         this.inputs = options.inputs || []; 
         
         // 4. إدارة الحالة والمكان
@@ -38,10 +39,6 @@ export class Tensor {
 
     // --- العمليات الحسابية المحدثة ---
 
-    /**
-     * عملية الجمع (أساس الـ Residual Connections)
-     * هنا نجمع Tensor مع آخر لضمان عدم ضياع المعلومات الأصلية
-     */
     add(other) { 
         const otherTensor = this._toTensor(other);
         return new Tensor(null, {
@@ -69,6 +66,7 @@ export class Tensor {
         const p = otherTensor.shape.length === 1 ? 1 : otherTensor.shape[1];
 
         if (n1 !== n2) {
+            console.error(`Dimension mismatch: [${this.shape}] x [${otherTensor.shape}]`);
             throw new Error(`MatMul Error: Inner dimensions must match. Found ${n1} and ${n2}`);
         }
 
@@ -80,9 +78,6 @@ export class Tensor {
         });
     }
 
-    /**
-     * تحويل الأبعاد (ضروري لحسابات الـ Keys في الـ Attention)
-     */
     transpose() {
         const newShape = this.shape.length === 2 ? [this.shape[1], this.shape[0]] : [...this.shape].reverse();
         return new Tensor(null, {
@@ -93,9 +88,6 @@ export class Tensor {
         });
     }
 
-    /**
-     * دالة التنشيط (ReLU) لكسر الخطية في الـ FeedForward
-     */
     relu() {
         return new Tensor(null, {
             op: 'relu',
@@ -105,9 +97,6 @@ export class Tensor {
         });
     }
 
-    /**
-     * توزيع الاحتمالات (Softmax)
-     */
     softmax() {
         return new Tensor(null, {
             op: 'softmax',
@@ -138,20 +127,5 @@ export class Tensor {
         const newSize = newShape.reduce((a, b) => a * b, 1);
         if (newSize !== this.size) throw new Error("Reshape Error: Size mismatch");
         return new Tensor(this.data, { shape: newShape, id: this.id });
-    }
-
-    /**
-     * توليد الصيغة الرياضية للـ Backend (JIT)
-     * تدعم الآن الـ ReLU والـ Add للـ Residual
-     */
-    generateFormula(inputVars) {
-        switch (this.op) {
-            case 'add': return `${inputVars[0]} + ${inputVars[1]}`;
-            case 'mul': return `${inputVars[0]} * ${inputVars[1]}`;
-            case 'relu': return `max(0.0, ${inputVars[0]})`;
-            case 'matmul': return `matmul_op`; 
-            case 'softmax': return `softmax_op`;
-            default: return inputVars[0];
-        }
     }
 }
