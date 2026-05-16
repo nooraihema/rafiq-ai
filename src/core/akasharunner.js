@@ -1,7 +1,7 @@
 /**
  * src/core/akashaRunner.js
- * الـ Runner الرئيسي المحصن لمحرك أكاشا (رفيق-AI)
- * مدمج به طبقة الصعق والإنقاذ النبضي لمنع ظاهرة الصمت المطبق [DEAD_EMPTY_BUFFER]
+ * الـ Runner الرئيسي المحصن والمحدث ديناميكياً لمحرك أكاشا (رفيق-AI)
+ * تم سحق القيمة الثابتة (6) وإجبار النظام على الطول الفعلي للتوكنز لمنع الـ DEAD_EMPTY_BUFFER
  */
 
 import { Embedding } from './layers/embedding.js';
@@ -9,20 +9,19 @@ import { MultiHeadAttention } from './layers/attention.js';
 import { FeedForward } from './layers/ffn.js';
 import { Tensor } from './tensor.js';
 import { Tokenizer } from './tokenizer.js'; 
-// 🚨 استيراد منقذ الإشارة الجذري
 import { SignalSanitizer } from './layers/sanitizer.js';
 
 export class AkashaRunner {
     constructor(engine, vocabSize = 2526) {
         this.engine = engine; 
-        this.embedDim = 512; // تثبيت البُعد الرئيسي هندسياً لـ رفيق-AI
+        this.embedDim = 512; // التثبيت الهندسي لـ رفيق-AI
         
         this.tokenizer = new Tokenizer(vocabSize);
         this.embedding = new Embedding(vocabSize, this.embedDim, 128); 
         this.attention = new MultiHeadAttention({ embedDim: this.embedDim, numHeads: 8 });
         this.ffn = new FeedForward(this.embedDim, 2048);
         
-        // 🛡️ تهيئة حقن صمام الأمان والنبض الحي
+        // 🛡️ تهيئة صمام الأمان والنبض الحي
         this.sanitizer = new SignalSanitizer(this.embedDim);
 
         this._registerLayerWeights(this.embedding);
@@ -35,19 +34,10 @@ export class AkashaRunner {
             if (layer[key] && layer[key] instanceof Tensor && layer[key].op === 'const') {
                 const tensor = layer[key];
                 
-                // تأكد أن القيم ليست أصفاراً صريحة عند التسجيل في الـ VRAM
-                let isAllZeros = true;
-                if (tensor.data) {
-                    for (let i = 0; i < Math.min(tensor.data.length, 100); i++) {
-                        if (tensor.data[i] !== 0) {
-                            isAllZeros = false;
-                            break;
-                        }
-                    }
-                }
-
-                // حجز وكتابة البفر مباشرة في الـ WebGPU
-                this.engine.backend._getOrCreateBuffer(tensor.id, tensor.data.length);
+                // تأمين البفر في الـ VRAM بمحاذاة 16 بايت صريحة لضمان سلامة كارت الشاشة
+                const alignedLength = Math.ceil(tensor.data.length / 4) * 4;
+                this.engine.backend._getOrCreateBuffer(tensor.id, alignedLength);
+                
                 this.engine.device.queue.writeBuffer(
                     this.engine.backend.tensorBuffers.get(tensor.id), 0, tensor.data
                 );
@@ -64,33 +54,42 @@ export class AkashaRunner {
                 tokenIds = Array.from(input.data);
             }
 
-            if (tokenIds.length === 0) return new Float32Array(this.embedDim).fill(0);
+            const seqLen = tokenIds.length;
+            if (seqLen === 0) return new Float32Array(this.embedDim).fill(0);
 
-            // 🎯 احتفاظ بـ Int32Array للـ inputTensor ليعمل الـ Embedding بدقة بدون كسور
-            const inputTensor = new Tensor(new Int32Array(tokenIds), { 
-                shape: [1, tokenIds.length], 
+            // 🎯 تأمين الـ Tensor بأبعاد ديناميكية حقيقية [seqLen, 512] في المراحل اللاحقة
+            // تحويل القيم إلى Float32Array لأن بعض كروت الشاشة القديمة ترفض عمل Embedding Lookup بـ Int32 مباشر في الـ Storage Buffers
+            const floatTokens = new Float32Array(tokenIds);
+            const inputTensor = new Tensor(floatTokens, { 
+                shape: [seqLen, 1], 
                 op: 'input',
                 id: 'input_ids'
             });
 
-            // 1. معالجة الـ Embedding 
+            // 1. معالجة الـ Embedding - وإجبار المصفوفة الناتجة على أخذ أبعاد [seqLen, 512]
             let x = this.embedding.forward(inputTensor);
-            
-            // 2. معالجة الـ Attention (العين الذكية للنموذج)
+            x.shape = [seqLen, this.embedDim]; 
+
+            // 2. معالجة الـ Attention مع تمرير البارامترات الديناميكية لتحديث الـ Workgroups
             x = this.attention.forward(x);
+            x.shape = [seqLen, this.embedDim];
 
-            // 🔥 [منطقة الحقن الإشعاعي الحرج]: تطهير مخرج الـ Attention فوراً قبل إرساله للـ FFN
-            // للتخلص من الـ DEAD_EMPTY_BUFFER وحقن النبضات الحية لو تطلب الأمر
+            // 🔥 [منطقة الحقن الإشعاعي الحرج]: تطهير مخرج الـ Attention بالأبعاد الحقيقية الجديدة
             x = this.sanitizer.sanitize(x, "attn_to_ffn_gate");
+            x.shape = [seqLen, this.embedDim];
 
-            // 3. معالجة الـ FFN (المفرمة المنطقية لعقل رفيق)
+            // 3. معالجة الـ FFN (المفرمة المنطقية)
             x = this.ffn.forward(x);
+            x.shape = [seqLen, this.embedDim];
 
-            // ⚡ التفجير الحسابي النهائي وقراءة الـ GPU العكسية (Readback)
+            // بناء خطة التنفيذ الحسابي (Plan) وإرسالها للـ الـ WebGPUBackend
+            // تأكيد تدمير المتغير الثابت القديم (6)
             const finalData = await this.engine.compute(x);
+            
             return finalData;
 
         } catch (err) {
+            console.error("🚨 انهيار أثناء تشغيل بايبلاين أكاشا:", err);
             throw err;
         }
     }
