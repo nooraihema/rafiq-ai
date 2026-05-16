@@ -223,7 +223,7 @@ export class WebGPUBackend {
                 }
             `,
             attention_core: `
-                struct Params { seq_len: u32, head_dim: u32, num_heads: u32, pad: u32, scale: f32 };
+                struct Params { seq_len: u32, head_dim: u32, num_heads: u32, scale: f32 };
                 @group(0) @binding(0) var<storage, read> Q: array<f32>;
                 @group(0) @binding(1) var<storage, read> K: array<f32>;
                 @group(0) @binding(2) var<storage, read> V: array<f32>;
@@ -238,49 +238,57 @@ export class WebGPUBackend {
                     
                     let embed_dim = p.head_dim * p.num_heads;
                     
-                    // 🛡️ استخدام ذاكرة داخلية معزولة تماماً لكل Thread لمنع الـ Race Condition والأصفار المطبقة
-                    var local_scores: array<f32, 512>;
+                    // ⚙️ معالجة ديناميكية بالكامل بدون حجز مصفوفات عريضة مسبقاً لتلافي الـ Memory Overlap بالـ VRAM
                     var max_score = -1e20;
 
-                    // الخطوة الأولى: حساب حاصل ضرب الـ Attention Scores مع عزل مصفوفة المستقبل الحركي (Causal Mask)
-                    for (var k_idx = 0u; k_idx < p.seq_len; k_idx = k_idx + 1u) {
-                        if (k_idx > q_idx) {
-                            local_scores[k_idx] = -1e20;
-                        } else {
+                    // الحساب التدفقي لخطوة الاستقرار الأولى (Max Estimation Loop)
+                    for (var k_idx = 0u; k_idx <= q_idx; k_idx = k_idx + 1u) {
+                        var sum = 0.0;
+                        for (var d = 0u; d < p.head_dim; d = d + 1u) {
+                            let q_off = (q_idx * embed_dim) + (head_idx * p.head_dim) + d;
+                            let k_off = (k_idx * embed_dim) + (head_idx * p.head_dim) + d;
+                            sum = sum + Q[q_off] * K[k_off];
+                        }
+                        let score = sum * p.scale;
+                        max_score = max(max_score, select(score, -1e20, score != score));
+                    }
+
+                    // خطوة حساب الـ Cumulative Sum المستقر للـ Softmax
+                    var exp_sum = 0.0;
+                    for (var k_idx = 0u; k_idx <= q_idx; k_idx = k_idx + 1u) {
+                        var sum = 0.0;
+                        for (var d = 0u; d < p.head_dim; d = d + 1u) {
+                            let q_off = (q_idx * embed_dim) + (head_idx * p.head_dim) + d;
+                            let k_off = (k_idx * embed_dim) + (head_idx * p.head_dim) + d;
+                            sum = sum + Q[q_off] * K[k_off];
+                        }
+                        let score = sum * p.scale;
+                        let e = exp(select(score, max_score, score != score) - max_score);
+                        exp_sum = exp_sum + select(e, 0.0, e != e);
+                    }
+                    
+                    if (exp_sum <= 0.0 || exp_sum != exp_sum) { exp_sum = 1e-9; }
+
+                    // الخطوة الثالثة: الإسقاط وتجميع المخرجات بالـ V-Matrix مع حماية تامة ضد القيمة الصفرية المطلقة
+                    for (var d = 0u; d < p.head_dim; d = d + 1u) {
+                        var res = 0.0;
+                        for (var i = 0u; i <= q_idx; i = i + 1u) {
                             var sum = 0.0;
-                            for (var d = 0u; d < p.head_dim; d = d + 1u) {
-                                let q_off = (q_idx * embed_dim) + (head_idx * p.head_dim) + d;
-                                let k_off = (k_idx * embed_dim) + (head_idx * p.head_dim) + d;
+                            for (var dk = 0u; dk < p.head_dim; dk = dk + 1u) {
+                                let q_off = (q_idx * embed_dim) + (head_idx * p.head_dim) + dk;
+                                let k_off = (i * embed_dim) + (head_idx * p.head_dim) + dk;
                                 sum = sum + Q[q_off] * K[k_off];
                             }
                             let score = sum * p.scale;
-                            local_scores[k_idx] = select(score, -1e20, score != score);
-                        }
-                        max_score = max(max_score, local_scores[k_idx]);
-                    }
-
-                    // الخطوة الثانية: حساب الـ Softmax الآمن والمقاوم لـ التلاشي الرقمي
-                    var exp_sum = 0.0;
-                    for (var i = 0u; i < p.seq_len; i = i + 1u) {
-                        let e = exp(local_scores[i] - max_score);
-                        local_scores[i] = select(e, 0.0, e != e);
-                        exp_sum = exp_sum + local_scores[i];
-                    }
-                    
-                    if (exp_sum <= 0.0 || exp_sum != exp_sum) { exp_sum = 1e-4; }
-
-                    // الخطوة الثالثة: ضرب احتمالات الأوزان الحية في مصفوفة الـ Values وتخريج النبضة الواعية
-                    for (var d = 0u; d < p.head_dim; d = d + 1u) {
-                        var res = 0.0;
-                        for (var i = 0u; i < p.seq_len; i = i + 1u) {
+                            let weight = exp(select(score, max_score, score != score) - max_score) / exp_sum;
+                            
                             let v_off = (i * embed_dim) + (head_idx * p.head_dim) + d;
-                            let weight = local_scores[i] / exp_sum;
-                            res = res + weight * V[v_off];
+                            res = res + select(weight, 0.0, weight != weight) * V[v_off];
                         }
                         let out_off = (q_idx * embed_dim) + (head_idx * p.head_dim) + d;
                         
-                        // حقن تيار حماية متناهي الصغر لضمان بقاء النبضة حية وعدم تصفير البفر نهائياً
-                        Out[out_off] = select(res, 1e-5, res == 0.0 || res != res);
+                        // صمام حماية متناهي الصغر لضمان عدم حدوث تصفير ميت
+                        Out[out_off] = select(res, 1e-6, res == 0.0 || res != res);
                     }
                 }
             `,
@@ -406,7 +414,7 @@ export class WebGPUBackend {
             
             if (shader.includes('attention_core')) {
                 const numHeads = params?.numHeads || 8;
-                pass.dispatchWorkgroups(seqLen, numHeads); // تم المعايرة لتعمل بالتوازي المطلق لكل توكن ورأس حسابي بشكل مستقل
+                pass.dispatchWorkgroups(seqLen, numHeads); 
             } else if (shader.includes('matmul')) {
                 const M = seqLen;
                 const N = params?.N || 512;
@@ -433,6 +441,7 @@ export class WebGPUBackend {
             view.setUint32(4, params?.embedDim || 512, true); 
             view.setUint32(8, params?.vocabSize || 2526, true); 
         } else if (op === 'attention_core') {
+            // 🛡️ إعادة ترتيب وضبط الهيكل للتوافق مع الـ WGSL Struct دون الحاجة لباد عشوائي مكسور
             view.setUint32(0, seqLen, true);       
             view.setUint32(4, params?.headDim || 64, true);  
             view.setUint32(8, params?.numHeads || 8, true);  
