@@ -4,9 +4,10 @@
  * الحماية والمعايرة الصارمة: إبراهيم شحات لضبط مسارات الحساب التفاعلي ومنع موت الإشارة الحركية
  *
  * الإصلاح الهندسي الحاسم:
- * - تمرير params.N و params.K لكل عمليات matmul لحساب أبعاد الـ GPU بدقة صارمة
- * - الحفاظ الكامل على جميع المسارات والأسماء والدوال دون أي تغيير في الواجهة العامة للمشروع
- * - حقن حواجز رياضية تمنع انزلاق المصفوفات إلى الصفر أو الـ NaN كلياً
+ * - فك قيد البعد الثابت وجعل الأبعاد ديناميكية تعتمد على طول النص الفعلي [seqLen, embedDim] لتفادي تلاشي التوكنز.
+ * - تمرير params.N و params.K لكل عمليات matmul لحساب أبعاد الـ GPU بدقة صارمة مع مواءمة البعد الحركي الأول.
+ * - الحفاظ الكامل على جميع المسارات والأسماء والدوال دون أي تغيير في الواجهة العامة للمشروع.
+ * - حقن حواجز رياضية تمنع انزلاق المصفوفات إلى الصفر أو الـ NaN كلياً.
  */
 
 import { Tensor } from '../tensor.js';
@@ -108,38 +109,41 @@ export class MultiHeadAttention {
         // توليد معرف نبضي فريد ديناميكي لربط مسارات التتبع وحسابات الـ Backpropagation بدون تداخل للذاكرة
         const pulseId = `${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
 
-        // توحيد الأبعاد إلى البنية الثنائية الصارمة [1, embedDim] لحماية الـ Transformer Layers
-        const safeShape = [1, this.embedDim];
+        // 🧠 استخراج طول النبضة الحالية (seqLen) ديناميكياً بدلاً من فرضه كـ [1] لحل انقطاع التدفق اللفظي
+        const seqLen = x.shape && x.shape.length > 0 ? x.shape[0] : 1;
+        
+        // تشكيل قالب الأبعاد الديناميكي الحامي للإشارة عبر قنوات المعالجة للـ GPU
+        const dynamicShape = [seqLen, this.embedDim];
 
         // ------------------------------------------------------------------
-        // 1. Query Projection [1, embedDim] x [embedDim, embedDim] = [1, embedDim]
+        // 1. Query Projection [seqLen, embedDim] x [embedDim, embedDim] = [seqLen, embedDim]
         // ------------------------------------------------------------------
         const Q = new Tensor(null, {
             op: 'matmul',
             inputs: [x, this.queryWeights],
-            shape: [...safeShape],
+            shape: [...dynamicShape],
             id: `attn_q_${pulseId}`,
             params: this._matmulParams()
         });
 
         // ------------------------------------------------------------------
-        // 2. Key Projection [1, embedDim] x [embedDim, embedDim] = [1, embedDim]
+        // 2. Key Projection [seqLen, embedDim] x [embedDim, embedDim] = [seqLen, embedDim]
         // ------------------------------------------------------------------
         const K = new Tensor(null, {
             op: 'matmul',
             inputs: [x, this.keyWeights],
-            shape: [...safeShape],
+            shape: [...dynamicShape],
             id: `attn_k_${pulseId}`,
             params: this._matmulParams()
         });
 
         // ------------------------------------------------------------------
-        // 3. Value Projection [1, embedDim] x [embedDim, embedDim] = [1, embedDim]
+        // 3. Value Projection [seqLen, embedDim] x [embedDim, embedDim] = [seqLen, embedDim]
         // ------------------------------------------------------------------
         const V = new Tensor(null, {
             op: 'matmul',
             inputs: [x, this.valueWeights],
-            shape: [...safeShape],
+            shape: [...dynamicShape],
             id: `attn_v_${pulseId}`,
             params: this._matmulParams()
         });
@@ -150,14 +154,14 @@ export class MultiHeadAttention {
         const attentionContext = new Tensor(null, {
             op: 'attention_core',
             inputs: [Q, K, V],
-            shape: [...safeShape],
+            shape: [...dynamicShape],
             id: `attn_core_ctx_${pulseId}`,
             params: {
                 numHeads: this.numHeads,
                 headDim: this.headDim,
                 scale: this.scale,
                 causal: true, // تفعيل التسبب النصي لمنع قراءة المستقبل
-                seqLen: safeShape[0],
+                seqLen: seqLen,
                 embedDim: this.embedDim
             }
         });
@@ -168,7 +172,7 @@ export class MultiHeadAttention {
         const attentionOut = new Tensor(null, {
             op: 'matmul',
             inputs: [attentionContext, this.outputWeights],
-            shape: [...safeShape],
+            shape: [...dynamicShape],
             id: `attn_out_proj_${pulseId}`,
             params: this._matmulParams()
         });
@@ -179,7 +183,7 @@ export class MultiHeadAttention {
         const residual = new Tensor(null, {
             op: 'add',
             inputs: [x, attentionOut],
-            shape: [...safeShape],
+            shape: [...dynamicShape],
             id: `attn_residual_${pulseId}`
         });
 
@@ -189,7 +193,7 @@ export class MultiHeadAttention {
         const finalAttnOut = new Tensor(null, {
             op: 'add',
             inputs: [residual, this.ln_beta],
-            shape: [...safeShape],
+            shape: [...dynamicShape],
             id: `attn_final_ln_${pulseId}`
         });
 
