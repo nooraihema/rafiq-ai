@@ -11,32 +11,19 @@ export class WebGPUBackend {
         this.device = device;
         this.pipelineCache = new Map();
         this.tensorBuffers = new Map();
-        console.log(
-            "%c🔮 [Akasha GPU] محرك الـ WebGPU المطور جاهز. وضع الفحص التشخيصي المجهري وحظر الأصفار (نشط للغاية).", 
-            "color: #00ffcc; font-weight: bold; font-size: 13px; background: #111; padding: 6px; border-radius: 4px; border: 1px solid #00ffcc;"
-        );
     }
 
     async execute(plan) {
-        const startTime = performance.now();
         if (!this.device) {
             console.error("%c🚨 [CRITICAL BACKEND ERROR] جهاز الـ WebGPU غير موجود في سياق التنفيذ! تم تفعيل بفر الطوارئ المعزول.", "color: #ff0033; font-weight: bold; background: #220000; padding: 4px;");
             return new Float32Array(10).fill(0.01); 
         }
-
-        console.log(
-            `%c⚡ [START PIPELINE] >>> بدء معالجة مصفوفة الخطة الحالية بحجم: [${plan.length}] عقدة حسابية مرشحة للتنفيذ على الـ GPU <<<`, 
-            "color: #ffff00; font-weight: bold; background: #333300; padding: 3px;"
-        );
         
         const commandEncoder = this.device.createCommandEncoder();
 
         for (let s = 0; s < plan.length; s++) {
             const step = plan[s];
-            if (!step) {
-                console.warn(`%c🔍 [DIAGNOSTIC] تم رصد خطوة فارغة (Null Step) في الفهرس [${s}]. جاري التخطي الذكي...`, "color: #888888;");
-                continue;
-            }
+            if (!step) continue;
 
             let currentOp = typeof step.op === 'object' ? (step.op.op || step.op.type) : step.op;
             if (currentOp === 'layernorm' || currentOp === 'layer_norm') currentOp = 'layer_norm';
@@ -45,18 +32,13 @@ export class WebGPUBackend {
             const outputSize = this._calculateSize(step.shape);
             const outBuffer = this._getOrCreateBuffer(step.id, outputSize);
 
-            console.log(
-                `%c⚙️ [Step ${s+1}/${plan.length}] Node: %c${step.id}%c | Op: %c${currentOp}%c | Expected Shape: [${step.shape || 'Flat'}] | Allocated Elements: ${outputSize}`, 
-                "color: #bbbbbb;", "color: #00ffff; font-weight: bold;", "color: #bbbbbb;", "color: #ffaa00; font-weight: bold;", "color: #bbbbbb;"
-            );
-
             // 1. معالجة الـ Constants والـ Inputs وحقن "النبضة الحية" لمنع الـ Zero-Out
             if (currentOp === 'const' || currentOp === 'input' || step.type === 'const') {
                 const rawData = step.data || step.value || (step.inputs && step.inputs[0]?.data);
                 if (rawData) {
                     let data = rawData instanceof Float32Array ? rawData : new Float32Array(rawData);
                     
-                    // فحص جنائي لمحتوى البيانات المدخلة قبل رفعها للـ VRAM
+                    // فحص جنائي لمحتوى البيانات المدخلة قبل رفعها للـ VRAM لحل لغز الموت المبكر للإشارة
                     let isDead = true;
                     let zeroCount = 0;
                     for (let i = 0; i < data.length; i++) {
@@ -67,11 +49,15 @@ export class WebGPUBackend {
                     }
                     
                     const zeroPercentage = ((zeroCount / data.length) * 100).toFixed(2);
-                    console.log(`%c   ├── 🧪 [DATA AUDIT] العقدة [${step.id}]: نسبة الأصفار في المصفوفة الخام = ${zeroPercentage}% (${zeroCount}/${data.length} عنصر).`, "color: #99ccff;");
+                    
+                    // طباعة التقرير فقط إذا احتوت العقدة على أصفار بنسبة مؤثرة لتنبيه المطور
+                    if (zeroCount > 0) {
+                        console.log(`%c⚠️ [ZERO DETECTED] العقدة [${step.id}]: تحتوي على أصفار صريحة بنسبة = ${zeroPercentage}% (${zeroCount}/${data.length} عنصر) قبل الرفع للـ VRAM.`, "color: #ffcc00; font-weight: bold;");
+                    }
 
                     if (isDead) {
                         console.warn(
-                            `%c⚠️ [RESCUE OPERATION] العقدة الثابتة [${step.id}] ميتة سريرياً (كلها أصفار صريحة). تم حقن تيار حي متناهي الصغر (Micro-Noise) لمنع انهيار مصفوفة الانتباه وضمان تشغيل الأوزان.`, 
+                            `%c🚨 [RESCUE OPERATION] العقدة الثابتة [${step.id}] ميتة سريرياً (كلها أصفار صريحة). تم حقن تيار حي متناهي الصغر (Micro-Noise) لمنع انهيار مصفوفة الانتباه وضمان تشغيل الأوزان.`, 
                             "color: #ff9900; font-weight: bold; background: #331a00; padding: 2px;"
                         );
                         for (let i = 0; i < data.length; i++) {
@@ -80,41 +66,31 @@ export class WebGPUBackend {
                     }
                     
                     this.device.queue.writeBuffer(outBuffer, 0, data);
-                    console.log(`%c   └── ✅ [VRAM WRITE] تم شحن بفر الـ GPU بنجاح. الحجم المكتوب: ${data.length * 4} بايت.`, "color: #00ff00; font-size: 11px;");
-                } else {
-                    console.warn(`%c   ├── ⚠️ [DIAGNOSTIC] العقدة [${step.id}] مصنفة كـ مدخل/ثابت ولكنها لا تحتوي على مصفوفة بيانات (No raw data).`, "color: #ffcc00;");
                 }
                 continue;
             }
 
             // 2. تجمع بفرات المدخلات وفحص سلامتها الهيكلية والذاكرية
             const inputIds = step.inputIds || [];
-            console.log(`%c   ├── 🔗 [LINKAGE] جاري فحص الروابط والمدخلات المطلوبة: [${inputIds.join(', ') || 'لا يوجد منبع صريح'}]`, "color: #aaaaaa;");
             
             const inputBuffers = inputIds.map(id => {
                 if (!this.tensorBuffers.has(id)) {
-                    console.warn(`%c   │   ⚠️ [MISSING INPUT LINK] مدخل مفقود حرج [${id}] للعقدة الحالية [${step.id}]. جاري تخليق بفر طوارئ حي بالكامل لمنع انفجار الـ WebGPU Pipeline.`, "color: #ff9900;");
+                    console.warn(`%c⚠️ [MISSING INPUT LINK] مدخل مفقود حرج [${id}] للعقدة الحالية [${step.id}]. جاري تخليق بفر طوارئ حي بالكامل لمنع انفجار الـ WebGPU Pipeline.`, "color: #ff9900;");
                     return this._getOrCreateBuffer(id, outputSize);
                 }
                 return this.tensorBuffers.get(id);
             }).filter(Boolean);
 
             if (inputBuffers.length === 0 && currentOp !== 'const' && currentOp !== 'input') {
-                console.warn(`%c   └── ❌ [ISOLATED NODE CRITICAL] العقدة [${step.id}] معزولة تماماً هندسياً وبدون أي مدخلات صالحة للعمليات. تم التخطي فوراً لحماية المحرك الحسابي.`, "color: #ff3333; font-weight: bold;");
+                console.warn(`%c❌ [ISOLATED NODE CRITICAL] العقدة [${step.id}] معزولة تماماً هندسياً وبدون أي مدخلات صالحة للعمليات. تم التخطي فوراً لحماية المحرك الحسابي.`, "color: #ff3333; font-weight: bold;");
                 continue;
             }
 
-            // 3. استدعاء الـ Shader والـ Uniform والتنفيذ الحسابي على الـ GPU Core
+            // 3. استدعاء الـ Shader والتنفيذ
             const shaderCode = this._getShader(currentOp);
-            console.log(`%c   ├── 🔬 [SHADER KERNEL] جاري سحب وتدقيق شيفرة الـ WGSL لـ العملية [${currentOp}]. حجم الكود: ${shaderCode.length} حرف.`, "color: #cc99ff;");
-            
             const uniformBuffer = this._createUniformBuffer(currentOp, step.shape, step.params);
             
-            const dispatchStart = performance.now();
             await this._dispatch(shaderCode, commandEncoder, inputBuffers, outBuffer, uniformBuffer, step.shape, step.params, step.id);
-            const dispatchEnd = performance.now();
-            
-            console.log(`%c   └── ⚡ [DISPATCH COMPLETE] تمت جدولة العملية في الـ GPU Command Queue خلال ${(dispatchEnd - dispatchStart).toFixed(3)} مللي ثانية.`, "color: #00ffaa; font-size: 11px;");
         }
 
         // 4. استخراج المخرج النهائي وتطهيره ذرياً من الـ NaN والـ Infinity
@@ -124,7 +100,6 @@ export class WebGPUBackend {
             return new Float32Array(10).fill(0.02);
         }
 
-        console.log(`%c📥 [READBACK PHASE] >>> جاري سحب مصفوفة الخرج النهائي هندسياً من العقدة الأخيرة الحاكمة: [${lastStep.id}] <<<`, "color: #ff00ff; font-weight: bold; background: #220022; padding: 4px;");
         const finalBuffer = this.tensorBuffers.get(lastStep.id);
         const finalSize = this._calculateSize(lastStep.shape);
 
@@ -133,7 +108,6 @@ export class WebGPUBackend {
             return new Float32Array(finalSize).fill(0.03);
         }
 
-        console.log(`%c🔍 [VRAM DOWNLOAD] جاري نسخ وتنزيل بفر بحجم ${finalSize * 4} بايت من الـ GPU إلى الـ CPU الذاكرية...`, "color: #00bfff;");
         let result = await this._readBuffer(commandEncoder, finalBuffer, finalSize);
 
         // صمام الأمان الذري المطور لحماية الكلمات المرجحة ومنع الـ NaN الخبيث
@@ -150,18 +124,13 @@ export class WebGPUBackend {
             }
         }
 
-        const totalExecutionTime = performance.now() - startTime;
         const finalZeroPercentage = ((absoluteZeroCount / result.length) * 100).toFixed(2);
 
-        console.log(`%c📊 [FINAL RADAR AUDIT] إحصائيات المخرج النهائي لعقل رفيق-AI:`);
-        console.log(`%c   ├── 🕒 زمن التنفيذ الكلي للمصفوفة: ${totalExecutionTime.toFixed(2)} ms`, "color: #fff;");
-        console.log(`%c   ├── 📏 عدد العناصر المسترجعة: ${result.length} عنصر حقيقي.`, "color: #fff;");
-        console.log(`%c   ├── 🧊 عدد الأصفار الصريحة في الخرج النهائي: ${absoluteZeroCount} بنسبة (${finalZeroPercentage}%)`, "color: #ffcc00;");
+        // التقرير النهائي الصارم لخرج المحرك بالكامل
+        console.log(`%c🧊 [FINAL MATRIX AUDIT] العقدة الأخيرة [${lastStep.id}]: نسبة الأصفار الصريحة في الخرج النهائي الحقيقي = ${finalZeroPercentage}% (${absoluteZeroCount}/${result.length} عنصر).`, "color: #ffcc00; font-weight: bold;");
 
         if (nanRepairedCount > 0) {
             console.error(`%c🚨 [ANTI-NAN EMERGENCY] تم رصد وتدمير عدد (${nanRepairedCount}) من قيم NaN/Infinity في المخرج النهائي واستبدالها بنبضات مشحونة نشطة هندسياً!`, "color: #ff3300; font-weight: bold; background: #220000; padding: 4px; border-radius: 2px;");
-        } else {
-            console.log("%c✨ [HEALTH CHECK] المخرج النهائي خالي تماماً من قيم الـ NaN الملعونة. الإشارة مستقرة هندسياً وتتحرك بنجاح!", "color: #00ff00; font-weight: bold; background: #002200; padding: 3px;");
         }
 
         return result;
@@ -169,14 +138,11 @@ export class WebGPUBackend {
 
     // دالة مساعدة لقراءة أي بفر وسيط حيوياً لمنع قراءات الـ NaN الذاكرية وتتبع الإشارات الصامتة
     async readBuffer(id) {
-        if (!this.tensorBuffers.has(id)) {
-            console.warn(`%c🔍 [DIAGNOSTIC READ] تعذر قراءة البفر الوسيط [${id}] لأنه غير موجود في الذاكرة الحالية.`, "color: #ffcc00;");
-            return null;
-        }
+        if (!this.tensorBuffers.has(id)) return null;
+        
         const gpuBuffer = this.tensorBuffers.get(id);
         const size = gpuBuffer.size;
         
-        console.log(`%c🔍 [LIVE DIAGNOSTIC] جاري اختراق البفر الوسيط [${id}] وقراءة محتواه حياً لحل لغز الأصفار...`, "color: #ffaa00;");
         const commandEncoder = this.device.createCommandEncoder();
         const staging = this.device.createBuffer({ size, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
         commandEncoder.copyBufferToBuffer(gpuBuffer, 0, staging, 0, size);
@@ -189,7 +155,9 @@ export class WebGPUBackend {
         
         let zeros = 0;
         for(let i=0; i<res.length; i++) { if(res[i] === 0) zeros++; }
-        console.log(`%c   -> [INTERMEDIATE AUDIT] البفر [${id}] يحتوي على ${zeros}/${res.length} أصفار. عينة من أول 5 عناصر: [${res.slice(0, 5).join(', ')}]`, "color: #ffaa00; font-size: 11px;");
+        
+        // طباعة تشريحية تفصيلية للبفر عند طلبه يدوياً لحل لغز تسرب الإشارة
+        console.log(`%c🔬 [INTERMEDIATE ZERO AUDIT] البفر الوسيط [${id}]: يحتوي على أصفار بمعدل ${zeros}/${res.length} عنصر. عينة من الخرج: [${res.slice(0, 5).join(', ')}]`, "color: #ffaa00; font-weight: bold;");
         
         return res;
     }
@@ -477,7 +445,6 @@ export class WebGPUBackend {
     _getOrCreateBuffer(id, size) {
         if (this.tensorBuffers.has(id)) return this.tensorBuffers.get(id);
         
-        // حساب المحاذاة الذاكرية طبقاً لمعايير الـ WebGPU الصارمة لضمان سلامة العناوين المتوازية
         const alignedSize = Math.ceil(Math.max(size * 4, 64) / 16) * 16;
         const buffer = this.device.createBuffer({
             size: alignedSize,
@@ -485,7 +452,6 @@ export class WebGPUBackend {
         });
         
         this.tensorBuffers.set(id, buffer);
-        console.log(`%c   ├── 📦 [MEMORY ALLOCATION] تخليق بفر VRAM جديد لـ [${id}]. الحجم المحاذى هندسياً: ${alignedSize} بايت.`, "color: #00ffcc; font-size: 11px;");
         return buffer;
     }
 
@@ -508,7 +474,6 @@ export class WebGPUBackend {
     async _getOrCreatePipeline(code) {
         if (this.pipelineCache.has(code)) return this.pipelineCache.get(code);
         
-        const compileStart = performance.now();
         const module = this.device.createShaderModule({ code });
         const pipeline = await this.device.createComputePipelineAsync({ 
             layout: 'auto', 
@@ -516,8 +481,6 @@ export class WebGPUBackend {
         });
         
         this.pipelineCache.set(code, pipeline);
-        const compileEnd = performance.now();
-        console.log(`%c   ├── 🧬 [KERNEL COMPILATION] تم تجميع وعزل الـ Compute Pipeline بنجاح في المتصفح خلال ${(compileEnd - compileStart).toFixed(2)} ms`, "color: #ffaa00; font-size: 11px;");
         return pipeline;
     }
 
