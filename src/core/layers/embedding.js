@@ -7,6 +7,7 @@
  * - الالتزام الصارم بتمرير الـ IDs بدلاً من الـ Objects لضمان تتبع الـ GPU لـ Buffers العناوين.
  * - الحفاظ الكامل على الهيكل العام والأسماء والواجهات دون أي تغيير يكسر الـ Runner.
  * - حقن حماية مجهرية تمنع الـ Out-Of-Bounds وتلاشي الموجات المكانية بالـ VRAM.
+ * - موازنة التدفق: دمج مصفوفات الـ inputs الحية مع الحفاظ على بروتوكول الـ inputIds النصي لتغذية الـ Optimizer دون تصفير.
  */
 
 import { Tensor } from '../tensor.js';
@@ -103,10 +104,11 @@ export class Embedding {
         // توليد معرف النبضة الحالية لفك التداخل العشوائي في خطوط الـ Pipeline للـ GPU
         const executionPulseId = `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
 
-        // 2. Embedding Lookup (تخريج الـ IDs للمحرك للربط المباشر مع الـ GPU Buffer Addresses)
+        // 2. Embedding Lookup (تخريج الـ IDs للمحرك للربط المباشر مع الـ GPU Buffer Addresses وتأمين قنوات الـ inputs للـ Optimizer)
         const embedded = new Tensor(null, {
             shape: [seqLen, this.embedDim],
             op: 'embedding_lookup',
+            inputs: [inputIds, this.weights], // 🛡️ الحماية الجديدة: تسليم الكائنات الصريحة لمنع تصفير التنسور وعزل الموت الصفري
             inputIds: [String(inputIds.id), String(this.weights.id)], 
             id: `emb_lookup_${executionPulseId}`,
             params: { 
@@ -120,6 +122,7 @@ export class Embedding {
         const scaledEmbedded = new Tensor(null, {
             shape: embedded.shape,
             op: 'mul_scalar',
+            inputs: [embedded], // 🛡️ تأمين الاتصال المتسلسل لـ شجرة العقد الحسابية
             inputIds: [String(embedded.id)],
             id: `emb_scaled_${executionPulseId}`,
             params: { 
@@ -133,6 +136,7 @@ export class Embedding {
         return new Tensor(null, {
             shape: scaledEmbedded.shape,
             op: 'add_pos_encoding', 
+            inputs: [scaledEmbedded, this.posWeights], // 🛡️ الربط النهائي الفولاذي بين موجة الكلمة وموجة الموضع المكاني
             inputIds: [String(scaledEmbedded.id), String(this.posWeights.id)],
             id: `emb_final_output_${executionPulseId}`,
             params: { 
