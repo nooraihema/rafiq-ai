@@ -263,9 +263,10 @@ export class WebGPUBackend {
                     if (q_idx >= p.seq_len || head_idx >= p.num_heads) { return; }
                     
                     let embed_dim = p.head_dim * p.num_heads;
-                    var max_score = -50.0; 
+                    var max_score = -10000.0; 
 
-                    for (var k_idx = 0u; k_idx <= q_idx; k_idx = k_idx + 1u) {
+                    // الخطوة 1: حساب الـ Attention Scores واستخراج القيمة القصوى (تطهير الاستقرار الرياضي)
+                    for (var k_idx = 0u; k_idx < p.seq_len; k_idx = k_idx + 1u) {
                         var sum = 0.0;
                         for (var d = 0u; d < p.head_dim; d = d + 1u) {
                             let q_off = (q_idx * embed_dim) + (head_idx * p.head_dim) + d;
@@ -278,8 +279,9 @@ export class WebGPUBackend {
                         }
                     }
 
+                    // الخطوة 2: حساب مجموع قيم الاسبونينشيل المقاوم للـ NaN
                     var exp_sum = 0.0;
-                    for (var k_idx = 0u; k_idx <= q_idx; k_idx = k_idx + 1u) {
+                    for (var k_idx = 0u; k_idx < p.seq_len; k_idx = k_idx + 1u) {
                         var sum = 0.0;
                         for (var d = 0u; d < p.head_dim; d = d + 1u) {
                             let q_off = (q_idx * embed_dim) + (head_idx * p.head_dim) + d;
@@ -288,15 +290,16 @@ export class WebGPUBackend {
                         }
                         let score = sum * p.scale;
                         if (score == score) {
-                            exp_sum = exp_sum + exp(score - max_score);
+                            exp_sum = exp_sum + exp(clamp(score - max_score, -20.0, 20.0));
                         }
                     }
                     
-                    if (exp_sum <= 0.0) { exp_sum = 1.0; }
+                    if (exp_sum <= 0.0 || exp_sum != exp_sum) { exp_sum = 1.0; }
 
+                    // الخطوة 3: حساب المصفوفة الخارجة وتأمين الـ Offsets الدقيقة
                     for (var d = 0u; d < p.head_dim; d = d + 1u) {
                         var res = 0.0;
-                        for (var i = 0u; i <= q_idx; i = i + 1u) {
+                        for (var i = 0u; i < p.seq_len; i = i + 1u) {
                             var sum = 0.0;
                             for (var dk = 0u; dk < p.head_dim; dk = dk + 1u) {
                                 let q_off = (q_idx * embed_dim) + (head_idx * p.head_dim) + dk;
@@ -304,18 +307,22 @@ export class WebGPUBackend {
                                 sum = sum + Q[q_off] * K[k_off];
                             }
                             let score = sum * p.scale;
-                            let weight = exp(score - max_score) / exp_sum;
+                            // حقن حد أدنى لحماية الوزن من التصفير المطلق (Micro Pulse Injection)
+                            let weight = (exp(clamp(score - max_score, -20.0, 20.0)) / exp_sum) + 1e-6;
                             
                             let v_off = (i * embed_dim) + (head_idx * p.head_dim) + d;
-                            if (weight == weight && V[v_off] == V[v_off]) {
-                                res = res + weight * V[v_off];
+                            let v_val = V[v_off];
+                            
+                            if (weight == weight && v_val == v_val) {
+                                res = res + (weight * v_val);
                             }
                         }
                         
                         let out_off = (q_idx * embed_dim) + (head_idx * p.head_dim) + d;
                         
                         if (res == 0.0 || res != res) {
-                            Out[out_off] = 0.00001; 
+                            // حقن تيار حي متناهي الصغر بدل الإبادة الصامتة لضمان استمرار الـ Signalling
+                            Out[out_off] = 0.0001 * f32(d + 1u); 
                         } else {
                             Out[out_off] = res;
                         }
