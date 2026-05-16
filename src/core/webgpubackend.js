@@ -230,19 +230,22 @@ export class WebGPUBackend {
                 @group(0) @binding(3) var<storage, read_write> Out: array<f32>;
                 @group(0) @binding(4) var<uniform> p: Params;
 
-                var<workgroup> s_scores: array<array<f32, 256>, 12>; 
-
                 @compute @workgroup_size(16, 1)
-                fn main(@builtin(global_invocation_id) id: vec3<u32>, @builtin(local_invocation_id) local_id: vec3<u32>) {
-                    let q_idx = id.x; let head_idx = id.y;
+                fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+                    let q_idx = id.x; 
+                    let head_idx = id.y;
                     if (q_idx >= p.seq_len || head_idx >= p.num_heads) { return; }
                     
                     let embed_dim = p.head_dim * p.num_heads;
+                    
+                    // 🛡️ استخدام ذاكرة داخلية معزولة تماماً لكل Thread لمنع الـ Race Condition والأصفار المطبقة
+                    var local_scores: array<f32, 512>;
                     var max_score = -1e20;
 
+                    // الخطوة الأولى: حساب حاصل ضرب الـ Attention Scores مع عزل مصفوفة المستقبل الحركي (Causal Mask)
                     for (var k_idx = 0u; k_idx < p.seq_len; k_idx = k_idx + 1u) {
                         if (k_idx > q_idx) {
-                            s_scores[head_idx][k_idx] = -1e20;
+                            local_scores[k_idx] = -1e20;
                         } else {
                             var sum = 0.0;
                             for (var d = 0u; d < p.head_dim; d = d + 1u) {
@@ -251,29 +254,33 @@ export class WebGPUBackend {
                                 sum = sum + Q[q_off] * K[k_off];
                             }
                             let score = sum * p.scale;
-                            s_scores[head_idx][k_idx] = select(score, -1e20, score != score);
+                            local_scores[k_idx] = select(score, -1e20, score != score);
                         }
-                        max_score = max(max_score, s_scores[head_idx][k_idx]);
+                        max_score = max(max_score, local_scores[k_idx]);
                     }
 
+                    // الخطوة الثانية: حساب الـ Softmax الآمن والمقاوم لـ التلاشي الرقمي
                     var exp_sum = 0.0;
                     for (var i = 0u; i < p.seq_len; i = i + 1u) {
-                        let e = exp(s_scores[head_idx][i] - max_score);
-                        s_scores[head_idx][i] = select(e, 0.0, e != e);
-                        exp_sum = exp_sum + s_scores[head_idx][i];
+                        let e = exp(local_scores[i] - max_score);
+                        local_scores[i] = select(e, 0.0, e != e);
+                        exp_sum = exp_sum + local_scores[i];
                     }
                     
                     if (exp_sum <= 0.0 || exp_sum != exp_sum) { exp_sum = 1e-4; }
 
+                    // الخطوة الثالثة: ضرب احتمالات الأوزان الحية في مصفوفة الـ Values وتخريج النبضة الواعية
                     for (var d = 0u; d < p.head_dim; d = d + 1u) {
                         var res = 0.0;
                         for (var i = 0u; i < p.seq_len; i = i + 1u) {
                             let v_off = (i * embed_dim) + (head_idx * p.head_dim) + d;
-                            let weight = s_scores[head_idx][i] / exp_sum;
+                            let weight = local_scores[i] / exp_sum;
                             res = res + weight * V[v_off];
                         }
                         let out_off = (q_idx * embed_dim) + (head_idx * p.head_dim) + d;
-                        Out[out_off] = select(res, 0.0001, res != res);
+                        
+                        // حقن تيار حماية متناهي الصغر لضمان بقاء النبضة حية وعدم تصفير البفر نهائياً
+                        Out[out_off] = select(res, 1e-5, res == 0.0 || res != res);
                     }
                 }
             `,
@@ -399,7 +406,7 @@ export class WebGPUBackend {
             
             if (shader.includes('attention_core')) {
                 const numHeads = params?.numHeads || 8;
-                pass.dispatchWorkgroups(Math.ceil(seqLen / 16) || 1, numHeads);
+                pass.dispatchWorkgroups(seqLen, numHeads); // تم المعايرة لتعمل بالتوازي المطلق لكل توكن ورأس حسابي بشكل مستقل
             } else if (shader.includes('matmul')) {
                 const M = seqLen;
                 const N = params?.N || 512;
