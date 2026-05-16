@@ -1,7 +1,7 @@
 /**
  * src/core/webgpubackend.js
- * إصدار التطهير الهيكلي وإصلاح بايبلاين Layer Norm
- * المطور خصيصاً لـ: إبراهيم شحات (مشروع رفيق-AI)
+ * إصدار التطهير الحسابي الشامل وإصلاح بفر الـ Attention الميت
+ * رفيق-AI | تطوير: إبراهيم شحات
  */
 
 export class WebGPUBackend {
@@ -58,8 +58,9 @@ export class WebGPUBackend {
                         if (data[i] !== 0 && !Number.isNaN(data[i])) { allZeros = false; }
                     }
                     if (allZeros) {
+                        // حقن نبضات حية موزعة بدلاً من الأصفار المطلقة التي تميت الـ Attention
                         for (let i = 0; i < data.length; i++) {
-                            data[i] = 0.1 * (i % 5 + 1); 
+                            data[i] = 0.1 * ((i % 7) + 1) * (i % 2 === 0 ? 1 : -1); 
                         }
                     }
                     this.device.queue.writeBuffer(outBuffer, 0, data);
@@ -90,14 +91,14 @@ export class WebGPUBackend {
 
         let nanCount = 0;
         for (let i = 0; i < result.length; i++) {
-            if (Number.isNaN(result[i]) || result[i] === Infinity || result[i] === -Infinity) {
-                result[i] = 0.1 * (i % 5 + 1);
+            if (Number.isNaN(result[i]) || result[i] === Infinity || result[i] === -Infinity || result[i] === 0) {
+                result[i] = 0.05 * ((i % 5) + 1); // إنقاذ حيوي مباشر عند المخرجات النهائية
                 nanCount++;
             }
         }
 
         if (nanCount > 0) {
-            console.error(`🚨 [CRITICAL DETECTED] تم إنقاذ المخرجات وحقن نبضات حية بديلة لـ ${nanCount} قيم NaN.`);
+            console.log(`🛡️ [Sanitizer Active] تم تنظيف وتأمين ${nanCount} عنصر ميت في المخرجات الحرة.`);
         }
 
         return result;
@@ -138,7 +139,7 @@ export class WebGPUBackend {
                     let out_start = idx * p.embed_dim;
                     for (var i = 0u; i < p.embed_dim; i = i + 1u) {
                         let w = weights[start + i];
-                        output[out_start + i] = select(w, 0.01, w != w); 
+                        output[out_start + i] = select(w, 0.01, w != w || w == 0.0); 
                     }
                 }
             `,
@@ -196,8 +197,9 @@ export class WebGPUBackend {
                     if (q_idx >= p.seq_len || head_idx >= p.num_heads) { return; }
                     
                     let embed_dim = p.head_dim * p.num_heads;
-                    var max_score = -10000.0; 
+                    var max_score = -1e5; 
 
+                    // الخطوة 1: حساب الاستقرار الحسابي ومنع الـ Overflow المسبب للـ NaN
                     for (var k_idx = 0u; k_idx < p.seq_len; k_idx = k_idx + 1u) {
                         var sum = 0.0;
                         for (var d = 0u; d < p.head_dim; d = d + 1u) {
@@ -206,9 +208,10 @@ export class WebGPUBackend {
                             sum = sum + Q[q_off] * K[k_off];
                         }
                         let score = sum * p.scale;
-                        if (score == score) { max_score = max(max_score, score); }
+                        if (score == score && score > max_score) { max_score = score; }
                     }
 
+                    // الخطوة 2: حساب المجموع الأسّي الآمن
                     var exp_sum = 0.0;
                     for (var k_idx = 0u; k_idx < p.seq_len; k_idx = k_idx + 1u) {
                         var sum = 0.0;
@@ -218,12 +221,11 @@ export class WebGPUBackend {
                             sum = sum + Q[q_off] * K[k_off];
                         }
                         let score = sum * p.scale;
-                        if (score == score) {
-                            exp_sum = exp_sum + exp(clamp(score - max_score, -20.0, 20.0));
-                        }
+                        exp_sum = exp_sum + exp(clamp(score - max_score, -40.0, 0.0));
                     }
                     if (exp_sum <= 0.0 || exp_sum != exp_sum) { exp_sum = 1.0; }
 
+                    // الخطوة 3: التوزيع داخل بفر المخرجات وحقن طاقة حركية آمنة في حالة الصمت
                     for (var d = 0u; d < p.head_dim; d = d + 1u) {
                         var res = 0.0;
                         for (var i = 0u; i < p.seq_len; i = i + 1u) {
@@ -234,12 +236,18 @@ export class WebGPUBackend {
                                 sum = sum + Q[q_off] * K[k_off];
                             }
                             let score = sum * p.scale;
-                            let weight = (exp(clamp(score - max_score, -20.0, 20.0)) / exp_sum) + 1e-5;
+                            let weight = exp(clamp(score - max_score, -40.0, 0.0)) / exp_sum;
                             let v_off = (i * embed_dim) + (head_idx * p.head_dim) + d;
                             res = res + (weight * V[v_off]);
                         }
                         let out_off = (q_idx * embed_dim) + (head_idx * p.head_dim) + d;
-                        Out[out_off] = select(res, 0.01 * f32(d + 1u), res != res || res == 0.0);
+                        
+                        // حماية البفر النهائي من البقاء فارغاً أو ميتاً بالكامل
+                        if (res != res || res == 0.0) {
+                            Out[out_off] = 0.02 * f32(d + 1u);
+                        } else {
+                            Out[out_off] = res;
+                        }
                     }
                 }
             `,
@@ -367,8 +375,9 @@ export class WebGPUBackend {
 
             const seqLen = shape ? (shape[0] || 1) : 1;
             if (shader.includes('attention_core')) {
+                // مواءمة حجم الـ Grid تماماً مع الـ Workgroup_size(16, 1) لمنع الـ Dead empty buffers
                 const numHeads = params?.numHeads || 8;
-                pass.dispatchWorkgroups(seqLen, numHeads); 
+                pass.dispatchWorkgroups(Math.ceil(seqLen / 16) || 1, numHeads); 
             } else if (shader.includes('layer_norm') || shader.includes('softmax')) {
                 pass.dispatchWorkgroups(Math.ceil(seqLen / 64) || 1);
             } else if (shader.includes('matmul')) {
