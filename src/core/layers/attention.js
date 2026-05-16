@@ -2,12 +2,6 @@
  * src/core/layers/attention.js
  * الحالة: النسخة السيادية الفولاذية والمجنونة (Quantum Resilient & Anti-NaN Armour) - رفيق-AI
  * الحماية والمعايرة الصارمة: إبراهيم شحات لضبط مسارات الحساب التفاعلي ومنع موت الإشارة الحركية
- *
- * الإصلاح الهندسي الحاسم:
- * - فك قيد البعد الثابت وجعل الأبعاد ديناميكية تعتمد على طول النص الفعلي [seqLen, embedDim] لتفادي تلاشي التوكنز.
- * - تمرير params.N و params.K لكل عمليات matmul لحساب أبعاد الـ GPU بدقة صارمة مع مواءمة البعد الحركي الأول.
- * - الحفاظ الكامل على جميع المسارات والأسماء والدوال دون أي تغيير في الواجهة العامة للمشروع.
- * - حقن حواجز رياضية تمنع انزلاق المصفوفات إلى الصفر أو الـ NaN كلياً.
  */
 
 import { Tensor } from '../tensor.js';
@@ -97,9 +91,11 @@ export class MultiHeadAttention {
     /**
      * معاملات قياسية موحدة لعمليات matmul:
      * يمرر بدقة للـ Backend ليعرف الـ GPU حدود الـ Grid والـ Threads بحسابات الكومبايلر
+     * تم الإصلاح بواسطة إبراهيم لتضمين البعد الحركي الأول M (طول النص) منعاً لتصفير الحسابات
      */
-    _matmulParams() {
+    _matmulParams(seqLen) {
         return {
+            M: seqLen || 1, // البعد الحرج المفقود سابقاً
             N: this.embedDim,
             K: this.embedDim
         };
@@ -123,7 +119,7 @@ export class MultiHeadAttention {
             inputs: [x, this.queryWeights],
             shape: [...dynamicShape],
             id: `attn_q_${pulseId}`,
-            params: this._matmulParams()
+            params: this._matmulParams(seqLen)
         });
 
         // ------------------------------------------------------------------
@@ -134,7 +130,7 @@ export class MultiHeadAttention {
             inputs: [x, this.keyWeights],
             shape: [...dynamicShape],
             id: `attn_k_${pulseId}`,
-            params: this._matmulParams()
+            params: this._matmulParams(seqLen)
         });
 
         // ------------------------------------------------------------------
@@ -145,7 +141,7 @@ export class MultiHeadAttention {
             inputs: [x, this.valueWeights],
             shape: [...dynamicShape],
             id: `attn_v_${pulseId}`,
-            params: this._matmulParams()
+            params: this._matmulParams(seqLen)
         });
 
         // ------------------------------------------------------------------
@@ -174,7 +170,7 @@ export class MultiHeadAttention {
             inputs: [attentionContext, this.outputWeights],
             shape: [...dynamicShape],
             id: `attn_out_proj_${pulseId}`,
-            params: this._matmulParams()
+            params: this._matmulParams(seqLen)
         });
 
         // ------------------------------------------------------------------
