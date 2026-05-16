@@ -2,7 +2,7 @@
  * src/core/webgpubackend.js
  * إصدار الوعي الكامل والتطهير الذري الحقيقي (Ultra Diagnostic & True WGSL Compliance)
  * المطور خصيصاً لـ: إبراهيم شحات (مشروع رفيق-AI)
- * التحديث: إزالة async/await من الـ Dispatch لضمان التزامن الفوري للأوامر ومنع الـ Zero-Out
+ * التحديث الأخير: معالجة الـ Pipeline Cache Miss وتكثيف رقابة الـ Attention لمنع الـ Zero-Out
  */
 
 export class WebGPUBackend {
@@ -10,6 +10,38 @@ export class WebGPUBackend {
         this.device = device;
         this.pipelineCache = new Map();
         this.tensorBuffers = new Map();
+        
+        // 🔮 الإقلاع الفوري: صهر وتجهيز كافة الـ Pipelines في الـ VRAM لمنع خطأ الـ Return الصامت
+        this.compileAllPipelines();
+    }
+
+    /**
+     * دالة الصهر والتحضير المسبق (Warmup) لضمان ملء الكاش قبل بدء أول عملية معالجة
+     */
+    compileAllPipelines() {
+        if (!this.device) return;
+        
+        const ops = ['embedding_lookup', 'matmul', 'matmul_add', 'attention_core', 'layer_norm', 'softmax', 'add', 'add_pos_encoding', 'gelu'];
+        console.log("%c🔮 [AKASHA WARMUP] جاري صهر وبناء خطوط الـ Pipelines مسبقاً في الـ VRAM لتأمين الكاش المتزامن...", "color: #00ffff; font-weight: bold; background: #002222; padding: 3px;");
+        
+        for (const op of ops) {
+            const shaderCode = this._getShader(op);
+            const module = this.device.createShaderModule({ code: shaderCode });
+            
+            this.device.createComputePipelineAsync({
+                layout: 'auto',
+                compute: { module, entryPoint: 'main' }
+            }).then(pipeline => {
+                this.pipelineCache.set(shaderCode, pipeline);
+                if (op === 'attention_core') {
+                    console.log(`%c🔥 [ATTENTION PIPELINE SECURED] -> تم حرق النواة وتأمين كاش الانتباه الجاهز للاشتعال اللحظي!`, "color: #ff00ff; font-weight: bold;");
+                } else {
+                    console.log(`%c⚡ [PIPELINE READY] -> تم تأمين الكاش الحسابي للعملية: ${op}`, "color: #00ffaa;");
+                }
+            }).catch(err => {
+                console.error(`❌ فشل تسخين البايبلاين لـ ${op}:`, err);
+            });
+        }
     }
 
     async execute(plan) {
@@ -37,7 +69,6 @@ export class WebGPUBackend {
                 if (rawData) {
                     let data = rawData instanceof Float32Array ? rawData : new Float32Array(rawData);
                     
-                    // فحص جنائي لمحتوى البيانات المدخلة قبل رفعها للـ VRAM
                     let isDead = true;
                     let zeroCount = 0;
                     for (let i = 0; i < data.length; i++) {
@@ -84,14 +115,14 @@ export class WebGPUBackend {
                 continue;
             }
 
-            // 3. استدعاء الـ Shader والتنفيذ الفوري المتزامن (بدون await بناءً على تعديلك الذكي)
+            // 3. استدعاء الـ Shader والتنفيذ الفوري المتزامن
             const shaderCode = this._getShader(currentOp);
             const uniformBuffer = this._createUniformBuffer(currentOp, step.shape, step.params);
             
             this._dispatch(shaderCode, commandEncoder, inputBuffers, outBuffer, uniformBuffer, step.shape, step.params, step.id);
         }
 
-        // 4. استخراج المخرج النهائي وتطهيره ذرياً من الـ NaN والـ Infinity
+        // 4. استخراج المخرج النهائي وتطهيره ذرياً
         const lastStep = plan[plan.length - 1];
         if (!lastStep) {
             console.error("%c🚨 [CRITICAL GRAPH FAILURE] الخطة فارغة تماماً! الـ Graph لم يرسل عقدة مخرجات نهائية صالحة للقراءة.", "color: #ff0033; font-weight: bold;");
@@ -108,7 +139,6 @@ export class WebGPUBackend {
 
         let result = await this._readBuffer(commandEncoder, finalBuffer, finalSize);
 
-        // صمام الأمان الذري المطور لحماية الكلمات المرجحة ومنع الـ NaN الخبيث
         let nanRepairedCount = 0;
         let absoluteZeroCount = 0;
         
@@ -133,7 +163,6 @@ export class WebGPUBackend {
         return result;
     }
 
-    // دالة مساعدة لقراءة أي بفر وسيط حيوياً لمنع قراءات الـ NaN الذاكرية وتتبع الإشارات الصامتة
     async readBuffer(id) {
         if (!this.tensorBuffers.has(id)) return null;
         
@@ -231,13 +260,11 @@ export class WebGPUBackend {
                     let q_idx = id.x; 
                     let head_idx = id.y;
                     
-                    // 🛡️ حجر صحي فوري لمنع الـ Threads الزائدة من تخريب الـ VRAM
                     if (q_idx >= p.seq_len || head_idx >= p.num_heads) { return; }
                     
                     let embed_dim = p.head_dim * p.num_heads;
                     var max_score = -50.0; 
 
-                    // الخطوة 1: حساب الـ Scores والبحث عن الماكس الآمن
                     for (var k_idx = 0u; k_idx <= q_idx; k_idx = k_idx + 1u) {
                         var sum = 0.0;
                         for (var d = 0u; d < p.head_dim; d = d + 1u) {
@@ -251,7 +278,6 @@ export class WebGPUBackend {
                         }
                     }
 
-                    // الخطوة 2: حساب المجموع الأسّي المستقر (Safe Softmax Denominator)
                     var exp_sum = 0.0;
                     for (var k_idx = 0u; k_idx <= q_idx; k_idx = k_idx + 1u) {
                         var sum = 0.0;
@@ -268,7 +294,6 @@ export class WebGPUBackend {
                     
                     if (exp_sum <= 0.0) { exp_sum = 1.0; }
 
-                    // الخطوة 3: ضرب مصفوفة الانتباه في الـ Values وحقن النبضة الحية
                     for (var d = 0u; d < p.head_dim; d = d + 1u) {
                         var res = 0.0;
                         for (var i = 0u; i <= q_idx; i = i + 1u) {
@@ -403,17 +428,34 @@ export class WebGPUBackend {
         return kernels[op] || kernels['add'];
     }
 
-    // ✅ التعديل الثاني: تمت إزالة كلمة async تماماً لتصبح دالة مزامنة فورية لتسجيل الأوامر
     _dispatch(shader, encoder, inputs, output, uniform, shape, params, nodeId) {
         try {
-            // الاسترجاع من الكاش فوري لأن الـ Shader Module مبني مسبقاً
-            const pipeline = this._pipelineCacheGetSync(shader);
+            let pipeline = this._pipelineCacheGetSync(shader);
+            
+            // 🛡️ حائط الصد الأخير والنهائي لمنع الـ Pipeline Miss الصامت
             if (!pipeline) {
-                // خطة دفاعية في حال لم يُخلق البايبلاين بعد (تحدث عند التشغيل لأول مرة فقط)
-                this._getOrCreatePipeline(shader).then(() => {
-                    console.log(`%c🔄 [PIPELINE WARMED] تم تحضير خط بايبلاين جديد للعقدة [${nodeId}] ليعمل فوراً في الخطوة القادمة.`, "color: #00ffff;");
+                console.warn(`%c⚠️ [CACHE MISS CRISIS] العقدة [${nodeId}] لم تجد البايبلاين في الكاش! جاري البناء الجبري القسري الحين...`, "color: #ffaa00; font-weight: bold;");
+                const module = this.device.createShaderModule({ code: shader });
+                pipeline = this.device.createComputePipeline({
+                    layout: 'auto',
+                    compute: { module, entryPoint: 'main' }
                 });
-                return;
+                this.pipelineCache.set(shader, pipeline);
+            }
+
+            const isAttention = shader.includes('attention_core');
+            
+            // 🔍 طباعة كونسول مكثفة لمراقبة مصفوفة الانتباه قبل الدخول لكرت الشاشة
+            if (isAttention) {
+                console.log(`%c⚡ [ATTENTION DISPATCH START] -------------------------------------`, "color: #ff00ff; font-weight: bold;");
+                console.log(`%c📍 العقدة: %c${nodeId}`, "color: #ffffff;", "color: #ffff00; font-weight: bold;");
+                console.log(`%c📐 الأبعاد الهندسية (Shape): %c[${shape ? shape.join(', ') : 'unknown'}]`, "color: #ffffff;", "color: #00ffff;");
+                console.log(`%c🧠 المعاملات المستلمة (Params):`, "color: #ffffff;", params);
+                console.log(`%c🧳 بفرات المدخلات المرتبطة بالـ VRAM:`, "color: #ffffff;");
+                inputs.forEach((buf, idx) => {
+                    console.log(`   └─> Input Buffer [${idx}]: Size = ${buf.size} Bytes | Usage = ${buf.usage}`);
+                });
+                console.log(`%c📦 بفر المخرجات المجهز لاستلام النتائج: %cSize = ${output.size} Bytes`, "color: #ffffff;", "color: #00ffaa;");
             }
 
             const entries = inputs.map((buf, i) => ({ binding: i, resource: { buffer: buf } }));
@@ -427,8 +469,10 @@ export class WebGPUBackend {
 
             const seqLen = shape ? (shape[0] || 1) : 1;
             
-            if (shader.includes('attention_core')) {
+            if (isAttention) {
                 const numHeads = params?.numHeads || 8;
+                // حساب مجموعات العمل الموزعة على كرت الشاشة
+                console.log(`%c🚀 [GPU GRID DISPATCH] جاري إطلاق الآلاف من خيوط المعالجة المتوازية (Workgroups): X (SeqLen) = ${seqLen}, Y (Heads) = ${numHeads}`, "color: #00ffaa; font-weight: bold;");
                 pass.dispatchWorkgroups(seqLen, numHeads); 
             } else if (shader.includes('matmul')) {
                 const M = seqLen;
@@ -441,6 +485,12 @@ export class WebGPUBackend {
                 pass.dispatchWorkgroups(Math.ceil(totalSize / 64) || 1);
             }
             pass.end();
+
+            if (isAttention) {
+                console.log(`%c✅ [ATTENTION DISPATCH COMPLETE] تم جدولة الأوامر بنجاح وتأمين خطة المعالجة الرسومية.`, "color: #ff00ff; font-weight: bold;");
+                console.log(`%c⚡ -----------------------------------------------------------------`, "color: #ff00ff; font-weight: bold;");
+            }
+
         } catch (err) {
             console.error(`%c🚨 [DISPATCH ERROR] فشل ذريع أثناء تنفيذ وجدولة العقدة [${nodeId}]: ${err.message}`, "color: #ff3333; font-weight: bold; background: #220000;");
         }
