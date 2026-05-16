@@ -26,7 +26,7 @@ export class Embedding {
     }
 
     /**
-     * مُولد مصفوفة الكلمات الفولاذي مع حماية التوزيع (Xavier-Gaussian Armor)
+     * مُولد مصفوفة الكلمات الفولاذي مع حماية التوزيع (Xavier-Gaussian Armor) + حقن مصل المناعة للـ UNK
      */
     _initWeights(rows, cols, name) {
         const size = rows * cols;
@@ -45,6 +45,19 @@ export class Embedding {
             const eps = (Math.random() - 0.5) * 1e-6;
             data[i] = (val * std) + eps;
         }
+
+        // ================= [ جراحة أكاشا الطارئة لحماية الإشارة ] =================
+        // تأمين الـ Index 0 (غالباً الـ Padding) ليكون صفراً حقيقياً ومستقراً تماماً لا تشويه فيه
+        for (let j = 0; j < cols; j++) {
+            data[0 * cols + j] = 0.0;
+        }
+
+        // تأمين الـ Index 1 (الـ UNK Token القاتل صامتاً): 
+        // نحقنه بقيم ثابتة قوية التباين (مثلاً توزيع متأرجح بين 0.1 و -0.1) ليعرف الـ Shader أن الإشارة حية ولا يصفر البفر.
+        for (let j = 0; j < cols; j++) {
+            data[1 * cols + j] = (j % 2 === 0 ? 0.1 : -0.1);
+        }
+        // =========================================================================
         
         return new Tensor(data, { 
             shape: [rows, cols], 
