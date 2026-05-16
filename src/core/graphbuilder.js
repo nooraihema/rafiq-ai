@@ -20,79 +20,101 @@ export class GraphBuilder {
         this.nodes.clear();
         this.executionOrder = [];
         const visited = new Set();
-        const temporaryMark = new Set(); // لمنع الحلقات التكرارية اللانهائية (Cyclic Dependency Check)
-        
+        const temporaryMark = new Set(); // لمنع الحلقات التكرارية اللانهائية
+
         const walk = (tensor) => {
             if (!tensor) return;
-            
+
             if (!tensor.id) {
                 tensor.id = `tensor_auto_${Math.random().toString(36).substr(2, 9)}`;
             }
 
             if (visited.has(tensor.id)) return;
+
             if (temporaryMark.has(tensor.id)) {
-                console.error(`%c🚨 [GRAPH ERROR] تم رصد حلقة تكرارية قاتلة عند التنسور: ${tensor.id}`, "color: #ff3333; font-weight: bold;");
+                console.error(
+                    `%c🚨 [GRAPH ERROR] تم رصد حلقة تكرارية قاتلة عند التنسور: ${tensor.id}`,
+                    "color: #ff3333; font-weight: bold;"
+                );
                 return;
             }
 
-            // وضع علامة مؤقتة أثناء فحص الفروع
             temporaryMark.add(tensor.id);
-            
-            // إذا كان التنسور ناتج عن عملية (له مدخلات)
+
+            // =========================
+            // 📌 التعامل مع العقد ذات المدخلات (Operations)
+            // =========================
             if (tensor.inputs && tensor.inputs.length > 0) {
-                // زيارة كافة المدخلات أولاً لضمان جهوزيتها في قاع المصفوفة (Post-order traversal)
+
                 for (const input of tensor.inputs) {
                     walk(input);
                 }
 
                 const opNode = new OpNode(tensor.op, tensor.inputs);
-                
+
                 try {
                     opNode.validateShapes();
                 } catch (err) {
-                    throw new Error(`Graph Construction Failed: ${err.message} at tensor ${tensor.id}`);
+                    throw new Error(
+                        `Graph Construction Failed: ${err.message} at tensor ${tensor.id}`
+                    );
                 }
 
                 temporaryMark.delete(tensor.id);
                 visited.add(tensor.id);
+
                 this.nodes.set(tensor.id, opNode);
-                
-                // حقن الـ inputIds صراحة لكي يراها بفر الـ WebGPUBackend فوراً
+
                 this.executionOrder.push({
-                    id: tensor.id, // تطابق مع متطلبات محرك الذاكرة
+                    id: tensor.id,
                     outputId: tensor.id,
                     op: opNode,
-                    inputIds: tensor.inputs.map(inTensor => inTensor.id), // 🔥 المفتاح المفقود لحل لغز الأصفار!
+                    inputIds: tensor.inputs.map(inTensor => inTensor.id),
                     shape: tensor.shape,
-                    tensor: tensor
+                    tensor: tensor,
+
+                    // 🔥 FIX: تمرير بيانات التنسور الخام (كان مفقود ويؤدي لصفرية الإشارة)
+                    data: tensor.data,
+                    value: tensor.value,
+                    params: tensor.params
                 });
-            } else {
-                // تسجيل العُقد الثابتة والمدخلات (Constants/Inputs) كقاعدة أساسية
+
+            } 
+            // =========================
+            // 📌 التعامل مع العقد الثابتة (Const / Input)
+            // =========================
+            else {
+
                 const constNode = new OpNode('const', []);
-                
+
                 temporaryMark.delete(tensor.id);
                 visited.add(tensor.id);
+
                 this.nodes.set(tensor.id, constNode);
-                
-                // استخدام push العادي؛ بما أننا شغالين Post-Order، العقد الصامتة (الخامات) 
-                // هتتسجل تلقائياً في بداية المصفوفة بالترتيب الطبيعي للاستدعاء دون بعثرة الـ unshift
+
                 this.executionOrder.push({
                     id: tensor.id,
                     outputId: tensor.id,
                     op: constNode,
-                    inputIds: [], // الثوابت ليس لها مدخلات
+                    inputIds: [],
                     shape: tensor.shape,
-                    tensor: tensor
+                    tensor: tensor,
+
+                    // 🔥 FIX: تمرير بيانات الثوابت بشكل صريح
+                    data: tensor.data,
+                    value: tensor.value,
+                    params: tensor.params
                 });
             }
         };
 
         walk(rootTensor);
-        
+
         console.log(
-            `%c📐 [Architect] تم بناء الـ Graph بنجاح. عدد الخطوات الحسابية المؤمنة: ${this.executionOrder.length}`, 
+            `%c📐 [Architect] تم بناء الـ Graph بنجاح. عدد الخطوات الحسابية المؤمنة: ${this.executionOrder.length}`,
             "color: #00ffcc; font-weight: bold;"
         );
+
         return this.executionOrder;
     }
 
@@ -104,6 +126,10 @@ export class GraphBuilder {
         let currentGroup = [];
 
         for (const step of this.executionOrder) {
+
+            // =========================
+            // 📌 حماية const
+            // =========================
             if (step.op.type === 'const') {
                 if (currentGroup.length > 0) {
                     groups.push(currentGroup);
@@ -114,17 +140,41 @@ export class GraphBuilder {
             }
 
             const def = step.op.getOpDefinition?.() || null;
-            
+
+            // =========================
+            // 🔥 FIX CRITICAL: fallback آمن لمنع فقدان attention / ops
+            // =========================
+            const isAttention =
+                step.op.type === 'attention_core' ||
+                step.op.name === 'attention_core';
+
+            if (isAttention) {
+                if (currentGroup.length > 0) {
+                    groups.push(currentGroup);
+                    currentGroup = [];
+                }
+                groups.push([step]);
+                continue;
+            }
+
+            // =========================
+            // 📌 ElementWise fusion logic
+            // =========================
             if (def && def.isElementWise) {
                 currentGroup.push(step);
             } else {
-                if (currentGroup.length > 0) groups.push(currentGroup);
+                if (currentGroup.length > 0) {
+                    groups.push(currentGroup);
+                }
                 groups.push([step]);
                 currentGroup = [];
             }
         }
 
-        if (currentGroup.length > 0) groups.push(currentGroup);
+        if (currentGroup.length > 0) {
+            groups.push(currentGroup);
+        }
+
         return groups;
     }
 
@@ -133,9 +183,13 @@ export class GraphBuilder {
      */
     dumpGraph() {
         if (this.executionOrder.length === 0) return "Graph is empty.";
-        
+
         return this.executionOrder.map((step, index) => {
-            const inputs = step.inputIds && step.inputIds.length > 0 ? step.inputIds.join(', ') : 'none';
+            const inputs =
+                step.inputIds && step.inputIds.length > 0
+                    ? step.inputIds.join(', ')
+                    : 'none';
+
             return `${index}: [${step.outputId}] Shape(${step.shape}) = ${step.op.type}(${inputs})`;
         }).join('\n');
     }
