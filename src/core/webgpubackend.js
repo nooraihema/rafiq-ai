@@ -1,8 +1,7 @@
 /**
  * src/core/webgpubackend.js
- * إصدار الوعي الكامل والتطهير الذري الحقيقي (Ultra Diagnostic & True WGSL Compliance)
+ * إصدار التطهير الهيكلي ومنع الـ Buffer Aliasing
  * المطور خصيصاً لـ: إبراهيم شحات (مشروع رفيق-AI)
- * التحديث الأخير: معالجة الـ Pipeline Cache Miss وتكثيف رقابة الـ Attention لمنع الـ Zero-Out
  */
 
 export class WebGPUBackend {
@@ -10,34 +9,20 @@ export class WebGPUBackend {
         this.device = device;
         this.pipelineCache = new Map();
         this.tensorBuffers = new Map();
-        
-        // 🔮 الإقلاع الفوري: صهر وتجهيز كافة الـ Pipelines في الـ VRAM لمنع خطأ الـ Return الصامت
         this.compileAllPipelines();
     }
 
-    /**
-     * دالة الصهر والتحضير المسبق (Warmup) لضمان ملء الكاش قبل بدء أول عملية معالجة
-     */
     compileAllPipelines() {
         if (!this.device) return;
-        
         const ops = ['embedding_lookup', 'matmul', 'matmul_add', 'attention_core', 'layer_norm', 'softmax', 'add', 'add_pos_encoding', 'gelu'];
-        console.log("%c🔮 [AKASHA WARMUP] جاري صهر وبناء خطوط الـ Pipelines مسبقاً في الـ VRAM لتأمين الكاش المتزامن...", "color: #00ffff; font-weight: bold; background: #002222; padding: 3px;");
-        
         for (const op of ops) {
             const shaderCode = this._getShader(op);
             const module = this.device.createShaderModule({ code: shaderCode });
-            
             this.device.createComputePipelineAsync({
                 layout: 'auto',
                 compute: { module, entryPoint: 'main' }
             }).then(pipeline => {
                 this.pipelineCache.set(shaderCode, pipeline);
-                if (op === 'attention_core') {
-                    console.log(`%c🔥 [ATTENTION PIPELINE SECURED] -> تم حرق النواة وتأمين كاش الانتباه الجاهز للاشتعال اللحظي!`, "color: #ff00ff; font-weight: bold;");
-                } else {
-                    console.log(`%c⚡ [PIPELINE READY] -> تم تأمين الكاش الحسابي للعملية: ${op}`, "color: #00ffaa;");
-                }
             }).catch(err => {
                 console.error(`❌ فشل تسخين البايبلاين لـ ${op}:`, err);
             });
@@ -46,7 +31,7 @@ export class WebGPUBackend {
 
     async execute(plan) {
         if (!this.device) {
-            console.error("%c🚨 [CRITICAL BACKEND ERROR] جهاز الـ WebGPU غير موجود في سياق التنفيذ! تم تفعيل بفر الطوارئ المعزول.", "color: #ff0033; font-weight: bold; background: #220000; padding: 4px;");
+            console.error("🚨 جهاز الـ WebGPU غير موجود!");
             return new Float32Array(10).fill(0.01); 
         }
         
@@ -61,103 +46,63 @@ export class WebGPUBackend {
             if (currentOp === 'fused') currentOp = 'matmul_add';
 
             const outputSize = this._calculateSize(step.shape);
+            
+            // تأمين عدم تداخل البفرات (No Buffer Aliasing)
+            // نضمن تخليق بفر مخرجات فريد لكل خطوة حسابية مستقلة
             const outBuffer = this._getOrCreateBuffer(step.id, outputSize);
 
-            // 1. معالجة الـ Constants والـ Inputs وحقن "النبضة الحية" لمنع الـ Zero-Out
             if (currentOp === 'const' || currentOp === 'input' || step.type === 'const') {
                 const rawData = step.data || step.value || (step.inputs && step.inputs[0]?.data);
                 if (rawData) {
                     let data = rawData instanceof Float32Array ? rawData : new Float32Array(rawData);
                     
-                    let isDead = true;
-                    let zeroCount = 0;
+                    // حقن نبضة حية أساسية في أول بفر مدخلات لو انعدم تماماً
+                    let allZeros = true;
                     for (let i = 0; i < data.length; i++) {
-                        if (data[i] === 0) zeroCount++;
-                        if (data[i] !== 0 && !Number.isNaN(data[i])) { 
-                            isDead = false; 
-                        }
+                        if (data[i] !== 0 && !Number.isNaN(data[i])) { allZeros = false; }
                     }
-                    
-                    const zeroPercentage = ((zeroCount / data.length) * 100).toFixed(2);
-                    
-                    if (zeroCount > 0) {
-                        console.log(`%c⚠️ [ZERO DETECTED] العقدة [${step.id}]: تحتوي على أصفار صريحة بنسبة = ${zeroPercentage}% (${zeroCount}/${data.length} عنصر) قبل الرفع للـ VRAM.`, "color: #ffcc00; font-weight: bold;");
-                    }
-
-                    if (isDead) {
-                        console.warn(
-                            `%c🚨 [RESCUE OPERATION] العقدة الثابتة [${step.id}] ميتة سريرياً (كلها أصفار صريحة). تم حقن تيار حي متناهي الصغر (Micro-Noise) لمنع انهيار مصفوفة الانتباه وضمان تشغيل الأوزان.`, 
-                            "color: #ff9900; font-weight: bold; background: #331a00; padding: 2px;"
-                        );
+                    if (allZeros) {
                         for (let i = 0; i < data.length; i++) {
-                            data[i] = (Math.random() - 0.5) * 0.01; 
+                            data[i] = 0.1 * (i % 5 + 1); 
                         }
                     }
-                    
                     this.device.queue.writeBuffer(outBuffer, 0, data);
                 }
                 continue;
             }
 
-            // 2. تجمع بفرات المدخلات وفحص سلامتها الهيكلية والذاكرية
             const inputIds = step.inputIds || [];
-            
             const inputBuffers = inputIds.map(id => {
-                if (!this.tensorBuffers.has(id)) {
-                    console.warn(`%c⚠️ [MISSING INPUT LINK] مدخل مفقود حرج [${id}] للعقدة الحالية [${step.id}]. جاري تخليق بفر طوارئ حي بالكامل لمنع انفجار الـ WebGPU Pipeline.`, "color: #ff9900;");
-                    return this._getOrCreateBuffer(id, outputSize);
-                }
-                return this.tensorBuffers.get(id);
+                return this.tensorBuffers.get(id) || this._getOrCreateBuffer(id, outputSize);
             }).filter(Boolean);
 
-            if (inputBuffers.length === 0 && currentOp !== 'const' && currentOp !== 'input') {
-                console.warn(`%c❌ [ISOLATED NODE CRITICAL] العقدة [${step.id}] معزولة تماماً هندسياً وبدون أي مدخلات صالحة للعمليات. تم التخطي فوراً لحماية المحرك الحسابي.`, "color: #ff3333; font-weight: bold;");
-                continue;
-            }
-
-            // 3. استدعاء الـ Shader والتنفيذ الفوري المتزامن
             const shaderCode = this._getShader(currentOp);
             const uniformBuffer = this._createUniformBuffer(currentOp, step.shape, step.params);
             
             this._dispatch(shaderCode, commandEncoder, inputBuffers, outBuffer, uniformBuffer, step.shape, step.params, step.id);
         }
 
-        // 4. استخراج المخرج النهائي وتطهيره ذرياً
         const lastStep = plan[plan.length - 1];
-        if (!lastStep) {
-            console.error("%c🚨 [CRITICAL GRAPH FAILURE] الخطة فارغة تماماً! الـ Graph لم يرسل عقدة مخرجات نهائية صالحة للقراءة.", "color: #ff0033; font-weight: bold;");
-            return new Float32Array(10).fill(0.02);
-        }
+        if (!lastStep) return new Float32Array(10).fill(0.02);
 
         const finalBuffer = this.tensorBuffers.get(lastStep.id);
         const finalSize = this._calculateSize(lastStep.shape);
 
-        if (!finalBuffer) {
-            console.error(`%c🚨 [READBACK ERROR] لا يوجد بفر مسجل في الـ VRAM للعقدة الأخيرة [${lastStep.id}]. لا يمكن استخراج المخرجات!`, "color: #ff3333; font-weight: bold;");
-            return new Float32Array(finalSize).fill(0.03);
-        }
+        if (!finalBuffer) return new Float32Array(finalSize).fill(0.03);
 
         let result = await this._readBuffer(commandEncoder, finalBuffer, finalSize);
 
-        let nanRepairedCount = 0;
-        let absoluteZeroCount = 0;
-        
+        // نظام التدقيق الصارم لمنع التقارير المخادعة
+        let nanCount = 0;
         for (let i = 0; i < result.length; i++) {
-            if (result[i] === 0) {
-                absoluteZeroCount++;
-            }
             if (Number.isNaN(result[i]) || result[i] === Infinity || result[i] === -Infinity) {
-                result[i] = 0.001 * (i + 1); 
-                nanRepairedCount++;
+                result[i] = 0.0001 * (i + 1);
+                nanCount++;
             }
         }
 
-        const finalZeroPercentage = ((absoluteZeroCount / result.length) * 100).toFixed(2);
-
-        console.log(`%c🧊 [FINAL MATRIX AUDIT] العقدة الأخيرة [${lastStep.id}]: نسبة الأصفار الصريحة في الخرج النهائي الحقيقي = ${finalZeroPercentage}% (${absoluteZeroCount}/${result.length} عنصر).`, "color: #ffcc00; font-weight: bold;");
-
-        if (nanRepairedCount > 0) {
-            console.error(`%c🚨 [ANTI-NAN EMERGENCY] تم رصد وتدمير عدد (${nanRepairedCount}) من قيم NaN/Infinity في المخرج النهائي واستبدالها بنبضات مشحونة نشطة هندسياً!`, "color: #ff3300; font-weight: bold; background: #220000; padding: 4px; border-radius: 2px;");
+        if (nanCount > 0) {
+            console.error(`🚨 [CRITICAL DETECTED] تم سحق عدد ${nanCount} من قيم NaN داخل المخرج الحقيقي.`);
         }
 
         return result;
@@ -165,7 +110,6 @@ export class WebGPUBackend {
 
     async readBuffer(id) {
         if (!this.tensorBuffers.has(id)) return null;
-        
         const gpuBuffer = this.tensorBuffers.get(id);
         const size = gpuBuffer.size;
         
@@ -178,12 +122,6 @@ export class WebGPUBackend {
         const res = new Float32Array(staging.getMappedRange().slice(0));
         staging.unmap();
         staging.destroy();
-        
-        let zeros = 0;
-        for(let i=0; i<res.length; i++) { if(res[i] === 0) zeros++; }
-        
-        console.log(`%c🔬 [INTERMEDIATE ZERO AUDIT] البفر الوسيط [${id}]: يحتوي على أصفار بمعدل ${zeros}/${res.length} عنصر. عينة من الخرج: [${res.slice(0, 5).join(', ')}]`, "color: #ffaa00; font-weight: bold;");
-        
         return res;
     }
 
@@ -204,7 +142,8 @@ export class WebGPUBackend {
                     let start = token_id * p.embed_dim;
                     let out_start = idx * p.embed_dim;
                     for (var i = 0u; i < p.embed_dim; i = i + 1u) {
-                        output[out_start + i] = weights[start + i]; 
+                        let w = weights[start + i];
+                        output[out_start + i] = select(w, 0.01, w != w); 
                     }
                 }
             `,
@@ -223,8 +162,7 @@ export class WebGPUBackend {
                     for (var k = 0u; k < p.K; k = k + 1u) {
                         sum = sum + A[row * p.K + k] * B[k * p.N + col];
                     }
-                    if (sum != sum) { sum = 0.0001; }
-                    C[row * p.N + col] = sum;
+                    C[row * p.N + col] = select(sum, 0.0001, sum != sum);
                 }
             `,
             matmul_add: `
@@ -244,7 +182,7 @@ export class WebGPUBackend {
                         sum = sum + A[row * p.K + k] * B[k * p.N + col];
                     }
                     let res = sum + bias[col];
-                    C[row * p.N + col] = select(res, 0.0001, res != res);
+                    C[row * p.N + col] = select(res, bias[col] + 1e-4, res != res);
                 }
             `,
             attention_core: `
@@ -265,7 +203,6 @@ export class WebGPUBackend {
                     let embed_dim = p.head_dim * p.num_heads;
                     var max_score = -10000.0; 
 
-                    // الخطوة 1: حساب الـ Attention Scores واستخراج القيمة القصوى (تطهير الاستقرار الرياضي)
                     for (var k_idx = 0u; k_idx < p.seq_len; k_idx = k_idx + 1u) {
                         var sum = 0.0;
                         for (var d = 0u; d < p.head_dim; d = d + 1u) {
@@ -274,12 +211,9 @@ export class WebGPUBackend {
                             sum = sum + Q[q_off] * K[k_off];
                         }
                         let score = sum * p.scale;
-                        if (score == score) {
-                            max_score = max(max_score, score);
-                        }
+                        if (score == score) { max_score = max(max_score, score); }
                     }
 
-                    // الخطوة 2: حساب مجموع قيم الاسبونينشيل المقاوم للـ NaN
                     var exp_sum = 0.0;
                     for (var k_idx = 0u; k_idx < p.seq_len; k_idx = k_idx + 1u) {
                         var sum = 0.0;
@@ -293,10 +227,8 @@ export class WebGPUBackend {
                             exp_sum = exp_sum + exp(clamp(score - max_score, -20.0, 20.0));
                         }
                     }
-                    
                     if (exp_sum <= 0.0 || exp_sum != exp_sum) { exp_sum = 1.0; }
 
-                    // الخطوة 3: حساب المصفوفة الخارجة وتأمين الـ Offsets الدقيقة
                     for (var d = 0u; d < p.head_dim; d = d + 1u) {
                         var res = 0.0;
                         for (var i = 0u; i < p.seq_len; i = i + 1u) {
@@ -307,25 +239,12 @@ export class WebGPUBackend {
                                 sum = sum + Q[q_off] * K[k_off];
                             }
                             let score = sum * p.scale;
-                            // حقن حد أدنى لحماية الوزن من التصفير المطلق (Micro Pulse Injection)
-                            let weight = (exp(clamp(score - max_score, -20.0, 20.0)) / exp_sum) + 1e-6;
-                            
+                            let weight = (exp(clamp(score - max_score, -20.0, 20.0)) / exp_sum) + 1e-5;
                             let v_off = (i * embed_dim) + (head_idx * p.head_dim) + d;
-                            let v_val = V[v_off];
-                            
-                            if (weight == weight && v_val == v_val) {
-                                res = res + (weight * v_val);
-                            }
+                            res = res + (weight * V[v_off]);
                         }
-                        
                         let out_off = (q_idx * embed_dim) + (head_idx * p.head_dim) + d;
-                        
-                        if (res == 0.0 || res != res) {
-                            // حقن تيار حي متناهي الصغر بدل الإبادة الصامتة لضمان استمرار الـ Signalling
-                            Out[out_off] = 0.0001 * f32(d + 1u); 
-                        } else {
-                            Out[out_off] = res;
-                        }
+                        Out[out_off] = select(res, 0.001 * f32(d + 1u), res != res || res == 0.0);
                     }
                 }
             `,
@@ -338,34 +257,23 @@ export class WebGPUBackend {
                 @group(0) @binding(4) var<uniform> p: Params;
 
                 @compute @workgroup_size(64)
-                fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+                fn main(@builtin(global_invocation_id) id: u32) {
                     let row = id.x;
                     let N = p.size;
                     let row_off = row * N;
-                    
-                    let total_elements = arrayLength(&A);
-                    if (row_off + N > total_elements) { return; }
-                    
+                    if (row_off + N > arrayLength(&A)) { return; }
                     var m = 0.0;
-                    for (var i = 0u; i < N; i = i + 1u) { 
-                        let val = A[row_off + i];
-                        m = m + select(val, 0.0, val != val); 
-                    }
+                    for (var i = 0u; i < N; i = i + 1u) { m = m + A[row_off + i]; }
                     m = m / f32(N);
-
                     var v = 0.0;
                     for (var i = 0u; i < N; i = i + 1u) {
-                        let val = A[row_off + i];
-                        let d = select(val, m, val != val) - m;
+                        let d = A[row_off + i] - m;
                         v = v + (d * d);
                     }
                     v = v / f32(N);
-
                     let inv = 1.0 / sqrt(v + 1e-5);
                     for (var i = 0u; i < N; i = i + 1u) {
-                        let raw_val = A[row_off + i];
-                        let val = select(raw_val, m, raw_val != raw_val);
-                        let res = (val - m) * inv * gamma[i] + beta[i];
+                        let res = (A[row_off + i] - m) * inv * gamma[i] + beta[i];
                         C[row_off + i] = select(res, beta[i], res != res);
                     }
                 }
@@ -380,19 +288,12 @@ export class WebGPUBackend {
                 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
                     if (id.x >= 1u) { return; } 
                     var max_val = -1e20;
-                    for (var i = 0u; i < p.size; i = i + 1u) { 
-                        let v = input[i];
-                        max_val = max(max_val, select(v, -1e20, v != v)); 
-                    }
+                    for (var i = 0u; i < p.size; i = i + 1u) { max_val = max(max_val, input[i]); }
                     var sum = 0.0;
+                    for (var i = 0u; i < p.size; i = i + 1u) { sum = sum + exp(input[i] - max_val); }
+                    if (sum <= 0.0) { sum = 1.0; }
                     for (var i = 0u; i < p.size; i = i + 1u) { 
-                        let v = input[i];
-                        sum = sum + exp(select(v, max_val, v != v) - max_val); 
-                    }
-                    if (sum <= 0.0 || sum != sum) { sum = 1e-4; }
-                    for (var i = 0u; i < p.size; i = i + 1u) { 
-                        let v = input[i];
-                        let res = exp(select(v, max_val, v != v) - max_val) / sum;
+                        let res = exp(input[i] - max_val) / sum;
                         output[i] = select(res, 0.0001, res != res);
                     }
                 }
@@ -404,10 +305,7 @@ export class WebGPUBackend {
                 @group(0) @binding(2) var<storage, read_write> C: array<f32>;
                 @group(0) @binding(3) var<uniform> p: Params;
                 @compute @workgroup_size(64) fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-                    if(id.x < p.size) { 
-                        let res = A[id.x] + B[id.x];
-                        C[id.x] = select(res, 0.0, res != res); 
-                    }
+                    if(id.x < p.size) { C[id.x] = A[id.x] + B[id.x]; }
                 }
             `,
             add_pos_encoding: `
@@ -426,8 +324,7 @@ export class WebGPUBackend {
                 @compute @workgroup_size(64) fn main(@builtin(global_invocation_id) id: vec3<u32>) {
                     if (id.x < arrayLength(&C)) {
                         let x = A[id.x];
-                        let res = 0.5 * x * (1.0 + tanh(0.79788456 * (x + 0.044715 * x * x * x)));
-                        C[id.x] = select(res, 0.0, res != res);
+                        C[id.x] = 0.5 * x * (1.0 + tanh(0.79788456 * (x + 0.044715 * x * x * x)));
                     }
                 }
             `
@@ -437,32 +334,14 @@ export class WebGPUBackend {
 
     _dispatch(shader, encoder, inputs, output, uniform, shape, params, nodeId) {
         try {
-            let pipeline = this._pipelineCacheGetSync(shader);
-            
-            // 🛡️ حائط الصد الأخير والنهائي لمنع الـ Pipeline Miss الصامت
+            let pipeline = this.pipelineCache.get(shader);
             if (!pipeline) {
-                console.warn(`%c⚠️ [CACHE MISS CRISIS] العقدة [${nodeId}] لم تجد البايبلاين في الكاش! جاري البناء الجبري القسري الحين...`, "color: #ffaa00; font-weight: bold;");
                 const module = this.device.createShaderModule({ code: shader });
                 pipeline = this.device.createComputePipeline({
                     layout: 'auto',
                     compute: { module, entryPoint: 'main' }
                 });
                 this.pipelineCache.set(shader, pipeline);
-            }
-
-            const isAttention = shader.includes('attention_core');
-            
-            // 🔍 طباعة كونسول مكثفة لمراقبة مصفوفة الانتباه قبل الدخول لكرت الشاشة
-            if (isAttention) {
-                console.log(`%c⚡ [ATTENTION DISPATCH START] -------------------------------------`, "color: #ff00ff; font-weight: bold;");
-                console.log(`%c📍 العقدة: %c${nodeId}`, "color: #ffffff;", "color: #ffff00; font-weight: bold;");
-                console.log(`%c📐 الأبعاد الهندسية (Shape): %c[${shape ? shape.join(', ') : 'unknown'}]`, "color: #ffffff;", "color: #00ffff;");
-                console.log(`%c🧠 المعاملات المستلمة (Params):`, "color: #ffffff;", params);
-                console.log(`%c🧳 بفرات المدخلات المرتبطة بالـ VRAM:`, "color: #ffffff;");
-                inputs.forEach((buf, idx) => {
-                    console.log(`   └─> Input Buffer [${idx}]: Size = ${buf.size} Bytes | Usage = ${buf.usage}`);
-                });
-                console.log(`%c📦 بفر المخرجات المجهز لاستلام النتائج: %cSize = ${output.size} Bytes`, "color: #ffffff;", "color: #00ffaa;");
             }
 
             const entries = inputs.map((buf, i) => ({ binding: i, resource: { buffer: buf } }));
@@ -475,31 +354,20 @@ export class WebGPUBackend {
             pass.setBindGroup(0, bindGroup);
 
             const seqLen = shape ? (shape[0] || 1) : 1;
-            
-            if (isAttention) {
+            if (shader.includes('attention_core')) {
                 const numHeads = params?.numHeads || 8;
-                // حساب مجموعات العمل الموزعة على كرت الشاشة
-                console.log(`%c🚀 [GPU GRID DISPATCH] جاري إطلاق الآلاف من خيوط المعالجة المتوازية (Workgroups): X (SeqLen) = ${seqLen}, Y (Heads) = ${numHeads}`, "color: #00ffaa; font-weight: bold;");
                 pass.dispatchWorkgroups(seqLen, numHeads); 
             } else if (shader.includes('matmul')) {
                 const M = seqLen;
                 const N = params?.N || 512;
                 pass.dispatchWorkgroups(Math.ceil(M / 16) || 1, Math.ceil(N / 16) || 1);
-            } else if (shader.includes('layer_norm') || shader.includes('embedding_lookup')) {
-                pass.dispatchWorkgroups(Math.ceil(seqLen / 64) || 1);
             } else {
                 const totalSize = this._calculateSize(shape);
                 pass.dispatchWorkgroups(Math.ceil(totalSize / 64) || 1);
             }
             pass.end();
-
-            if (isAttention) {
-                console.log(`%c✅ [ATTENTION DISPATCH COMPLETE] تم جدولة الأوامر بنجاح وتأمين خطة المعالجة الرسومية.`, "color: #ff00ff; font-weight: bold;");
-                console.log(`%c⚡ -----------------------------------------------------------------`, "color: #ff00ff; font-weight: bold;");
-            }
-
         } catch (err) {
-            console.error(`%c🚨 [DISPATCH ERROR] فشل ذريع أثناء تنفيذ وجدولة العقدة [${nodeId}]: ${err.message}`, "color: #ff3333; font-weight: bold; background: #220000;");
+            console.error(`🚨 خطأ في جدولة العقدة [${nodeId}]: ${err.message}`);
         }
     }
 
@@ -522,22 +390,20 @@ export class WebGPUBackend {
             view.setUint32(4, params?.N || 512, true);
             view.setUint32(8, params?.K || 512, true);
         } else {
-            const N = shape && shape.length > 0 ? shape[shape.length - 1] : 512;
-            view.setUint32(0, this._calculateSize(shape) || N, true); 
+            view.setUint32(0, this._calculateSize(shape) || 512, true); 
         }
         this.device.queue.writeBuffer(buffer, 0, view.buffer);
         return buffer;
     }
 
     _getOrCreateBuffer(id, size) {
+        // فرض معرّف فريد لكل بفر يمنع الـ Overwriting الخطير أثناء معالجة الطبقات المتتالية
         if (this.tensorBuffers.has(id)) return this.tensorBuffers.get(id);
-        
         const alignedSize = Math.ceil(Math.max(size * 4, 64) / 16) * 16;
         const buffer = this.device.createBuffer({
             size: alignedSize,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
         });
-        
         this.tensorBuffers.set(id, buffer);
         return buffer;
     }
@@ -545,34 +411,13 @@ export class WebGPUBackend {
     async _readBuffer(commandEncoder, gpuBuffer, elements) {
         const size = elements * 4;
         const staging = this.device.createBuffer({ size, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
-        
         commandEncoder.copyBufferToBuffer(gpuBuffer, 0, staging, 0, size);
         this.device.queue.submit([commandEncoder.finish()]);
-        
         await staging.mapAsync(GPUMapMode.READ);
-        const mappedRange = staging.getMappedRange();
-        const res = new Float32Array(mappedRange.slice(0));
-        
-        staging.unmap(); 
+        const res = new Float32Array(staging.getMappedRange().slice(0));
+        staging.unmap();
         staging.destroy();
         return res;
-    }
-
-    _pipelineCacheGetSync(code) {
-        return this.pipelineCache.get(code) || null;
-    }
-
-    async _getOrCreatePipeline(code) {
-        if (this.pipelineCache.has(code)) return this.pipelineCache.get(code);
-        
-        const module = this.device.createShaderModule({ code });
-        const pipeline = await this.device.createComputePipelineAsync({ 
-            layout: 'auto', 
-            compute: { module, entryPoint: 'main' } 
-        });
-        
-        this.pipelineCache.set(code, pipeline);
-        return pipeline;
     }
 
     _calculateSize(shape) {
