@@ -1,7 +1,7 @@
 /**
  * src/core/layers/sanitizer.js
- * طبقة التطهير والإنقاذ النبضي الفوري لـ (رفيق-AI)
- * وظيفتها: منع الموت الصامت للإشارة وضمان وجود طاقة حية داخل الـ VRAM
+ * طبقة التطهير والإنقاذ النبضي الفوري لـ (رفيق-AI) - النسخة المؤمنة حسابياً
+ * المطور: إبراهيم شحات
  */
 
 import { Tensor } from '../tensor.js';
@@ -16,28 +16,58 @@ export class SignalSanitizer {
 
     _ignitePulse() {
         for (let i = 0; i < this.embedDim; i++) {
-            // شحن قيم تتراوح بين 0.05 و 0.15 (إشارة نفسية دافئة لا يمكن تصفيرها)
-            this.antiZeroPulse[i] = 0.05 + Math.random() * 0.1;
+            // شحن قيم تتراوح بين 0.01 و 0.05 (تردد نفسي خفيف للحفاظ على طاقة الخلفية)
+            this.antiZeroPulse[i] = 0.01 + Math.random() * 0.04;
         }
     }
 
     /**
-     * تفحص التنسور، وإذا ثبت موته أو خلوه من الأبعاد، تعيد بناءه وحقنه بالنبض
+     * تفحص التنسور، وتجبر المحرك على بناء مسار حسابي حي في الـ GPU يمنع الـ Size: 0
      */
     sanitize(inputTensor, idName = "sanitized_pulse") {
-        const safeShape = [1, this.embedDim];
-
-        // 1. فحص الأبعاد وهيكل التنسور
-        if (!inputTensor || !inputTensor.shape || inputTensor.shape.length !== 2 || inputTensor.shape[1] !== this.embedDim) {
-            console.warn(`⚠️ [SANITIZER] لقطة حرجة: تم رصد تنسور مشوه، جاري إعادة البناء الهيكلي الحين.`);
+        // إذا كان التنسور منعدم تماماً، نخلق له كيان طوارئ بأبعاد مرنة تناسب عدد التوكنز
+        if (!inputTensor) {
+            console.warn(`⚠️ [SANITIZER] لقطة حرجة: التنسور منعدم تماماً! جاري تخليق بفر طوارئ.`);
             return new Tensor(this.antiZeroPulse, {
-                shape: safeShape,
+                shape: [1, this.embedDim],
                 op: 'const',
-                id: `${idName}_rescue_${Date.now()}`
+                id: `${idName}_emergency_${Date.now()}`
             });
         }
 
-        // 2. إذا كان التنسور يحتوي على بيانات محلياً (JS) وميتة كلها أصفار
+        const currentShape = inputTensor.shape || [1, this.embedDim];
+        const numTokens = currentShape[0]; // سحب عدد التوكنز الحقيقي ديناميكياً (مثلاً 6)
+
+        // 1. إذا كان التنسور قادم من عملية GPU (مثل الـ Attention) وليس له بيانات في الـ JS
+        // نقوم بعمل حيلة ذكية: تحويله إلى عملية ربط لمنع الـ Optimizer من تصفيره
+        if (!inputTensor.data || inputTensor.status === 'DEAD_EMPTY_BUFFER') {
+            
+            // تخليق تنسور النبض الحي بنفس أبعاد التنسور الحالي الحقيقي [numTokens, 512]
+            const pulseData = new Float32Array(numTokens * this.embedDim);
+            for (let i = 0; i < pulseData.length; i++) {
+                pulseData[i] = this.antiZeroPulse[i % this.embedDim];
+            }
+
+            const pulseTensor = new Tensor(pulseData, {
+                shape: currentShape,
+                op: 'const',
+                id: `${idName}_rescue_pulse_${Date.now()}`
+            });
+
+            // محاكاة عملية جمع (Add) داخل الـ Graph لإجبار المحرك على حجز حجم ذاكرة حقيقي
+            // وتأمين تمرير التنسور الأصلي كمدخل صريح للـ FFN
+            const fusedRescueTensor = new Tensor(null, {
+                shape: currentShape,
+                op: 'add',
+                id: `${idName}_secured_bridge`,
+                inputs: [inputTensor, pulseTensor]
+            });
+
+            console.log(`%c🛡️ [SANITIZER] تم حسم اتصال الـ Attention بالـ FFN عبر جسر نبضي بأبعاد حقيقية: [${currentShape.join(', ')}]`, "color: #00ffcc; font-weight: bold;");
+            return fusedRescueTensor;
+        }
+
+        // 2. إذا كانت البيانات موجودة في الـ JS وميتة (أصفار)
         if (inputTensor.data) {
             let isDead = true;
             for (let i = 0; i < Math.min(inputTensor.data.length, 20); i++) {
@@ -48,22 +78,12 @@ export class SignalSanitizer {
             }
 
             if (isDead) {
-                console.warn(`🚨 [SANITIZER] تحذير صاعق: تم كشف إشارة ميتة (كلها أصفار) في الـ JS! جاري الصعق الكهربائي وحقن النبض عالي الطاقة.`);
-                // استبدال الأصفار بالنبض الحي فوراً
+                console.warn(`🚨 [SANITIZER] تم كشف إشارة ميتة في الـ JS! جاري الصعق وحقن الطاقة.`);
                 const dataCopy = new Float32Array(inputTensor.data.length);
                 for(let i=0; i<dataCopy.length; i++) {
                     dataCopy[i] = this.antiZeroPulse[i % this.embedDim];
                 }
                 inputTensor.data = dataCopy;
-            }
-        }
-
-        // 3. تأمين شيدر الطوارئ (تعديل العملية برمجياً داخل الـ Graph لضمان التنفيذ في الـ GPU)
-        // إذا كانت العملية تؤدي إلى صفر، ندمج معها عملية إضافة محايدة بقيم حية
-        if (inputTensor.op === 'const' || inputTensor.status === 'DEAD_EMPTY_BUFFER') {
-            inputTensor.op = 'const'; // إجبار الـ Op على التثبيت
-            if(!inputTensor.data) {
-                inputTensor.data = this.antiZeroPulse;
             }
         }
 
