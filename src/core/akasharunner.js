@@ -16,8 +16,6 @@ export class AkashaRunner {
     constructor(engine, vocabSize = 2526) {
         this.engine = engine; 
         this.embedDim = 512; // تثبيت البُعد الرئيسي هندسياً لـ رفيق-AI
-
-        console.log(`%c[Akasha Runner] Hooked to Unified Engine. Vocab Size: ${vocabSize}`, "color: #00ff41; font-weight: bold;");
         
         this.tokenizer = new Tokenizer(vocabSize);
         this.embedding = new Embedding(vocabSize, this.embedDim, 128); 
@@ -30,8 +28,6 @@ export class AkashaRunner {
         this._registerLayerWeights(this.embedding);
         this._registerLayerWeights(this.attention);
         this._registerLayerWeights(this.ffn);
-
-        console.log(`%c[RUNNER] ✅ تم ربط الطبقات (Embedding, Attention, FFN) وتأمين الأوزان وتفعيل الـ Sanitizer.`, "color: #00ff00; font-weight: bold;");
     }
 
     _registerLayerWeights(layer) {
@@ -50,16 +46,11 @@ export class AkashaRunner {
                     }
                 }
 
-                if (isAllZeros && tensor.data) {
-                    console.warn(`⚠️ [Matrix Warning] ${tensor.id} مسجلة كأصفار! قد تحتاج لإعادة تهيئة الوزن من المصدر.`);
-                }
-
                 // حجز وكتابة البفر مباشرة في الـ WebGPU
                 this.engine.backend._getOrCreateBuffer(tensor.id, tensor.data.length);
                 this.engine.device.queue.writeBuffer(
                     this.engine.backend.tensorBuffers.get(tensor.id), 0, tensor.data
                 );
-                console.log(`[Engine Matrix] Registered weight: ${tensor.id} into Unified Backend.`);
             }
         }
     }
@@ -100,7 +91,6 @@ export class AkashaRunner {
             return finalData;
 
         } catch (err) {
-            console.error("🚨 [Akasha Runner Critical Error]: فشل مجرى البيانات الحرج لمحرك أكاشا:", err);
             throw err;
         }
     }
