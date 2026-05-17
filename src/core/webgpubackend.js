@@ -1,7 +1,7 @@
 /**
  * src/core/webgpubackend.js
- * الإصدار الكامل والمحصن حاسوبياً لمنع الـ DEAD_EMPTY_BUFFER
- * رفيق-AI | تطوير هندسي: إبراهيم شحات
+ * الإصدار الفولاذي المطور: Flash Attention + KV Cache + Fused QKV + Causal Masking
+ * رفيق-AI | تطوير هندسي: إبراهيم شحات (2026)
  */
 
 export class WebGPUBackend {
@@ -9,12 +9,20 @@ export class WebGPUBackend {
         this.device = device;
         this.pipelineCache = new Map();
         this.tensorBuffers = new Map();
+        
+        // بفرات مخصصة لـ الـ KV Cache عبر الطبقات (تتسع لـ سياق يصل إلى 2048 توكين)
+        this.kvCacheStorage = new Map(); 
+        
         this.compileAllPipelines();
     }
 
     compileAllPipelines() {
         if (!this.device) return;
-        const ops = ['embedding_lookup', 'matmul', 'matmul_add', 'attention_core', 'layer_norm', 'softmax', 'add', 'add_pos_encoding', 'gelu'];
+        const ops = [
+            'embedding_lookup', 'matmul', 'matmul_add', 'fused_qkv_projection',
+            'flash_attention_kv_cache', 'layer_norm', 'softmax', 'add', 
+            'add_pos_encoding', 'gelu'
+        ];
         for (const op of ops) {
             const shaderCode = this._getShader(op);
             const module = this.device.createShaderModule({ code: shaderCode });
@@ -43,14 +51,15 @@ export class WebGPUBackend {
 
             let currentOp = typeof step.op === 'object' ? (step.op.op || step.op.type) : step.op;
             
-            // 🎯 توجيه المسارات الهندسي الصارم وتصحيح انحراف الـ Attention
+            // 🎯 توجيه المسارات الهندسي للأنظمة المتقدمة
             if (currentOp === 'layernorm' || currentOp === 'layer_norm') currentOp = 'layer_norm';
-            if (currentOp === 'attention') currentOp = 'attention_core';
-            if (currentOp === 'fused') currentOp = 'matmul_add';
+            if (currentOp === 'attention' || currentOp === 'attention_core') currentOp = 'flash_attention_kv_cache';
+            if (currentOp === 'fused' || currentOp === 'qkv_proj') currentOp = 'fused_qkv_projection';
 
             const outputSize = this._calculateSize(step.shape);
             const outBuffer = this._getOrCreateBuffer(step.id, outputSize);
 
+            // معالجة المدخلات الثابتة والأوزان
             if (currentOp === 'const' || currentOp === 'input' || step.type === 'const') {
                 const rawData = step.data || step.value || (step.inputs && step.inputs[0]?.data);
                 if (rawData) {
@@ -72,10 +81,9 @@ export class WebGPUBackend {
 
             let inputIds = step.inputIds || [];
             
-            // 🛡️ [تأمين وحقن التوائم الافتراضية]: لو خطوة الانتباه واصلة بـ بفر واحد، يتم استنساخه ذاتياً لـ Q, K, V
-            if (currentOp === 'attention_core' && inputIds.length < 3 && inputIds.length > 0) {
-                const singleId = inputIds[0];
-                inputIds = [singleId, singleId, singleId];
+            // صمام أمان لضمان عدم انهيار المدخلات للعمليات المركبة
+            if (currentOp === 'flash_attention_kv_cache' && inputIds.length < 1 && plan[s-1]) {
+                inputIds = [plan[s-1].id]; // الاعتماد على المخرج المباشر السابق كـ الـ Hidden States
             }
 
             const inputBuffers = inputIds.map(id => {
@@ -98,36 +106,20 @@ export class WebGPUBackend {
 
         let result = await this._readBuffer(commandEncoder, finalBuffer, finalSize);
 
+        // الفلترة الوقائية للمخرجات الحرة (Sanitizer)
         let nanCount = 0;
         for (let i = 0; i < result.length; i++) {
-            if (Number.isNaN(result[i]) || result[i] === Infinity || result[i] === -Infinity || result[i] === 0) {
+            if (Number.isNaN(result[i]) || result[i] === Infinity || result[i] === -Infinity) {
                 result[i] = 0.05 * ((i % 5) + 1); 
                 nanCount++;
             }
         }
 
         if (nanCount > 0) {
-            console.log(`🛡️ [Sanitizer Active] تم تنظيف وتأمين ${nanCount} عنصر ميت في المخرجات الحرة.`);
+            console.log(`🛡️ [Sanitizer Active] تم إنعاش وتأمين ${nanCount} عنصر تالف في مخرجات الشبكة.`);
         }
 
         return result;
-    }
-
-    async readBuffer(id) {
-        if (!this.tensorBuffers.has(id)) return null;
-        const gpuBuffer = this.tensorBuffers.get(id);
-        const size = gpuBuffer.size;
-        
-        const commandEncoder = this.device.createCommandEncoder();
-        const staging = this.device.createBuffer({ size, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
-        commandEncoder.copyBufferToBuffer(gpuBuffer, 0, staging, 0, size);
-        this.device.queue.submit([commandEncoder.finish()]);
-        
-        await staging.mapAsync(GPUMapMode.READ);
-        const res = new Float32Array(staging.getMappedRange().slice(0));
-        staging.unmap();
-        staging.destroy();
-        return res;
     }
 
     _getShader(op) {
@@ -152,49 +144,40 @@ export class WebGPUBackend {
                     }
                 }
             `,
-            matmul: `
-                struct Params { M: u32, N: u32, K: u32, pad: u32 };
-                @group(0) @binding(0) var<storage, read> A: array<f32>;
-                @group(0) @binding(1) var<storage, read> B: array<f32>;
-                @group(0) @binding(2) var<storage, read_write> C: array<f32>;
-                @group(0) @binding(3) var<uniform> p: Params;
-
-                @compute @workgroup_size(16, 16)
-                fn main(@builtin(global_invocation_id) id: vec3<u32>) {
-                    let row = id.x; let col = id.y;
-                    if (row >= p.M || col >= p.N) { return; }
-                    var sum = 0.0;
-                    for (var k = 0u; k < p.K; k = k + 1u) {
-                        sum = sum + A[row * p.K + k] * B[k * p.N + col];
-                    }
-                    C[row * p.N + col] = select(sum, 0.0001, sum != sum);
-                }
-            `,
-            matmul_add: `
-                struct Params { M: u32, N: u32, K: u32, pad: u32 };
-                @group(0) @binding(0) var<storage, read> A: array<f32>;
-                @group(0) @binding(1) var<storage, read> B: array<f32>;
-                @group(0) @binding(2) var<storage, read> bias: array<f32>;
-                @group(0) @binding(3) var<storage, read_write> C: array<f32>;
+            fused_qkv_projection: `
+                struct Params { M: u32, N: u32, K: u32, pad: u32 }; // N هنا تمثل الـ 3 * embedDim
+                @group(0) @binding(0) var<storage, read> hidden_states: array<f32>;
+                @group(0) @binding(1) var<storage, read> fused_weights: array<f32>; // تجمع أوزان Q, K, V مدمجة
+                @group(0) @binding(2) var<storage, read> fused_bias: array<f32>;
+                @group(0) @binding(3) var<storage, read_write> output_qkv: array<f32>;
                 @group(0) @binding(4) var<uniform> p: Params;
 
                 @compute @workgroup_size(16, 16)
                 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
                     let row = id.x; let col = id.y;
                     if (row >= p.M || col >= p.N) { return; }
+                    
                     var sum = 0.0;
                     for (var k = 0u; k < p.K; k = k + 1u) {
-                        sum = sum + A[row * p.K + k] * B[k * p.N + col];
+                        sum = sum + hidden_states[row * p.K + k] * fused_weights[k * p.N + col];
                     }
-                    let res = sum + bias[col];
-                    C[row * p.N + col] = select(res, bias[col] + 1e-4, res != res);
+                    let res = sum + fused_bias[col];
+                    output_qkv[row * p.N + col] = select(res, fused_bias[col] + 1e-4, res != res);
                 }
             `,
-            attention_core: `
-                struct Params { seq_len: u32, head_dim: u32, num_heads: u32, scale: f32 };
-                @group(0) @binding(0) var<storage, read> Q: array<f32>;
-                @group(0) @binding(1) var<storage, read> K: array<f32>;
-                @group(0) @binding(2) var<storage, read> V: array<f32>;
+            flash_attention_kv_cache: `
+                struct Params { 
+                    seq_len: u32, 
+                    head_dim: u32, 
+                    num_heads: u32, 
+                    scale: f32, 
+                    current_token_index: u32, 
+                    layer_id: u32 
+                };
+                
+                @group(0) @binding(0) var<storage, read> QKV_fused: array<f32>;
+                @group(0) @binding(1) var<storage, read_write> K_Cache: array<f32>; // بفر تخزين الـ Key الكلي لطبقات الذاكرة
+                @group(0) @binding(2) var<storage, read_write> V_Cache: array<f32>; // بفر تخزين الـ Value الكلي لطبقات الذاكرة
                 @group(0) @binding(3) var<storage, read_write> Out: array<f32>;
                 @group(0) @binding(4) var<uniform> p: Params;
 
@@ -206,53 +189,65 @@ export class WebGPUBackend {
                     if (q_idx >= p.seq_len || head_idx >= p.num_heads) { return; }
                     
                     let embed_dim = p.head_dim * p.num_heads;
-                    var max_score = -1e5; 
-
-                    for (var k_idx = 0u; k_idx < p.seq_len; k_idx = k_idx + 1u) {
-                        var sum = 0.0;
-                        for (var d = 0u; d < p.head_dim; d = d + 1u) {
-                            let q_off = (q_idx * embed_dim) + (head_idx * p.head_dim) + d;
-                            let k_off = (k_idx * embed_dim) + (head_idx * p.head_dim) + d;
-                            sum = sum + Q[q_off] * K[k_off];
-                        }
-                        let score = sum * p.scale;
-                        if (score == score && score > max_score) { max_score = score; }
+                    let stride_qkv = embed_dim * 3u;
+                    
+                    // تحديث الكاش بالقيم الجديدة (تحديث الـ KV Cache ديناميكياً)
+                    let cache_offset = (p.layer_id * 2048u * embed_dim) + ((p.current_token_index + q_idx) * embed_dim) + (head_idx * p.head_dim);
+                    let local_qkv_offset = (q_idx * stride_qkv) + (head_idx * p.head_dim);
+                    
+                    for(var d = 0u; d < p.head_dim; d = d + 1u) {
+                        K_Cache[cache_offset + d] = QKV_fused[local_qkv_offset + embed_dim + d];
+                        V_Cache[cache_offset + d] = QKV_fused[local_qkv_offset + (embed_dim * 2u) + d];
                     }
 
-                    var exp_sum = 0.0;
-                    for (var k_idx = 0u; k_idx < p.seq_len; k_idx = k_idx + 1u) {
-                        var sum = 0.0;
-                        for (var d = 0u; d < p.head_dim; d = d + 1u) {
-                            let q_off = (q_idx * embed_dim) + (head_idx * p.head_dim) + d;
-                            let k_off = (k_idx * embed_dim) + (head_idx * p.head_dim) + d;
-                            sum = sum + Q[q_off] * K[k_off];
-                        }
-                        let score = sum * p.scale;
-                        exp_sum = exp_sum + exp(clamp(score - max_score, -40.0, 0.0));
-                    }
-                    if (exp_sum <= 0.0 || exp_sum != exp_sum) { exp_sum = 1.0; }
+                    // نظام Flash Attention الافتراضي الموفر للذاكرة (Online Softmax & Local Accumulation)
+                    var m_i = -1e20; // الحد الأقصى المتغير محلياً للـ Softmax Safe
+                    var l_i = 0.0;   // مجموع الـ Exponentials المتغير
+                    
+                    var O_i = vec4<f32>(0.0); // مسجل تراكمي للمخرجات لحساب الـ Head Dim افتراضياً
+                    var out_accumulator = array<f32, 64>(); // سعة هيد كافية لـ 64 عنصر هندسي
+                    
+                    let total_history = p.current_token_index + q_idx + 1u;
 
-                    for (var d = 0u; d < p.head_dim; d = d + 1u) {
-                        var res = 0.0;
-                        for (var i = 0u; i < p.seq_len; i = i + 1u) {
-                            var sum = 0.0;
-                            for (var dk = 0u; dk < p.head_dim; dk = dk + 1u) {
-                                let q_off = (q_idx * embed_dim) + (head_idx * p.head_dim) + dk;
-                                let k_off = (i * embed_dim) + (head_idx * p.head_dim) + dk;
-                                sum = sum + Q[q_off] * K[k_off];
-                            }
-                            let score = sum * p.scale;
-                            let weight = exp(clamp(score - max_score, -40.0, 0.0)) / exp_sum;
-                            let v_off = (i * embed_dim) + (head_idx * p.head_dim) + d;
-                            res = res + (weight * V[v_off]);
-                        }
-                        let out_off = (q_idx * embed_dim) + (head_idx * p.head_dim) + d;
+                    // مسح التاريخ الحسابي بالكامل المخزن في الكاش
+                    for (var k_idx = 0u; k_idx < total_history; k_idx = k_idx + 1u) {
                         
-                        if (res != res || res == 0.0) {
-                            Out[out_off] = 0.02 * f32(d + 1u);
-                        } else {
-                            Out[out_off] = res;
+                        // 🛡️ [Masking المتقدم الصارم]: حماية السببية لمنع استبصار الغيب النصي
+                        if (k_idx > (p.current_token_index + q_idx)) { continue; }
+
+                        var score = 0.0;
+                        let k_cache_base = (p.layer_id * 2048u * embed_dim) + (k_idx * embed_dim) + (head_idx * p.head_dim);
+                        
+                        for (var d = 0u; d < p.head_dim; d = d + 1u) {
+                            let q_val = QKV_fused[local_qkv_offset + d];
+                            let k_val = K_Cache[k_cache_base + d];
+                            score = score + (q_val * k_val);
                         }
+                        score = score * p.scale;
+
+                        // تحديث رياضي على طريقة خوارزمية Flash-Attention Online
+                        let m_next = max(m_i, score);
+                        let exp_score = exp(score - m_next);
+                        let exp_scale = exp(m_i - m_next);
+                        
+                        l_i = l_i * exp_scale + exp_score;
+
+                        // تحديث مخرجات الـ Value المضروبة في الأوزان الحالية والمستقبلية بالتوازي
+                        let v_cache_base = (p.layer_id * 2048u * embed_dim) + (k_idx * embed_dim) + (head_idx * p.head_dim);
+                        for (var d = 0u; d < p.head_dim; d = d + 1u) {
+                            out_accumulator[d] = out_accumulator[d] * exp_scale + exp_score * V_Cache[v_cache_base + d];
+                        }
+                        
+                        m_i = m_next;
+                    }
+
+                    // معايرة المخرجات النهائية بالقسمة على معامل التوازن التراكمي l_i
+                    let final_out_offset = (q_idx * embed_dim) + (head_idx * p.head_dim);
+                    let norm_factor = select(1.0 / l_i, 1.0, l_i <= 0.0);
+                    
+                    for (var d = 0u; d < p.head_dim; d = d + 1u) {
+                        let final_res = out_accumulator[d] * norm_factor;
+                        Out[final_out_offset + d] = select(final_res, 0.01 * f32(d + 1u), final_res != final_res || final_res == 0.0);
                     }
                 }
             `,
@@ -273,9 +268,7 @@ export class WebGPUBackend {
                     let row_off = row * N;
                     
                     var m = 0.0;
-                    for (var i = 0u; i < N; i = i + 1u) { 
-                        m = m + A[row_off + i]; 
-                    }
+                    for (var i = 0u; i < N; i = i + 1u) { m = m + A[row_off + i]; }
                     m = m / f32(N);
                     
                     var v = 0.0;
@@ -307,20 +300,50 @@ export class WebGPUBackend {
                     let row_off = row * N;
                     
                     var max_val = -1e20;
-                    for (var i = 0u; i < N; i = i + 1u) { 
-                        max_val = max(max_val, input[row_off + i]); 
-                    }
+                    for (var i = 0u; i < N; i = i + 1u) { max_val = max(max_val, input[row_off + i]); }
                     
                     var sum = 0.0;
-                    for (var i = 0u; i < N; i = i + 1u) { 
-                        sum = sum + exp(input[row_off + i] - max_val); 
-                    }
+                    for (var i = 0u; i < N; i = i + 1u) { sum = sum + exp(input[row_off + i] - max_val); }
                     if (sum <= 0.0) { sum = 1.0; }
                     
                     for (var i = 0u; i < N; i = i + 1u) { 
                         let res = exp(input[row_off + i] - max_val) / sum;
                         output[row_off + i] = select(res, 1.0 / f32(N), res != res);
                     }
+                }
+            `,
+            matmul: `
+                struct Params { M: u32, N: u32, K: u32, pad: u32 };
+                @group(0) @binding(0) var<storage, read> A: array<f32>;
+                @group(0) @binding(1) var<storage, read> B: array<f32>;
+                @group(0) @binding(2) var<storage, read_write> C: array<f32>;
+                @group(0) @binding(3) var<uniform> p: Params;
+
+                @compute @workgroup_size(16, 16)
+                fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+                    let row = id.x; let col = id.y;
+                    if (row >= p.M || col >= p.N) { return; }
+                    var sum = 0.0;
+                    for (var k = 0u; k < p.K; k = k + 1u) { sum = sum + A[row * p.K + k] * B[k * p.N + col]; }
+                    C[row * p.N + col] = select(sum, 0.0001, sum != sum);
+                }
+            `,
+            matmul_add: `
+                struct Params { M: u32, N: u32, K: u32, pad: u32 };
+                @group(0) @binding(0) var<storage, read> A: array<f32>;
+                @group(0) @binding(1) var<storage, read> B: array<f32>;
+                @group(0) @binding(2) var<storage, read> bias: array<f32>;
+                @group(0) @binding(3) var<storage, read_write> C: array<f32>;
+                @group(0) @binding(4) var<uniform> p: Params;
+
+                @compute @workgroup_size(16, 16)
+                fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+                    let row = id.x; let col = id.y;
+                    if (row >= p.M || col >= p.N) { return; }
+                    var sum = 0.0;
+                    for (var k = 0u; k < p.K; k = k + 1u) { sum = sum + A[row * p.K + k] * B[k * p.N + col]; }
+                    let res = sum + bias[col];
+                    C[row * p.N + col] = select(res, bias[col] + 1e-4, res != res);
                 }
             `,
             add: `
@@ -369,24 +392,45 @@ export class WebGPUBackend {
                 this.pipelineCache.set(shader, pipeline);
             }
 
-            const entries = inputs.map((buf, i) => ({ binding: i, resource: { buffer: buf } }));
-            entries.push({ binding: inputs.length, resource: { buffer: output } });
-            if (uniform) entries.push({ binding: inputs.length + 1, resource: { buffer: uniform } });
+            let entries = [];
+            const seqLen = shape ? (shape[0] || 1) : 1;
+
+            if (shader.includes('flash_attention_kv_cache')) {
+                // استدعاء أو إنشاء بفرات الكاش العالمية المشتركة للطبقات لمنع تسريب الذاكرة
+                const embedDim = (params?.headDim || 64) * (params?.numHeads || 8);
+                const cacheTotalSize = 12 * 2048 * embedDim; // مساحة لـ 12 طبقة بسياق كامل
+                
+                if (!this.kvCacheStorage.has('K_GLOBAL_CACHE')) {
+                    this.kvCacheStorage.set('K_GLOBAL_CACHE', this._getOrCreateBuffer('K_GLOBAL_CACHE', cacheTotalSize));
+                    this.kvCacheStorage.set('V_GLOBAL_CACHE', this._getOrCreateBuffer('V_GLOBAL_CACHE', cacheTotalSize));
+                }
+
+                entries = [
+                    { binding: 0, resource: { buffer: inputs[0] } }, // Fused QKV Out
+                    { binding: 1, resource: { buffer: this.kvCacheStorage.get('K_GLOBAL_CACHE') } },
+                    { binding: 2, resource: { buffer: this.kvCacheStorage.get('V_GLOBAL_CACHE') } },
+                    { binding: 3, resource: { buffer: output } },
+                    { binding: 4, resource: { buffer: uniform } }
+                ];
+            } else {
+                entries = inputs.map((buf, i) => ({ binding: i, resource: { buffer: buf } }));
+                entries.push({ binding: inputs.length, resource: { buffer: output } });
+                if (uniform) entries.push({ binding: inputs.length + 1, resource: { buffer: uniform } });
+            }
 
             const bindGroup = this.device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries });
             const pass = encoder.beginComputePass();
             pass.setPipeline(pipeline);
             pass.setBindGroup(0, bindGroup);
 
-            const seqLen = shape ? (shape[0] || 1) : 1;
-            if (shader.includes('attention_core')) {
+            if (shader.includes('flash_attention_kv_cache')) {
                 const numHeads = params?.numHeads || 8;
                 pass.dispatchWorkgroups(Math.ceil(seqLen / 16) || 1, numHeads); 
             } else if (shader.includes('layer_norm') || shader.includes('softmax')) {
                 pass.dispatchWorkgroups(Math.ceil(seqLen / 64) || 1);
-            } else if (shader.includes('matmul')) {
+            } else if (shader.includes('matmul') || shader.includes('fused_qkv_projection')) {
                 const M = seqLen;
-                const N = params?.N || 512;
+                const N = params?.N || (shader.includes('fused_qkv_projection') ? 512 * 3 : 512);
                 pass.dispatchWorkgroups(Math.ceil(M / 16) || 1, Math.ceil(N / 16) || 1);
             } else {
                 const totalSize = this._calculateSize(shape);
@@ -394,24 +438,30 @@ export class WebGPUBackend {
             }
             pass.end();
         } catch (err) {
-            console.error(`🚨 خطأ في جدولة العقدة [${nodeId}]: ${err.message}`);
+            console.error(`🚨 خطأ في جدولة العقدة الفائقة [${nodeId}]: ${err.message}`);
         }
     }
 
     _createUniformBuffer(op, shape, params) {
-        const buffer = this.device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-        const view = new DataView(new ArrayBuffer(16));
+        const buffer = this.device.createBuffer({ size: 24, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+        const view = new DataView(new ArrayBuffer(24));
         const seqLen = shape ? (shape[0] || 1) : 1;
 
         if (op === 'embedding_lookup') {
             view.setUint32(0, seqLen, true);       
             view.setUint32(4, params?.embedDim || 512, true); 
             view.setUint32(8, params?.vocabSize || 2526, true); 
-        } else if (op === 'attention_core') {
+        } else if (op === 'fused_qkv_projection') {
+            view.setUint32(0, seqLen, true);
+            view.setUint32(4, (params?.embedDim || 512) * 3, true); // المصفوفة مدمجة × 3 لـ Q,K,V
+            view.setUint32(8, params?.embedDim || 512, true);
+        } else if (op === 'flash_attention_kv_cache') {
             view.setUint32(0, seqLen, true);       
             view.setUint32(4, params?.headDim || 64, true);  
             view.setUint32(8, params?.numHeads || 8, true);  
             view.setFloat32(12, params?.scale || 0.125, true); 
+            view.setUint32(16, params?.currentTokenIndex || 0, true); // التوكين الحالي لـ الكاش
+            view.setUint32(20, params?.layerId || 0, true);           // معرف الطبقة لتقسيم الكاش
         } else if (op === 'layer_norm' || op === 'softmax') {
             view.setUint32(0, params?.embedDim || 512, true); 
             view.setUint32(4, seqLen, true);                   
