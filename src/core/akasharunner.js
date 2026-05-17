@@ -1,8 +1,8 @@
 /**
  * src/core/akashaRunner.js
  * الـ Runner الرئيسي المحصن لـ (رفيق-AI) - محرك أكاشا
- * التحديث الجذري: فصل وعزل طبقة الـ Attention تماماً لتُحسب على الـ CPU حماية من صمت كارت الشاشة
- * مدمج به: Fused QKV، الـ KV Cache التراكمي على الـ RAM، ونظام الـ CPU Fallback التلقائي للـ FFN عند الطوارئ
+ * التحديث الجذري: فصل الـ Embedding والـ Attention تماماً وحسابهما على الـ CPU 
+ * حل مشكلة: TypeError: this.engine.backend.readBufferDirect is not a function
  * تطوير هندسي: إبراهيم شحات (2026)
  */
 
@@ -28,12 +28,11 @@ export class AkashaRunner {
         // 🛡️ تهيئة صمام الأمان والنبض الحي لشارات الإدخال والمخرجات
         this.sanitizer = new SignalSanitizer(this.embedDim);
 
-        // مخازن الـ KV Cache المستقرة على الـ RAM (مصفوفات حرة مرنة لمنع تسريب الـ VRAM)
+        // مخازن الـ KV Cache المستقرة على الـ RAM
         this.kCache = []; 
         this.vCache = [];
 
-        // تسجيل أوزان الـ Embedding والـ FFN فقط على الباكيند لكارت الشاشة
-        this._registerLayerWeights(this.embedding);
+        // تسجيل أوزان الـ FFN فقط على الباكيند لكارت الشاشة
         this._registerLayerWeights(this.ffn);
     }
 
@@ -53,7 +52,7 @@ export class AkashaRunner {
         }
     }
 
-    // 🛠️ البديل الرياضي الفولاذي لـ دالة الخطأ الحسابي لمنع انهيار الـ CPU Fallback
+    // 🛠️ البديل الرياضي لـ دالة الخطأ الحسابي لمنع انهيار الـ CPU Fallback
     _erf(x) {
         const a1 =  0.254829592;
         const a2 = -0.284496736;
@@ -71,12 +70,31 @@ export class AkashaRunner {
         return sign * y;
     }
 
-    // ⚙️ مفرمة الـ Attention النقية والكاملة على الـ CPU بعيداً عن عناد كارت الشاشة
+    // ⚡ حساب الـ Embedding بالكامل على الـ CPU منعاً للاستدعاء الخاطئ للبفر من كارت الشاشة
+    _computeEmbeddingOnCPU(tokenIds) {
+        const seqLen = tokenIds.length;
+        const out = new Float32Array(seqLen * this.embedDim);
+        
+        // سحب مصفوفة الأوزان الخام للـ Embedding المتمثلة في الكلاس الخاص بها
+        const weights = this.embedding.weights.data; 
+
+        for (let i = 0; i < seqLen; i++) {
+            const tokenId = tokenIds[i];
+            const weightOffset = tokenId * this.embedDim;
+            
+            // نسخ المتجه الحسابي للتوكين مباشرة
+            for (let d = 0; d < this.embedDim; d++) {
+                out[i * this.embedDim + d] = weights[weightOffset + d];
+            }
+        }
+        return out;
+    }
+
+    // ⚙️ مفرمة الـ Attention النقية والكاملة على الـ CPU
     _computeAttentionOnCPU(hiddenStatesData, seqLen) {
-        const strideQKV = this.embedDim * 3; // 1536 عنصر لكل صف
+        const strideQKV = this.embedDim * 3; 
         const attentionOutput = new Float32Array(seqLen * this.embedDim);
 
-        // سحب أوزان الـ Fused ونظام الـ Out Projection من كلاس المحرك الرئيسي للـ Attention الحالية
         const fusedWeights = this.engine.attentionWeights?.fusedWeights?.data || new Float32Array(this.embedDim * strideQKV);
         const fusedBias = this.engine.attentionWeights?.fusedBias?.data || new Float32Array(strideQKV);
         const outWeights = this.engine.attentionWeights?.outWeights?.data || new Float32Array(this.embedDim * this.embedDim);
@@ -84,7 +102,6 @@ export class AkashaRunner {
 
         const currentQ = [];
 
-        // 1. حساب الـ Fused QKV Projections لكل توكين حالي
         for (let i = 0; i < seqLen; i++) {
             const tokenQ = new Float32Array(this.embedDim);
             const tokenK = new Float32Array(this.embedDim);
@@ -107,11 +124,10 @@ export class AkashaRunner {
             }
 
             currentQ.push(tokenQ);
-            this.kCache.push(tokenK); // ضخ الـ Key المحدث في الـ RAM كاش
-            this.vCache.push(tokenV); // ضخ الـ Value المحدث في الـ RAM كاش
+            this.kCache.push(tokenK); 
+            this.vCache.push(tokenV); 
         }
 
-        // 2. معالجة الـ Multi-Head Core مع تطبيق الـ Causal Masking الصارم وحساب الأوزان
         for (let h = 0; h < this.numHeads; h++) {
             const headOffset = h * this.headDim;
 
@@ -134,7 +150,6 @@ export class AkashaRunner {
                     if (score > maxScore) maxScore = score;
                 }
 
-                // الـ Softmax الآمن والمستقر رياضياً على الـ CPU
                 let expSum = 0;
                 const exps = new Float32Array(scores.length);
                 for (let kIdx = 0; kIdx <= globalQIdx; kIdx++) {
@@ -143,7 +158,6 @@ export class AkashaRunner {
                     expSum += e;
                 }
 
-                // الدمج مع الـ V Cache المخزن
                 const contextVec = new Float32Array(this.headDim);
                 for (let kIdx = 0; kIdx <= globalQIdx; kIdx++) {
                     const attnWeight = exps[kIdx] / (expSum || 1.0);
@@ -161,7 +175,6 @@ export class AkashaRunner {
             }
         }
 
-        // 3. طبقة الإسقاط الخارجي (Output Projection)
         const finalAttentionOutput = new Float32Array(attentionOutput.length);
         for (let i = 0; i < seqLen; i++) {
             for (let outCol = 0; outCol < this.embedDim; outCol++) {
@@ -218,29 +231,11 @@ export class AkashaRunner {
                 this.resetCache();
             }
 
-            // 🎯 تأمين الـ Tensor بأبعاد ديناميكية حقيقية
-            const floatTokens = new Float32Array(tokenIds);
-            const inputTensor = new Tensor(floatTokens, { 
-                shape: [seqLen, 1], 
-                op: 'input',
-                id: 'input_ids'
-            });
+            // 1. حساب الـ Embedding نقياً ومباشرة على الـ CPU لحماية سياق المدخلات ولتجاوز خطأ السحب
+            console.log("⚡ جاري حساب الـ Embedding وتمريره للـ Attention كلياً على الـ CPU...");
+            const embeddingRawData = this._computeEmbeddingOnCPU(tokenIds);
 
-            // 1. معالجة الـ Embedding على كارت الشاشة كالعادة لسرعة الجداول
-            let x = this.embedding.forward(inputTensor);
-            x.shape = [seqLen, this.embedDim]; 
-
-            // قراءة بيانات الـ Embedding فورياً للبدء في تشغيل مفرمة الـ CPU المنفصلة
-            console.log("⚡ جاري سحب مخرجات الـ Embedding ومعالجة الـ Attention كلياً على الـ CPU...");
-            let embeddingRawData = x.data;
-            if (!embeddingRawData && this.engine.backend) {
-                embeddingRawData = await this.engine.backend.readBufferDirect(
-                    this.engine.backend.tensorBuffers.get(x.id), 
-                    seqLen * this.embedDim
-                );
-            }
-
-            // 2. معالجة الـ Attention بالكامل وحساب الـ KV Cache يدوياً داخل الـ RAM
+            // 2. معالجة الـ Attention بالكامل وحساب الـ KV Cache يدوياً داخل الـ RAM دون لمس كارت الشاشة
             const cpuAttnData = this._computeAttentionOnCPU(embeddingRawData, seqLen);
 
             // إعادة لف مخرجات الـ CPU داخل كائن Tensor لضمان توافق تسلسل الـ Pipeline المتبقي للـ FFN
@@ -255,11 +250,11 @@ export class AkashaRunner {
             sanitizedAttn.shape = [seqLen, this.embedDim];
 
             // 3. معالجة الـ FFN (المفرمة المنطقية)
-            let x_before_ffn = sanitizedAttn; // الاحتفاظ بنسخة حية في الـ RAM كطوق نجاة عند انهيار الـ GPU
+            let x_before_ffn = sanitizedAttn; 
             let ffnOut = this.ffn.forward(sanitizedAttn);
             ffnOut.shape = [seqLen, this.embedDim];
 
-            // ⚡ التفجير الحسابي لآخر نقطة وقراءة الـ GPU العكسية (Readback)
+            // ⚡ التفجير الحسابي لآخر نقطة وقراءة الـ GPU العكسية (Readback) لطبقة الـ FFN
             console.log("🔮 جاري تحليل النبض الختامي لـ الـ FFN عبر الباكيند الهجين لـ أكاشا...");
             let finalData = await this.engine.compute(ffnOut);
             
@@ -299,7 +294,6 @@ export class AkashaRunner {
         }
     }
 
-    // دالة مساعدة لتصفير مؤشر الـ Cache والذاكرة الحية عند البدء بسياق جديد تماماً
     resetCache() {
         this.currentTokenIndex = 0;
         this.kCache = [];
