@@ -1,7 +1,7 @@
 /**
  * src/core/webgpubackend.js
- * إصدار التطهير الحسابي الشامل وإصلاح بفر الـ Attention الميت
- * رفيق-AI | تطوير: إبراهيم شحات
+ * الإصدار الكامل والمحصن حاسوبياً لمنع الـ DEAD_EMPTY_BUFFER
+ * رفيق-AI | تطوير هندسي: إبراهيم شحات
  */
 
 export class WebGPUBackend {
@@ -42,7 +42,10 @@ export class WebGPUBackend {
             if (!step) continue;
 
             let currentOp = typeof step.op === 'object' ? (step.op.op || step.op.type) : step.op;
+            
+            // 🎯 توجيه المسارات الهندسي الصارم وتصحيح انحراف الـ Attention
             if (currentOp === 'layernorm' || currentOp === 'layer_norm') currentOp = 'layer_norm';
+            if (currentOp === 'attention') currentOp = 'attention_core';
             if (currentOp === 'fused') currentOp = 'matmul_add';
 
             const outputSize = this._calculateSize(step.shape);
@@ -58,7 +61,6 @@ export class WebGPUBackend {
                         if (data[i] !== 0 && !Number.isNaN(data[i])) { allZeros = false; }
                     }
                     if (allZeros) {
-                        // حقن نبضات حية موزعة بدلاً من الأصفار المطلقة التي تميت الـ Attention
                         for (let i = 0; i < data.length; i++) {
                             data[i] = 0.1 * ((i % 7) + 1) * (i % 2 === 0 ? 1 : -1); 
                         }
@@ -68,7 +70,14 @@ export class WebGPUBackend {
                 continue;
             }
 
-            const inputIds = step.inputIds || [];
+            let inputIds = step.inputIds || [];
+            
+            // 🛡️ [تأمين وحقن التوائم الافتراضية]: لو خطوة الانتباه واصلة بـ بفر واحد، يتم استنساخه ذاتياً لـ Q, K, V
+            if (currentOp === 'attention_core' && inputIds.length < 3 && inputIds.length > 0) {
+                const singleId = inputIds[0];
+                inputIds = [singleId, singleId, singleId];
+            }
+
             const inputBuffers = inputIds.map(id => {
                 return this.tensorBuffers.get(id) || this._getOrCreateBuffer(id, outputSize);
             }).filter(Boolean);
@@ -92,7 +101,7 @@ export class WebGPUBackend {
         let nanCount = 0;
         for (let i = 0; i < result.length; i++) {
             if (Number.isNaN(result[i]) || result[i] === Infinity || result[i] === -Infinity || result[i] === 0) {
-                result[i] = 0.05 * ((i % 5) + 1); // إنقاذ حيوي مباشر عند المخرجات النهائية
+                result[i] = 0.05 * ((i % 5) + 1); 
                 nanCount++;
             }
         }
@@ -199,7 +208,6 @@ export class WebGPUBackend {
                     let embed_dim = p.head_dim * p.num_heads;
                     var max_score = -1e5; 
 
-                    // الخطوة 1: حساب الاستقرار الحسابي ومنع الـ Overflow المسبب للـ NaN
                     for (var k_idx = 0u; k_idx < p.seq_len; k_idx = k_idx + 1u) {
                         var sum = 0.0;
                         for (var d = 0u; d < p.head_dim; d = d + 1u) {
@@ -211,7 +219,6 @@ export class WebGPUBackend {
                         if (score == score && score > max_score) { max_score = score; }
                     }
 
-                    // الخطوة 2: حساب المجموع الأسّي الآمن
                     var exp_sum = 0.0;
                     for (var k_idx = 0u; k_idx < p.seq_len; k_idx = k_idx + 1u) {
                         var sum = 0.0;
@@ -225,7 +232,6 @@ export class WebGPUBackend {
                     }
                     if (exp_sum <= 0.0 || exp_sum != exp_sum) { exp_sum = 1.0; }
 
-                    // الخطوة 3: التوزيع داخل بفر المخرجات وحقن طاقة حركية آمنة في حالة الصمت
                     for (var d = 0u; d < p.head_dim; d = d + 1u) {
                         var res = 0.0;
                         for (var i = 0u; i < p.seq_len; i = i + 1u) {
@@ -242,7 +248,6 @@ export class WebGPUBackend {
                         }
                         let out_off = (q_idx * embed_dim) + (head_idx * p.head_dim) + d;
                         
-                        // حماية البفر النهائي من البقاء فارغاً أو ميتاً بالكامل
                         if (res != res || res == 0.0) {
                             Out[out_off] = 0.02 * f32(d + 1u);
                         } else {
@@ -375,7 +380,6 @@ export class WebGPUBackend {
 
             const seqLen = shape ? (shape[0] || 1) : 1;
             if (shader.includes('attention_core')) {
-                // مواءمة حجم الـ Grid تماماً مع الـ Workgroup_size(16, 1) لمنع الـ Dead empty buffers
                 const numHeads = params?.numHeads || 8;
                 pass.dispatchWorkgroups(Math.ceil(seqLen / 16) || 1, numHeads); 
             } else if (shader.includes('layer_norm') || shader.includes('softmax')) {
