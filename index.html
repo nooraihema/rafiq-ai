@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>رفيق AI | محرك أكاشا المتطور</title>
+  <title>رفيق AI | محرك الاستدلال والتشخيص</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0a0a0c; margin: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; color: #fff; }
     h1 { color: #00ff41; font-size: 24px; margin: 20px 0 0; text-shadow: 0 0 10px rgba(0,255,65,0.3); }
@@ -42,24 +42,22 @@
   </style>
 </head>
 <body>
-  <h1>🔮 محرك أكاشا - نظام تشخيص عميق</h1>
+  <h1>🔮 رفيق AI - نظام تشخيص الاستدلال العميق</h1>
   <div class="chat-container">
     <div class="header">
-      رفيق AI - محرك أكاشا <span id="engine-status" class="status-dot"></span>
+      نظام رفيق العصبي - لوحة الاستدلال <span id="engine-status" class="status-dot"></span>
     </div>
     <div id="chat-box" class="chat-box"></div>
     <div class="input-container">
-      <input type="text" id="user-input" placeholder="اكتب رسالتك لـ أكاشا..." autofocus />
+      <input type="text" id="user-input" placeholder="اكتب رسالتك لـ رفيق AI..." autofocus />
       <button id="send-btn">إرسال</button>
     </div>
   </div>
   <div class="logs-container" id="logs-view"></div>
 
   <script type="module">
-    import { AkashaEngine } from './src/core/akashaengine.js';
-    import { AkashaRunner } from './src/core/akasharunner.js';
-    import { Tokenizer } from './src/core/tokenizer.js';
-    import { AkashaGenerator } from './src/core/generator.js';
+    // الربط مع كلاس محرك الاستدلال المركزي المبني داخل هيكلك البرمجي المعتمد
+    import { InferenceEngine } from './src/engine/inferenceEngine.js';
 
     const logsView = document.getElementById('logs-view');
     const statusDot = document.getElementById('engine-status');
@@ -84,9 +82,8 @@
       return now.toLocaleTimeString('ar-EG', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
     }
 
-    // الـ Log المطور الحيوى - يسمح بمرور كافة البيانات بدون فلاتر صامتة
+    // الـ Log الحيوي - تتبع العمليات والمصفوفات
     function printLog(tag, msg, level = LOG_LEVELS.INFO, details = null) {
-      // 🔓 تم إزالة صمام الحجب البرمجي القديم للسماح لكافة اللوجات المتقدمة بالظهور فوراً
       const timestamp = getTimestamp();
       logCounter++;
 
@@ -112,7 +109,7 @@
       logsView.scrollTop = logsView.scrollHeight;
     }
 
-    // 💥 اختطاف وتوجيه الـ console.log والـ console.warn والـ console.error الأصليين للواجهة حياً
+    // توجيه لوجات الـ Console الافتراضية إلى لوحة التحكم المرئية
     const originalConsoleLog = console.log;
     const originalConsoleWarn = console.warn;
     const originalConsoleError = console.error;
@@ -120,7 +117,6 @@
     console.log = function(...args) {
       originalConsoleLog.apply(console, args);
       const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
-      // تحويل استدعاءات المحرك الملونة %c إلى لوجات مقروءة بداخل لوحة أكاشا
       const cleanMessage = message.replace(/%c/g, '');
       printLog("CORE_LOG", cleanMessage, LOG_LEVELS.INFO);
     };
@@ -137,7 +133,7 @@
       printLog("CORE_ERR", message, LOG_LEVELS.ERROR);
     };
 
-    // فحص الأمعاء والمصفوفات العميقة (Deep Medical Scan for Tensors)
+    // فحص سلامة المصفوفات العميقة الخارجة من طبقات النموذج (Tensor Health Monitor)
     function inspectArrayStructure(arrayOrTensor, name = 'Tensor') {
       if (!arrayOrTensor) {
         return { name, status: 'CRITICAL_NULL', error: 'المصفوفة غير موجودة في الذاكرة الحية' };
@@ -210,113 +206,35 @@
       };
     }
 
-    let engine, runner, generator;
-    const tokenizer = new Tokenizer(5000);
+    let rafiqEngine;
 
+    // تهيئة محرك الاستدلال الشامل فور تشغيل الصفحة
     async function init() {
       try {
-        if (!navigator.gpu) {
-          throw new Error("بيئة تشغيل WebGPU غير مدعومة بالمتصفح، تأكد من تفعيل الأعلام أو استخدام متصفح حديث.");
-        }
+        printLog("SYSTEM", "⏳ جاري استدعاء وتهيئة محرك الاستدلال رفيق AI من البيئة المركزية...", LOG_LEVELS.INFO);
         
-        const adapter = await navigator.gpu.requestAdapter();
-        if (!adapter) throw new Error("فشل التقاط Adapter. الـ GPU قد يكون مشغولاً أو غير مدعوم.");
-        printLog("GPU", "✅ تم حجز الـ GPU Adapter بنجاح.", LOG_LEVELS.SUCCESS);
-
-        const device = await adapter.requestDevice();
-        printLog("GPU", "✅ تم إنشاء الـ GPUDevice وتخصيص قنوات التزامن.", LOG_LEVELS.SUCCESS);
-
-        engine = new AkashaEngine(device);
-        runner = new AkashaRunner(engine, 2526); 
-        printLog("RUNNER", "✅ تم ربط الطبقات (Embedding, Attention, FFN) وتأمين الأوزان العشوائية.", LOG_LEVELS.SUCCESS);
-
-        generator = new AkashaGenerator(runner);
-
-        injectDataFlowTracers();
-
-        const res = await fetch('./dataset.txt');
-        if (!res.ok) throw new Error(`فشل جلب ملف الداتا الحية المرجعية. كود: ${res.status}`);
-        const text = await res.text();
-        printLog("DATA", `✅ اتم تحميل الـ Dataset بسلام. الحجم الكلي: ${(text.length / 1024).toFixed(2)} KB`, LOG_LEVELS.SUCCESS);
-
-        // شحن قاموس التوكنمايزر بالداتا الأصلية لمنع الخداع
-        if(runner.injectDatasetVocabulary) {
-           runner.injectDatasetVocabulary(text);
-        } else {
-           tokenizer.loadVocabularyFromDataset(text);
-        }
-        
-        await generator.buildVocabFromText(text);
+        // إنشاء نسخة من محرك الاستدلال الموحد
+        rafiqEngine = new InferenceEngine();
         
         statusDot.classList.add('online');
-        printLog("READY", "🎯 تم الِارتباط الهيكلي الكامل! المحرك شغال ومستعد للاحتراق والتعلم البصري الحقيقي.", LOG_LEVELS.SUCCESS);
+        printLog("READY", "🎯 تم الِارتباط الهيكلي الكامل! محرك الاستدلال جاهز ومستقر للتشغيل على Vercel.", LOG_LEVELS.SUCCESS);
 
       } catch (err) {
         statusDot.classList.remove('online');
-        printLog("FATAL", `💥 قفلة قاتلة في تهيئة النظام: ${err.message}`, LOG_LEVELS.FATAL, { stack: err.stack });
+        printLog("FATAL", `💥 فشل في ربط محرك الاستدلال: ${err.message}`, LOG_LEVELS.FATAL, { stack: err.stack });
       }
     }
 
-    function injectDataFlowTracers() {
-      if (!runner || !engine) return;
-
-      const originalForward = runner.forward || runner.execute;
-      if (originalForward) {
-        const wrappedForward = async function(inputIds, ...args) {
-          if (this.embeddingWeights || this.weights) {
-            const embWeights = this.embeddingWeights || this.weights;
-            printLog("TRACER_CONST", "💾 محطة (4): فحص انتشار الأوزان (Const Propagation) في الذاكرة الحية...", LOG_LEVELS.TRACE, inspectArrayStructure(embWeights, 'Embedding/Weights Array'));
-          }
-
-          // معالجة وحقن مصفوفة الأبعاد الثنائية الحقيقية لمنع استدعاء مصفوفات طوارئ فارغة داخل المحرك الفيد-فورورد
-          let targetInput = inputIds;
-          if (inputIds && Array.isArray(inputIds)) {
-            targetInput = {
-              data: new Int32Array(inputIds),
-              shape: [1, inputIds.length],
-              id: 'inputTensor'
-            };
-          } else if (inputIds && inputIds.data && !inputIds.shape) {
-            inputIds.shape = [1, inputIds.data.length];
-          }
-
-          const result = await originalForward.apply(this, [targetInput, ...args]);
-          printLog("TRACER_EMBED", "🎫 محطة (1): ناتج عملية الـ Embedding Lookup بعد الفحص...", LOG_LEVELS.TRACE, inspectArrayStructure(result, 'Embedding Output Tensor'));
-          return result;
-        };
-        if (runner.forward) runner.forward = wrappedForward;
-        else if (runner.execute) runner.execute = wrappedForward;
-      }
-
-      if (runner.attention || runner.attnBlock) {
-        const tgt = runner.attention || runner.attnBlock;
-        const originalAttn = tgt.forward || tgt.execute;
-        if (originalAttn) {
-          const wrappedAttn = async function(...args) {
-            const attnResult = await originalAttn.apply(this, args);
-            printLog("TRACER_ATTN_OUT", "💥 محطة (2): خروج الإشارة من الـ Attention.. هل ركبها الـ Softmax؟", LOG_LEVELS.TRACE, inspectArrayStructure(attnResult, 'Attention Out Vector'));
-            return attnResult;
-          };
-          if (tgt.forward) tgt.forward = wrappedAttn;
-          else if (tgt.execute) tgt.execute = wrappedAttn;
-        }
-      }
-
-      const originalSetBuffer = engine.setBuffer || engine.registerTensor || engine.writeBuffer;
-      if (originalSetBuffer) {
-        engine.setBuffer = function(tensorId, buffer, ...args) {
-          if (!buffer) {
-             printLog("TRACER_PLAN", `📋 محطة (3): تحذير! محاولة حجز بفر فارغ لـ Tensor`, LOG_LEVELS.WARNING, { tensorId: tensorId });
-          }
-          return originalSetBuffer.apply(this, [tensorId, buffer, ...args]);
-        };
-      }
-    }
-
+    // منطق معالجة وضخ الرسائل
     sendBtn.onclick = async () => {
       const text = userInput.value.trim();
-      if (!text || !generator) {
-        printLog("INPUT", "⚠️ مدخل فارغ أو الأمعاء البرمجية لم تكتمل تهيئتها بعد.", LOG_LEVELS.WARNING);
+      if (!text) {
+        printLog("INPUT", "⚠️ لا يمكن إرسال مدخل فارغ.", LOG_LEVELS.WARNING);
+        return;
+      }
+
+      if (!rafiqEngine) {
+        printLog("ERROR", "❌ لم تكتمل تهيئة أمعاء المحرك العصبي بعد.", LOG_LEVELS.ERROR);
         return;
       }
 
@@ -324,44 +242,33 @@
       userInput.value = '';
       
       try {
-        const tokenIds = tokenizer.encode(text);
-        printLog("TOKENIZER", `✅ عملية التوكنز تمت بنجاح. العدد: ${tokenIds.length} توكنز.`, LOG_LEVELS.SUCCESS, { IDs: Object.fromEntries(Object.entries(tokenIds)) });
-
-        // بناء كائن الـ Tensor المنظم ثنائي الأبعاد وتمريره لـ Generator لضمان التزامن الكامل عبر خطوط الـ WebGPU
-        const explicitTensorInput = {
-          data: new Int32Array(tokenIds),
-          shape: [1, tokenIds.length],
-          id: 'inputTensor'
-        };
+        printLog("INFERENCE", `⏳ تم تمرير النص الحركي وجاري حساب الـ Forward Pass...`, LOG_LEVELS.INFO);
 
         const startTime = performance.now();
-        // تمرير الـ Input بالهيكل الجديد الموحد
-        const result = await generator.generate(explicitTensorInput);
+        
+        // استدعاء دالة الإجابة مباشرة من الـ InferenceEngine
+        const result = await rafiqEngine.answer(text, 0.7);
+        
         const executionTime = (performance.now() - startTime).toFixed(2);
+        printLog("PERF", `⏱️ تم معالجة مصفوفات الشبكة بنجاح خلال: ${executionTime}ms`, LOG_LEVELS.SUCCESS);
 
-        printLog("GPU_PERF", `⏱️ تم تنفيذ الحسابات على الـ GPU الشامل في غضون: ${executionTime}ms`, LOG_LEVELS.SUCCESS);
-
-        if (!result || !result.raw) {
-          throw new Error("الـ Pipeline أكمل دورتة لكن المخرج النهائي رجع Null أو غير معرف!");
-        }
-
+        // فحص البنية الحسابية للإشارة الناتجة للتأكد من خلوها من الأصفار الميتة أو قيم NaN
         const internalInspection = inspectArrayStructure(result.raw, 'Final Logits Output');
         
         if (internalInspection.internalStatus === 'BRAIN_DEAD_ALL_ZEROS') {
-          printLog("CRITICAL", "🚨 كارثة الأمعاء: إشارة ميتة تماماً (All Zeros)! الـ GPU رجع بفرز تالف أو لم يتم نقل البيانات بالـ mapAsync صح.", LOG_LEVELS.FATAL, internalInspection);
+          printLog("CRITICAL", "🚨 إشارة ميتة تماماً (All Zeros)! البافرز تالفة أو لم يتم نقل البيانات بشكل صحيح.", LOG_LEVELS.FATAL, internalInspection);
         } else if (internalInspection.internalStatus === 'POISONED_NAN_DETECTED') {
-          printLog("CRITICAL", "🚨 انفجار رياضي: تم رصد قيم NaN! الـ Learning rate أو الـ Positional initialization طار في الهوا وعمل Overflow.", LOG_LEVELS.FATAL, internalInspection);
-        } else if (internalInspection.internalStatus === 'FADING_SIGNAL_WARNING') {
-          printLog("WARNING", "⚠️ تحذير طبي: الإشارة خاملة وباهتة جداً (توزيع متدني). راجع دالة الـ Attention scaling.", LOG_LEVELS.WARNING, internalInspection);
+          printLog("CRITICAL", "🚨 انفجار رياضي: تم رصد قيم NaN! الـ Learning rate أو الـ Positional initialization حدث به طفح رياضي.", LOG_LEVELS.FATAL, internalInspection);
         } else {
-          printLog("SIGNAL_HEALTH", "✅ إشارة حية وصحية ممتازة واخترقت المصفوفات بنجاح!", LOG_LEVELS.SUCCESS, internalInspection);
+          printLog("SIGNAL_HEALTH", "✅ إشارة التوليد حية واخترقت المصفوفات بنجاح!", LOG_LEVELS.SUCCESS, internalInspection);
         }
 
-        printLog("RESULT", `🎯 الكلمة المرجحة من الذكاء الاصطناعي: "${result.word}"`, LOG_LEVELS.SUCCESS, {
+        printLog("RESULT", `🎯 الكلمة المتوقعة من النموذج: "${result.word}"`, LOG_LEVELS.SUCCESS, {
           confidenceScore: result.confidence,
           predictedIndex: result.index
         });
 
+        // عرض النتيجة النهائية للمستخدم في صندوق المحادثة
         appendMessage('bot', result.word);
 
       } catch (err) {
@@ -381,6 +288,8 @@
     }
 
     userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendBtn.click(); });
+    
+    // إطلاق عملية التهيئة
     init();
   </script>
 </body>
