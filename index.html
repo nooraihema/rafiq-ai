@@ -1,91 +1,296 @@
-
 <!DOCTYPE html>
 <html lang="ar">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>رفيق AI</title>
+  <title>رفيق AI | محرك الاستدلال والتشخيص</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f2f2f2;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-    }
-    .chat-container {
-      width: 100%;
-      max-width: 400px;
-      height: 90vh;
-      background: #fff;
-      border-radius: 10px;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      box-shadow: 0 0 15px rgba(0,0,0,0.2);
-    }
-    .chat-box {
-      flex: 1;
-      padding: 10px;
-      overflow-y: auto;
-      background: #fafafa;
-    }
-    .chat-box .user {
-      background: #007bff;
-      color: #fff;
-      padding: 8px 12px;
-      border-radius: 12px;
-      margin: 5px 0;
-      align-self: flex-end;
-      max-width: 75%;
-    }
-    .chat-box .bot {
-      background: #e4e6eb;
-      color: #000;
-      padding: 8px 12px;
-      border-radius: 12px;
-      margin: 5px 0;
-      align-self: flex-start;
-      max-width: 75%;
-    }
-    .input-container {
-      display: flex;
-      border-top: 1px solid #ddd;
-    }
-    .input-container input {
-      flex: 1;
-      border: none;
-      padding: 10px;
-      font-size: 16px;
-      outline: none;
-    }
-    .input-container button {
-      border: none;
-      background: #007bff;
-      color: #fff;
-      padding: 0 20px;
-      font-size: 16px;
-      cursor: pointer;
-    }
-    .input-container button:hover {
-      background: #0056b3;
-    }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0a0a0c; margin: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; color: #fff; }
+    h1 { color: #00ff41; font-size: 24px; margin: 20px 0 0; text-shadow: 0 0 10px rgba(0,255,65,0.3); }
+    .chat-container { width: 100%; max-width: 500px; height: 40vh; background: #111; border: 1px solid #222; border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; margin-top: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.7); }
+    .header { background: #000; color: #fff; padding: 12px; text-align: center; font-size: 13px; border-bottom: 1px solid #222; font-weight: bold; letter-spacing: 0.5px; }
+    .status-dot { height: 8px; width: 8px; background-color: #555; border-radius: 50%; display: inline-block; margin-left: 5px; }
+    .online { background-color: #00ff41; box-shadow: 0 0 8px #00ff41; }
+    
+    .chat-box { flex: 1; padding: 15px; overflow-y: auto; background: #141416; display: flex; flex-direction: column; }
+    .message { padding: 10px 14px; border-radius: 12px; margin: 6px 0; font-size: 14px; max-width: 80%; line-height: 1.4; }
+    .user { background: #0070f3; color: #fff; align-self: flex-end; border-bottom-right-radius: 2px; }
+    .bot { background: #202024; color: #fff; align-self: flex-start; border-bottom-left-radius: 2px; border: 1px solid #333; font-weight: 500; }
+
+    /* لوحة الـ Log الحديدية */
+    .logs-container { width: 100%; max-width: 500px; height: 50vh; background: #020204; color: #00ff41; margin-top: 10px; border-radius: 8px; padding: 15px; font-family: 'Consolas', 'Monaco', 'Ubuntu Mono', monospace; font-size: 11px; overflow-y: auto; border: 1px solid #1f1f2e; box-shadow: inset 0 0 20px rgba(0,0,0,0.9); box-sizing: border-box;}
+    .log-step { margin-bottom: 6px; border-left: 3px solid #00ff41; padding-left: 10px; line-height: 1.5; word-break: break-all; }
+    
+    /* ستايلات مخصصة لكل مستوى لسهولة الفحص بالعين */
+    .log-step.fatal { border-left-color: #ff0055; color: #ff0055; background: rgba(255,0,85,0.05); font-weight: bold; }
+    .log-step.error { border-left-color: #ff4d4d; color: #ff4d4d; background: rgba(255,77,77,0.03); }
+    .log-step.warning { border-left-color: #ffb800; color: #ffb800; }
+    .log-step.success { border-left-color: #00ff41; color: #00ff41; }
+    .log-step.info { border-left-color: #00d2ff; color: #00d2ff; }
+    .log-step.debug { border-left-color: #bd93f9; color: #bd93f9; }
+    .log-step.trace { border-left-color: #ff79c6; color: #ff79c6; }
+    
+    .log-tag { color: #f1c40f; font-weight: bold; margin-right: 4px; }
+    .log-val { color: #50fa7b; }
+    .log-stat-block { background: #09090e; border: 1px solid #1a1a24; padding: 6px; border-radius: 4px; margin: 4px 0; color: #ff79c6; display: block; font-size: 10.5px; white-wrap: pre-wrap; white-space: pre-wrap; }
+    .log-time { color: #6272a4; font-size: 9px; float: left; margin-top: 2px; }
+
+    .input-container { display: flex; padding: 10px; background: #18181c; border-top: 1px solid #222; }
+    input { flex: 1; border: 1px solid #333; background: #111; color: #fff; padding: 10px; outline: none; font-size: 14px; border-radius: 6px; }
+    button { background: #00ff41; color: #000; font-weight: bold; border: none; padding: 0 20px; margin-left: 10px; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+    button:hover { background: #00cc33; box-shadow: 0 0 8px rgba(0,255,65,0.4); }
   </style>
 </head>
 <body>
+  <h1>🔮 رفيق AI - نظام تشخيص الاستدلال العميق</h1>
   <div class="chat-container">
-    <div id="chat-box" class="chat-box">
-      <div class="bot">👋 أهلاً! أنا رفيق، هنا علشان أسمعك.</div>
+    <div class="header">
+      نظام رفيق العصبي - لوحة الاستدلال <span id="engine-status" class="status-dot"></span>
     </div>
+    <div id="chat-box" class="chat-box"></div>
     <div class="input-container">
-      <input type="text" id="user-input" placeholder="اكتب رسالتك..." />
+      <input type="text" id="user-input" placeholder="اكتب رسالتك لـ رفيق AI..." autofocus />
       <button id="send-btn">إرسال</button>
     </div>
   </div>
-  <script src="script.js"></script>
+  <div class="logs-container" id="logs-view"></div>
+
+  <script type="module">
+    // الربط مع كلاس محرك الاستدلال المركزي المبني داخل هيكلك البرمجي المعتمد
+    import { InferenceEngine } from './src/engine/inferenceEngine.js';
+
+    const logsView = document.getElementById('logs-view');
+    const statusDot = document.getElementById('engine-status');
+    const chatBox = document.getElementById('chat-box');
+    const userInput = document.getElementById('user-input');
+    const sendBtn = document.getElementById('send-btn');
+
+    const LOG_LEVELS = {
+      FATAL: 'fatal',
+      ERROR: 'error',
+      WARNING: 'warning',
+      SUCCESS: 'success',
+      INFO: 'info',
+      DEBUG: 'debug',
+      TRACE: 'trace'
+    };
+
+    let logCounter = 0;
+
+    function getTimestamp() {
+      const now = new Date();
+      return now.toLocaleTimeString('ar-EG', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
+    }
+
+    // الـ Log الحيوي - تتبع العمليات والمصفوفات
+    function printLog(tag, msg, level = LOG_LEVELS.INFO, details = null) {
+      const timestamp = getTimestamp();
+      logCounter++;
+
+      const entry = document.createElement('div');
+      entry.className = `log-step ${level}`;
+      
+      let detailsHtml = '';
+      if (details) {
+        if (typeof details === 'object') {
+          detailsHtml = `<div class="log-stat-block">🧬 [التحليل الداخلي]:\n${JSON.stringify(details, null, 2)}</div>`;
+        } else {
+          detailsHtml = `<div class="log-stat-block">📊 ${details}</div>`;
+        }
+      }
+
+      entry.innerHTML = `
+        <span class="log-time">${timestamp}</span>
+        <span class="log-tag">[#${logCounter} | ${tag}]</span> 
+        <span>${msg}</span>
+        ${detailsHtml}
+      `;
+      logsView.appendChild(entry);
+      logsView.scrollTop = logsView.scrollHeight;
+    }
+
+    // توجيه لوجات الـ Console الافتراضية إلى لوحة التحكم المرئية
+    const originalConsoleLog = console.log;
+    const originalConsoleWarn = console.warn;
+    const originalConsoleError = console.error;
+
+    console.log = function(...args) {
+      originalConsoleLog.apply(console, args);
+      const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
+      const cleanMessage = message.replace(/%c/g, '');
+      printLog("CORE_LOG", cleanMessage, LOG_LEVELS.INFO);
+    };
+
+    console.warn = function(...args) {
+      originalConsoleWarn.apply(console, args);
+      const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
+      printLog("CORE_WARN", message, LOG_LEVELS.WARNING);
+    };
+
+    console.error = function(...args) {
+      originalConsoleError.apply(console, args);
+      const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
+      printLog("CORE_ERR", message, LOG_LEVELS.ERROR);
+    };
+
+    // فحص سلامة المصفوفات العميقة الخارجة من طبقات النموذج (Tensor Health Monitor)
+    function inspectArrayStructure(arrayOrTensor, name = 'Tensor') {
+      if (!arrayOrTensor) {
+        return { name, status: 'CRITICAL_NULL', error: 'المصفوفة غير موجودة في الذاكرة الحية' };
+      }
+
+      let rawData = arrayOrTensor.data !== undefined ? arrayOrTensor.data : arrayOrTensor;
+      
+      if (rawData && typeof rawData === 'object' && !ArrayBuffer.isView(rawData) && !Array.isArray(rawData)) {
+        rawData = rawData.data || Object.values(rawData);
+      }
+
+      let shape = arrayOrTensor.shape || (rawData ? [rawData.length] : ['Unknown']);
+
+      if (!rawData || !rawData.length || rawData.length === 0) {
+        return { name, shape, size: 0, health: '0%', status: 'DEAD_EMPTY_BUFFER' };
+      }
+
+      let sum = 0;
+      let squareSum = 0;
+      let maxVal = -Infinity;
+      let minVal = Infinity;
+      let nonZeroCount = 0;
+      let nanCount = 0;
+
+      for (let i = 0; i < rawData.length; i++) {
+        const v = rawData[i];
+        if (isNaN(v) || v === undefined || v === null) {
+          nanCount++;
+          continue;
+        }
+        sum += v;
+        squareSum += v * v;
+        if (v > maxVal) maxVal = v;
+        if (v < minVal) minVal = v;
+        if (v !== 0) nonZeroCount++;
+      }
+
+      const totalValid = rawData.length - nanCount;
+      const mean = totalValid > 0 ? sum / totalValid : 0;
+      const variance = totalValid > 0 ? (squareSum / totalValid) - (mean * mean) : 0;
+      const stdDev = Math.sqrt(Math.max(0, variance));
+      const signalDensity = ((nonZeroCount / rawData.length) * 100).toFixed(2);
+
+      let healthStatus = 'HEALTHY_SIGNAL';
+      if (nanCount > 0) healthStatus = 'POISONED_NAN_DETECTED';
+      else if (nonZeroCount === 0) healthStatus = 'BRAIN_DEAD_ALL_ZEROS';
+      else if (parseFloat(signalDensity) < 15.0) healthStatus = 'FADING_SIGNAL_WARNING';
+
+      const safeToFixed = (val, digits = 6) => {
+        if (typeof val === 'number' && !isNaN(val) && isFinite(val)) {
+          return val.toFixed(digits);
+        }
+        return "0.000000";
+      };
+
+      return {
+        tensorId: arrayOrTensor.id || 'Anonymous_Node',
+        shape: shape,
+        totalElements: rawData.length,
+        signalDensity: `${signalDensity}%`,
+        mathematicalMetrics: {
+          min: minVal === Infinity ? "0.000000" : safeToFixed(minVal),
+          max: maxVal === -Infinity ? "0.000000" : safeToFixed(maxVal),
+          mean: safeToFixed(mean),
+          stdDev: safeToFixed(stdDev)
+        },
+        internalStatus: healthStatus,
+        nanCount,
+        sampleSlice: Array.from(rawData.slice(0, 6)).map(v => (typeof v === 'number' && !isNaN(v)) ? v.toFixed(5) : 'NaN')
+      };
+    }
+
+    let rafiqEngine;
+
+    // تهيئة محرك الاستدلال الشامل فور تشغيل الصفحة
+    async function init() {
+      try {
+        printLog("SYSTEM", "⏳ جاري استدعاء وتهيئة محرك الاستدلال رفيق AI من البيئة المركزية...", LOG_LEVELS.INFO);
+        
+        // إنشاء نسخة من محرك الاستدلال الموحد
+        rafiqEngine = new InferenceEngine();
+        
+        statusDot.classList.add('online');
+        printLog("READY", "🎯 تم الِارتباط الهيكلي الكامل! محرك الاستدلال جاهز ومستقر للتشغيل على Vercel.", LOG_LEVELS.SUCCESS);
+
+      } catch (err) {
+        statusDot.classList.remove('online');
+        printLog("FATAL", `💥 فشل في ربط محرك الاستدلال: ${err.message}`, LOG_LEVELS.FATAL, { stack: err.stack });
+      }
+    }
+
+    // منطق معالجة وضخ الرسائل
+    sendBtn.onclick = async () => {
+      const text = userInput.value.trim();
+      if (!text) {
+        printLog("INPUT", "⚠️ لا يمكن إرسال مدخل فارغ.", LOG_LEVELS.WARNING);
+        return;
+      }
+
+      if (!rafiqEngine) {
+        printLog("ERROR", "❌ لم تكتمل تهيئة أمعاء المحرك العصبي بعد.", LOG_LEVELS.ERROR);
+        return;
+      }
+
+      appendMessage('user', text);
+      userInput.value = '';
+      
+      try {
+        printLog("INFERENCE", `⏳ تم تمرير النص الحركي وجاري حساب الـ Forward Pass...`, LOG_LEVELS.INFO);
+
+        const startTime = performance.now();
+        
+        // استدعاء دالة الإجابة مباشرة من الـ InferenceEngine
+        const result = await rafiqEngine.answer(text, 0.7);
+        
+        const executionTime = (performance.now() - startTime).toFixed(2);
+        printLog("PERF", `⏱️ تم معالجة مصفوفات الشبكة بنجاح خلال: ${executionTime}ms`, LOG_LEVELS.SUCCESS);
+
+        // فحص البنية الحسابية للإشارة الناتجة للتأكد من خلوها من الأصفار الميتة أو قيم NaN
+        const internalInspection = inspectArrayStructure(result.raw, 'Final Logits Output');
+        
+        if (internalInspection.internalStatus === 'BRAIN_DEAD_ALL_ZEROS') {
+          printLog("CRITICAL", "🚨 إشارة ميتة تماماً (All Zeros)! البافرز تالفة أو لم يتم نقل البيانات بشكل صحيح.", LOG_LEVELS.FATAL, internalInspection);
+        } else if (internalInspection.internalStatus === 'POISONED_NAN_DETECTED') {
+          printLog("CRITICAL", "🚨 انفجار رياضي: تم رصد قيم NaN! الـ Learning rate أو الـ Positional initialization حدث به طفح رياضي.", LOG_LEVELS.FATAL, internalInspection);
+        } else {
+          printLog("SIGNAL_HEALTH", "✅ إشارة التوليد حية واخترقت المصفوفات بنجاح!", LOG_LEVELS.SUCCESS, internalInspection);
+        }
+
+        printLog("RESULT", `🎯 الكلمة المتوقعة من النموذج: "${result.word}"`, LOG_LEVELS.SUCCESS, {
+          confidenceScore: result.confidence,
+          predictedIndex: result.index
+        });
+
+        // عرض النتيجة النهائية للمستخدم في صندوق المحادثة
+        appendMessage('bot', result.word);
+
+      } catch (err) {
+        printLog("EXEC_ERROR", `💥 انهيار الإشارة أثناء المعالجة: ${err.message}`, LOG_LEVELS.ERROR, {
+          errorType: err.constructor.name,
+          errorTrace: err.stack?.split('\n').slice(0, 4).join('\n')
+        });
+      }
+    };
+
+    function appendMessage(role, text) {
+      const div = document.createElement('div');
+      div.className = `message ${role}`;
+      div.innerText = text;
+      chatBox.appendChild(div);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendBtn.click(); });
+    
+    // إطلاق عملية التهيئة
+    init();
+  </script>
 </body>
 </html>
-
